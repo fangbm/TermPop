@@ -15,13 +15,14 @@ The Windows app is intentionally small:
 - Detect terms with `termlens-core`.
 - Add comma-separated custom terms.
 - Preview detected terms with desktop highlighting.
+- Draw a transparent, mouse-pass-through highlight overlay over source text when UI Automation exposes term bounding rectangles.
 - Select a term and generate a local mock explanation.
 
 The browser extension remains the primary Phase 1 delivery surface. The Windows app is the start of a native desktop surface and currently does not call external LLM providers.
 
 Text capture intentionally avoids OCR. The current build reads text from the clipboard, selectable regions that support copy, and Windows UI Automation for controls that expose accessibility text. OCR remains a disabled placeholder and is only a future fallback.
 
-`自动读屏(UIA)` is the first low-friction mode. When enabled, TermLens periodically reads the accessible text under the mouse cursor, runs local term detection, and opens the source-position explanation overlay when terms are found. It does not yet draw per-word rectangles over the original application text; that requires a later TextPattern bounding-rectangle pass.
+`自动读屏(UIA)` is the first low-friction mode. When enabled, TermLens periodically reads the accessible text under the mouse cursor, runs local term detection, and opens the source-position explanation overlay when terms are found. When the source application supports UI Automation TextPattern, TermLens also draws a transparent highlight overlay over detected term rectangles. If TextPattern is unavailable, it falls back to the source control rectangle and the nearby explanation card.
 
 ## Commands
 
@@ -50,5 +51,5 @@ For automatic capture:
 - Add encrypted local storage for API keys.
 - Add global term cache import/export.
 - Expand Windows UI Automation extraction with TextPattern and ValuePattern support.
-- Use UI Automation text ranges to draw per-term overlays at the original text coordinates.
+- Expand per-term rectangle matching beyond the first visible occurrence of each term.
 - Add Windows installer packaging.

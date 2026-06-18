@@ -1,6 +1,6 @@
 use eframe::egui::{
-    self, Color32, Frame, Pos2, RichText, ScrollArea, TextEdit, Ui, Vec2, ViewportCommand,
-    ViewportId,
+    self, Color32, Frame, Pos2, Rect, RichText, ScrollArea, Stroke, TextEdit, Ui, Vec2,
+    ViewportCommand, ViewportId,
 };
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -12,8 +12,8 @@ use termlens_core::{
     DetectedTerm, DetectorConfig, Explanation, TermDetector, TermType, detect_terms, explain_term,
 };
 use text_sources::{
-    ClipboardTextSource, ScreenRect, SelectionCopyTextSource, TextCapture, TextSource,
-    UiaPointedElementTextSource, capture_smart_text,
+    ClipboardTextSource, ScreenRect, SelectionCopyTextSource, TermSourceRect, TextCapture,
+    TextSource, UiaPointedElementTextSource, capture_smart_text,
 };
 
 const SAMPLE_TEXT: &str = "Rust and React can compile shared logic to WASM. \
@@ -52,6 +52,7 @@ struct TermLensWindowsApp {
     last_auto_capture_key: Option<u64>,
     next_auto_capture_at: Instant,
     source_overlay: Option<SourceOverlay>,
+    source_highlights: Vec<TermSourceRect>,
 }
 
 #[derive(Clone)]
@@ -78,6 +79,7 @@ impl Default for TermLensWindowsApp {
             last_auto_capture_key: None,
             next_auto_capture_at: Instant::now(),
             source_overlay: None,
+            source_highlights: Vec::new(),
         };
         app.detect();
         app
@@ -118,6 +120,7 @@ impl eframe::App for TermLensWindowsApp {
             .show_inside(ui, |ui| self.render_terms_panel(ui));
 
         egui::CentralPanel::default().show_inside(ui, |ui| self.render_editor_panel(ui));
+        self.render_source_highlight_overlay(ui.ctx());
         self.render_source_overlay(ui.ctx());
     }
 }
@@ -162,6 +165,7 @@ impl TermLensWindowsApp {
                 self.selected = None;
                 self.explanation = None;
                 self.source_overlay = None;
+                self.source_highlights.clear();
                 self.last_auto_capture_key = None;
                 self.status = "已清空".to_string();
             }
@@ -435,20 +439,34 @@ impl TermLensWindowsApp {
         self.last_auto_capture_key = Some(key);
 
         let source_rect = capture.source_rect;
+        let term_rects = capture.term_rects;
         self.input = capture.text;
         self.detect();
+        self.source_highlights = matched_source_highlights(&term_rects, &self.terms);
 
-        if let (Some(rect), Some(term)) = (source_rect, self.terms.first()) {
+        if let Some(term) = self.terms.first() {
             self.selected = Some(0);
             let explanation = explain_term(&term.term, Some(&self.input));
+            let overlay_rect = self
+                .source_highlights
+                .iter()
+                .find(|highlight| highlight.term.eq_ignore_ascii_case(&term.term))
+                .map(|highlight| highlight.rect)
+                .or(source_rect);
+            let Some(overlay_rect) = overlay_rect else {
+                self.source_overlay = None;
+                self.status = format!("自动读屏：检测到 {} 个词条", self.terms.len());
+                return;
+            };
             self.explanation = Some(explanation.clone());
             self.source_overlay = Some(SourceOverlay {
                 explanation,
-                source_rect: rect,
+                source_rect: overlay_rect,
             });
             self.status = format!("自动读屏：检测到 {} 个词条", self.terms.len());
         } else {
             self.source_overlay = None;
+            self.source_highlights.clear();
             self.status = "自动读屏：未发现可解释词条".to_string();
         }
     }
@@ -457,12 +475,20 @@ impl TermLensWindowsApp {
         match result {
             Ok(capture) if !capture.text.trim().is_empty() => {
                 let source_rect = capture.source_rect;
+                let term_rects = capture.term_rects;
                 self.input = capture.text;
                 self.detect();
-                self.source_overlay = source_rect.and_then(|rect| {
-                    self.terms.first().map(|term| SourceOverlay {
+                self.source_highlights = matched_source_highlights(&term_rects, &self.terms);
+                self.source_overlay = self.terms.first().and_then(|term| {
+                    let overlay_rect = self
+                        .source_highlights
+                        .iter()
+                        .find(|highlight| highlight.term.eq_ignore_ascii_case(&term.term))
+                        .map(|highlight| highlight.rect)
+                        .or(source_rect)?;
+                    Some(SourceOverlay {
                         explanation: explain_term(&term.term, Some(&self.input)),
-                        source_rect: rect,
+                        source_rect: overlay_rect,
                     })
                 });
                 self.status = format!(
@@ -473,13 +499,70 @@ impl TermLensWindowsApp {
             }
             Ok(capture) => {
                 self.source_overlay = None;
+                self.source_highlights.clear();
                 self.status = format!("{}没有返回文本", capture.source.label());
             }
             Err(message) => {
                 self.source_overlay = None;
+                self.source_highlights.clear();
                 self.status = format!("提取失败：{message}");
             }
         }
+    }
+
+    fn render_source_highlight_overlay(&mut self, ctx: &egui::Context) {
+        let highlights = self.source_highlights.clone();
+        if highlights.is_empty() {
+            return;
+        }
+
+        let Some(bounds) = union_rect(highlights.iter().map(|highlight| highlight.rect)) else {
+            return;
+        };
+        let margin = 8.0;
+        let origin = Pos2::new(
+            (bounds.left - margin).max(0.0),
+            (bounds.top - margin).max(0.0),
+        );
+        let size = Vec2::new(
+            (bounds.right - bounds.left + margin * 2.0).max(32.0),
+            (bounds.bottom - bounds.top + margin * 2.0).max(24.0),
+        );
+
+        let viewport_id = ViewportId::from_hash_of("termlens_source_highlights");
+        let builder = egui::ViewportBuilder::default()
+            .with_title("TermLens Highlights")
+            .with_position(origin)
+            .with_inner_size(size)
+            .with_min_inner_size(size)
+            .with_transparent(true)
+            .with_decorations(false)
+            .with_resizable(false)
+            .with_taskbar(false)
+            .with_always_on_top()
+            .with_mouse_passthrough(true);
+
+        ctx.show_viewport_deferred(viewport_id, builder, move |ui, _class| {
+            egui::CentralPanel::default()
+                .frame(Frame::NONE.fill(Color32::TRANSPARENT))
+                .show_inside(ui, |ui| {
+                    let painter = ui.painter();
+                    for highlight in &highlights {
+                        let rect = screen_rect_to_local_rect(highlight.rect, origin);
+                        painter.rect_filled(
+                            rect,
+                            3.0,
+                            Color32::from_rgba_unmultiplied(255, 214, 64, 86),
+                        );
+                        painter.rect_stroke(
+                            rect,
+                            3.0,
+                            Stroke::new(1.5, Color32::from_rgba_unmultiplied(245, 156, 0, 180)),
+                            egui::StrokeKind::Outside,
+                        );
+                    }
+                });
+        });
     }
 
     fn render_source_overlay(&mut self, ctx: &egui::Context) {
@@ -539,6 +622,47 @@ fn capture_key(capture: &TextCapture) -> u64 {
         rect.bottom.to_bits().hash(&mut hasher);
     }
     hasher.finish()
+}
+
+fn matched_source_highlights(
+    term_rects: &[TermSourceRect],
+    detected_terms: &[DetectedTerm],
+) -> Vec<TermSourceRect> {
+    term_rects
+        .iter()
+        .filter(|rect| {
+            detected_terms
+                .iter()
+                .any(|term| term.term.eq_ignore_ascii_case(&rect.term))
+        })
+        .take(24)
+        .cloned()
+        .collect()
+}
+
+fn union_rect(rects: impl Iterator<Item = ScreenRect>) -> Option<ScreenRect> {
+    let mut rects = rects.filter(|rect| {
+        rect.left.is_finite()
+            && rect.top.is_finite()
+            && rect.right.is_finite()
+            && rect.bottom.is_finite()
+            && rect.right > rect.left
+            && rect.bottom > rect.top
+    });
+    let first = rects.next()?;
+    Some(rects.fold(first, |acc, rect| ScreenRect {
+        left: acc.left.min(rect.left),
+        top: acc.top.min(rect.top),
+        right: acc.right.max(rect.right),
+        bottom: acc.bottom.max(rect.bottom),
+    }))
+}
+
+fn screen_rect_to_local_rect(rect: ScreenRect, origin: Pos2) -> Rect {
+    Rect::from_min_max(
+        Pos2::new(rect.left - origin.x, rect.top - origin.y),
+        Pos2::new(rect.right - origin.x, rect.bottom - origin.y),
+    )
 }
 
 fn overlay_position(rect: ScreenRect) -> Pos2 {
