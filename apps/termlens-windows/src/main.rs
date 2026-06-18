@@ -1,17 +1,14 @@
-use eframe::egui::{
-    self, Color32, FontId, RichText, ScrollArea, Stroke, TextEdit, Ui,
-};
-use eframe::egui::text::{LayoutJob, TextFormat};
+use eframe::egui::{self, Color32, RichText, ScrollArea, TextEdit, Ui};
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::Duration;
 mod text_sources;
 use termlens_core::{
-    detect_terms, explain_term, DetectedTerm, DetectorConfig, Explanation, TermDetector, TermType,
+    DetectedTerm, DetectorConfig, Explanation, TermDetector, TermType, detect_terms, explain_term,
 };
 use text_sources::{
-    capture_smart_text, ClipboardTextSource, SelectionCopyTextSource, TextCapture, TextSource,
-    UiaPointedElementTextSource,
+    ClipboardTextSource, SelectionCopyTextSource, TextCapture, TextSource,
+    UiaPointedElementTextSource, capture_smart_text,
 };
 
 const SAMPLE_TEXT: &str = "Rust and React can compile shared logic to WASM. \
@@ -114,7 +111,10 @@ impl TermLensWindowsApp {
                 self.capture_smart();
             }
             if ui
-                .add_enabled(capture_enabled, egui::Button::new("2秒后读取鼠标下文本(UIA)"))
+                .add_enabled(
+                    capture_enabled,
+                    egui::Button::new("2秒后读取鼠标下文本(UIA)"),
+                )
                 .clicked()
             {
                 self.capture_uia_pointed_text();
@@ -169,10 +169,7 @@ impl TermLensWindowsApp {
             ScrollArea::vertical()
                 .id_salt("highlight_preview")
                 .max_height(470.0)
-                .show(&mut columns[1], |ui| {
-                    let job = highlighted_job(&self.input, &self.terms);
-                    ui.label(job);
-                });
+                .show(&mut columns[1], |ui| self.render_interactive_preview(ui));
         });
 
         ui.separator();
@@ -200,7 +197,10 @@ impl TermLensWindowsApp {
                     term.confidence * 100.0
                 );
                 let response = ui
-                    .selectable_label(selected, RichText::new(label).color(color_for_type(&term.term_type)))
+                    .selectable_label(
+                        selected,
+                        RichText::new(label).color(color_for_type(&term.term_type)),
+                    )
                     .on_hover_text(format!("{}..{} · {:?}", term.start, term.end, term.source));
                 if response.clicked() {
                     self.selected = Some(index);
@@ -210,33 +210,73 @@ impl TermLensWindowsApp {
         });
     }
 
+    fn render_interactive_preview(&mut self, ui: &mut Ui) {
+        if self.input.trim().is_empty() {
+            ui.label(RichText::new("等待输入文本...").color(Color32::from_rgb(110, 118, 130)));
+            return;
+        }
+
+        let segments = preview_segments(&self.input, &self.terms);
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 0.0;
+            ui.spacing_mut().item_spacing.y = 4.0;
+
+            for segment in segments {
+                match segment {
+                    PreviewSegment::Text(text) => {
+                        render_plain_segment(ui, &text);
+                    }
+                    PreviewSegment::Term { index, text } => {
+                        self.render_preview_term(ui, index, &text);
+                    }
+                }
+            }
+        });
+    }
+
+    fn render_preview_term(&mut self, ui: &mut Ui, index: usize, text: &str) {
+        let Some(term) = self.terms.get(index).cloned() else {
+            render_plain_segment(ui, text);
+            return;
+        };
+
+        let color = color_for_type(&term.term_type);
+        let selected = self.selected == Some(index);
+        let label = RichText::new(text)
+            .color(color)
+            .background_color(if selected {
+                color.linear_multiply(0.26)
+            } else {
+                color.linear_multiply(0.16)
+            })
+            .underline();
+
+        let response = ui
+            .add(egui::Label::new(label).sense(egui::Sense::click()))
+            .on_hover_ui(|ui| {
+                let explanation = explain_term(&term.term, Some(&self.input));
+                render_explanation_card(ui, &explanation);
+            });
+
+        if response.hovered() {
+            self.selected = Some(index);
+            self.explanation = Some(explain_term(&term.term, Some(&self.input)));
+            self.status = format!("正在查看 {}", term.term);
+        }
+
+        if response.clicked() {
+            self.selected = Some(index);
+            self.explanation = Some(explain_term(&term.term, Some(&self.input)));
+            self.status = format!("已生成 {} 的释义", term.term);
+        }
+    }
+
     fn render_explanation(&mut self, ui: &mut Ui) {
         ui.heading("释义");
         if let Some(explanation) = &self.explanation {
-            ui.label(RichText::new(&explanation.term).strong().size(18.0));
-            ui.label(RichText::new(&explanation.category).color(Color32::from_rgb(86, 100, 140)));
-            ui.add_space(4.0);
-            ui.label(&explanation.definition);
-
-            if let Some(example) = &explanation.usage_example {
-                ui.add_space(6.0);
-                ui.label(RichText::new(example).italics());
-            }
-
-            if !explanation.related_terms.is_empty() {
-                ui.add_space(6.0);
-                ui.horizontal_wrapped(|ui| {
-                    for term in &explanation.related_terms {
-                        ui.label(
-                            RichText::new(term)
-                                .background_color(Color32::from_rgb(239, 244, 255))
-                                .color(Color32::from_rgb(55, 75, 130)),
-                        );
-                    }
-                });
-            }
+            render_explanation_card(ui, explanation);
         } else {
-            ui.label("选择右侧词条，或点击“解释选中词”。");
+            ui.label("悬停预览区高亮词，或选择右侧词条。");
         }
     }
 
@@ -355,35 +395,77 @@ fn parse_custom_terms(input: &str) -> Vec<String> {
         .collect()
 }
 
-fn highlighted_job(text: &str, terms: &[DetectedTerm]) -> LayoutJob {
-    let mut job = LayoutJob::default();
-    let mut cursor = 0;
-    let normal = TextFormat {
-        font_id: FontId::proportional(15.0),
-        color: Color32::from_rgb(32, 36, 44),
-        ..Default::default()
-    };
+enum PreviewSegment {
+    Text(String),
+    Term { index: usize, text: String },
+}
 
-    for term in terms {
-        if term.start < cursor || term.end > text.len() {
+fn preview_segments(text: &str, terms: &[DetectedTerm]) -> Vec<PreviewSegment> {
+    let mut segments = Vec::new();
+    let mut cursor = 0;
+
+    for (index, term) in terms.iter().enumerate() {
+        if term.start < cursor
+            || term.end > text.len()
+            || !text.is_char_boundary(term.start)
+            || !text.is_char_boundary(term.end)
+        {
             continue;
         }
+
         if term.start > cursor {
-            job.append(&text[cursor..term.start], 0.0, normal.clone());
+            segments.push(PreviewSegment::Text(text[cursor..term.start].to_string()));
         }
 
-        let mut format = normal.clone();
-        format.background = color_for_type(&term.term_type).linear_multiply(0.18);
-        format.underline = Stroke::new(1.0, color_for_type(&term.term_type));
-        job.append(&text[term.start..term.end], 0.0, format);
+        segments.push(PreviewSegment::Term {
+            index,
+            text: text[term.start..term.end].to_string(),
+        });
         cursor = term.end;
     }
 
     if cursor < text.len() {
-        job.append(&text[cursor..], 0.0, normal);
+        segments.push(PreviewSegment::Text(text[cursor..].to_string()));
     }
 
-    job
+    segments
+}
+
+fn render_plain_segment(ui: &mut Ui, text: &str) {
+    for (line_index, line) in text.split('\n').enumerate() {
+        if line_index > 0 {
+            ui.end_row();
+        }
+        if !line.is_empty() {
+            ui.label(RichText::new(line).color(Color32::from_rgb(32, 36, 44)));
+        }
+    }
+}
+
+fn render_explanation_card(ui: &mut Ui, explanation: &Explanation) {
+    ui.set_max_width(360.0);
+    ui.label(RichText::new(&explanation.term).strong().size(18.0));
+    ui.label(RichText::new(&explanation.category).color(Color32::from_rgb(86, 100, 140)));
+    ui.add_space(4.0);
+    ui.label(&explanation.definition);
+
+    if let Some(example) = &explanation.usage_example {
+        ui.add_space(6.0);
+        ui.label(RichText::new(example).italics());
+    }
+
+    if !explanation.related_terms.is_empty() {
+        ui.add_space(6.0);
+        ui.horizontal_wrapped(|ui| {
+            for term in &explanation.related_terms {
+                ui.label(
+                    RichText::new(term)
+                        .background_color(Color32::from_rgb(239, 244, 255))
+                        .color(Color32::from_rgb(55, 75, 130)),
+                );
+            }
+        });
+    }
 }
 
 fn color_for_type(term_type: &TermType) -> Color32 {
