@@ -5,12 +5,13 @@ use eframe::egui::text::{LayoutJob, TextFormat};
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::Duration;
+mod text_sources;
 use termlens_core::{
     detect_terms, explain_term, DetectedTerm, DetectorConfig, Explanation, TermDetector, TermType,
 };
-use windows::Win32::UI::Input::KeyboardAndMouse::{
-    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_C,
-    VK_CONTROL,
+use text_sources::{
+    capture_smart_text, ClipboardTextSource, SelectionCopyTextSource, TextCapture, TextSource,
+    UiaPointedElementTextSource,
 };
 
 const SAMPLE_TEXT: &str = "Rust and React can compile shared logic to WASM. \
@@ -42,7 +43,7 @@ struct TermLensWindowsApp {
     last_detected_input: String,
     last_detected_custom_terms: String,
     status: String,
-    capture_rx: Option<Receiver<Result<String, String>>>,
+    capture_rx: Option<Receiver<Result<TextCapture, String>>>,
 }
 
 impl Default for TermLensWindowsApp {
@@ -107,6 +108,18 @@ impl TermLensWindowsApp {
             }
             let capture_enabled = self.capture_rx.is_none();
             if ui
+                .add_enabled(capture_enabled, egui::Button::new("2秒后智能提取"))
+                .clicked()
+            {
+                self.capture_smart();
+            }
+            if ui
+                .add_enabled(capture_enabled, egui::Button::new("2秒后读取鼠标下文本(UIA)"))
+                .clicked()
+            {
+                self.capture_uia_pointed_text();
+            }
+            if ui
                 .add_enabled(capture_enabled, egui::Button::new("2秒后抓取选区"))
                 .clicked()
             {
@@ -130,7 +143,7 @@ impl TermLensWindowsApp {
 
         ui.add_space(4.0);
         ui.label(
-            RichText::new("提示：选中文本后可先 Ctrl+C 再导入；或点击“2秒后抓取选区”，马上切回目标窗口。")
+            RichText::new("提示：智能提取会先尝试 UI Automation，再尝试选区复制；OCR 仍默认关闭。")
                 .color(Color32::from_rgb(95, 105, 120)),
         );
 
@@ -246,28 +259,43 @@ impl TermLensWindowsApp {
     }
 
     fn import_clipboard_text(&mut self) {
-        match read_clipboard_text() {
-            Ok(text) if !text.trim().is_empty() => {
-                self.input = text;
-                self.detect();
-                self.status = format!("已从剪贴板导入，检测到 {} 个词条", self.terms.len());
-            }
-            Ok(_) => {
-                self.status = "剪贴板里没有文本".to_string();
-            }
-            Err(message) => {
-                self.status = format!("读取剪贴板失败：{message}");
-            }
-        }
+        self.apply_capture_result(ClipboardTextSource.capture());
+    }
+
+    fn capture_smart(&mut self) {
+        self.status = "请在 2 秒内把鼠标移到目标文本上，或保持文本选中...".to_string();
+        self.spawn_capture(|| {
+            thread::sleep(Duration::from_secs(2));
+            capture_smart_text()
+        });
+    }
+
+    fn capture_uia_pointed_text(&mut self) {
+        self.status = "请在 2 秒内把鼠标移到目标文本上...".to_string();
+        self.spawn_capture(|| {
+            thread::sleep(Duration::from_secs(2));
+            UiaPointedElementTextSource.capture()
+        });
     }
 
     fn capture_selection_after_delay(&mut self) {
         self.status = "请在 2 秒内切回目标窗口并保持文本选中...".to_string();
+        self.spawn_capture(|| {
+            SelectionCopyTextSource {
+                delay: Duration::from_secs(2),
+            }
+            .capture()
+        });
+    }
+
+    fn spawn_capture<F>(&mut self, capture: F)
+    where
+        F: FnOnce() -> Result<TextCapture, String> + Send + 'static,
+    {
         let (tx, rx) = mpsc::channel();
         self.capture_rx = Some(rx);
         thread::spawn(move || {
-            thread::sleep(Duration::from_secs(2));
-            let _ = tx.send(capture_selected_text());
+            let _ = tx.send(capture());
         });
     }
 
@@ -281,17 +309,25 @@ impl TermLensWindowsApp {
         };
         self.capture_rx = None;
 
+        self.apply_capture_result(result);
+    }
+
+    fn apply_capture_result(&mut self, result: Result<TextCapture, String>) {
         match result {
-            Ok(text) if !text.trim().is_empty() => {
-                self.input = text;
+            Ok(capture) if !capture.text.trim().is_empty() => {
+                self.input = capture.text;
                 self.detect();
-                self.status = format!("已抓取选区，检测到 {} 个词条", self.terms.len());
+                self.status = format!(
+                    "已通过{}导入，检测到 {} 个词条",
+                    capture.source.label(),
+                    self.terms.len()
+                );
             }
-            Ok(_) => {
-                self.status = "没有抓取到可复制文本".to_string();
+            Ok(capture) => {
+                self.status = format!("{}没有返回文本", capture.source.label());
             }
             Err(message) => {
-                self.status = format!("抓取选区失败：{message}");
+                self.status = format!("提取失败：{message}");
             }
         }
     }
@@ -307,61 +343,6 @@ impl TermLensWindowsApp {
             self.explanation = Some(explain_term(&first.term, Some(&self.input)));
             self.status = format!("已生成 {} 的释义", first.term);
         }
-    }
-}
-
-fn read_clipboard_text() -> Result<String, String> {
-    let mut clipboard = arboard::Clipboard::new().map_err(|err| err.to_string())?;
-    clipboard.get_text().map_err(|err| err.to_string())
-}
-
-fn capture_selected_text() -> Result<String, String> {
-    let mut clipboard = arboard::Clipboard::new().map_err(|err| err.to_string())?;
-    let previous = clipboard.get_text().ok();
-
-    send_ctrl_c()?;
-    thread::sleep(Duration::from_millis(220));
-    let captured = clipboard.get_text().map_err(|err| err.to_string())?;
-
-    if let Some(previous) = previous {
-        let _ = clipboard.set_text(previous);
-    }
-
-    Ok(captured)
-}
-
-fn send_ctrl_c() -> Result<(), String> {
-    let inputs = [
-        keyboard_input(VK_CONTROL, false),
-        keyboard_input(VK_C, false),
-        keyboard_input(VK_C, true),
-        keyboard_input(VK_CONTROL, true),
-    ];
-
-    let sent = unsafe { SendInput(&inputs, size_of::<INPUT>() as i32) };
-    if sent == inputs.len() as u32 {
-        Ok(())
-    } else {
-        Err(format!("SendInput 只发送了 {sent}/{} 个事件", inputs.len()))
-    }
-}
-
-fn keyboard_input(key: VIRTUAL_KEY, key_up: bool) -> INPUT {
-    INPUT {
-        r#type: INPUT_KEYBOARD,
-        Anonymous: INPUT_0 {
-            ki: KEYBDINPUT {
-                wVk: key,
-                wScan: 0,
-                dwFlags: if key_up {
-                    KEYEVENTF_KEYUP
-                } else {
-                    Default::default()
-                },
-                time: 0,
-                dwExtraInfo: 0,
-            },
-        },
     }
 }
 
