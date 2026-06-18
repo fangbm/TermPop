@@ -2,8 +2,15 @@ use eframe::egui::{
     self, Color32, FontId, RichText, ScrollArea, Stroke, TextEdit, Ui,
 };
 use eframe::egui::text::{LayoutJob, TextFormat};
+use std::sync::mpsc::{self, Receiver};
+use std::thread;
+use std::time::Duration;
 use termlens_core::{
     detect_terms, explain_term, DetectedTerm, DetectorConfig, Explanation, TermDetector, TermType,
+};
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_C,
+    VK_CONTROL,
 };
 
 const SAMPLE_TEXT: &str = "Rust and React can compile shared logic to WASM. \
@@ -35,6 +42,7 @@ struct TermLensWindowsApp {
     last_detected_input: String,
     last_detected_custom_terms: String,
     status: String,
+    capture_rx: Option<Receiver<Result<String, String>>>,
 }
 
 impl Default for TermLensWindowsApp {
@@ -49,6 +57,7 @@ impl Default for TermLensWindowsApp {
             last_detected_input: String::new(),
             last_detected_custom_terms: String::new(),
             status: String::new(),
+            capture_rx: None,
         };
         app.detect();
         app
@@ -57,6 +66,11 @@ impl Default for TermLensWindowsApp {
 
 impl eframe::App for TermLensWindowsApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+        self.poll_capture_result();
+        if self.capture_rx.is_some() {
+            ui.ctx().request_repaint_after(Duration::from_millis(100));
+        }
+
         if self.auto_detect
             && (self.input != self.last_detected_input
                 || self.custom_terms != self.last_detected_custom_terms)
@@ -88,6 +102,16 @@ impl eframe::App for TermLensWindowsApp {
 impl TermLensWindowsApp {
     fn render_editor_panel(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
+            if ui.button("从剪贴板导入").clicked() {
+                self.import_clipboard_text();
+            }
+            let capture_enabled = self.capture_rx.is_none();
+            if ui
+                .add_enabled(capture_enabled, egui::Button::new("2秒后抓取选区"))
+                .clicked()
+            {
+                self.capture_selection_after_delay();
+            }
             if ui.button("检测词条").clicked() {
                 self.detect();
             }
@@ -103,6 +127,12 @@ impl TermLensWindowsApp {
             }
             ui.checkbox(&mut self.auto_detect, "自动检测");
         });
+
+        ui.add_space(4.0);
+        ui.label(
+            RichText::new("提示：选中文本后可先 Ctrl+C 再导入；或点击“2秒后抓取选区”，马上切回目标窗口。")
+                .color(Color32::from_rgb(95, 105, 120)),
+        );
 
         ui.add_space(8.0);
         ui.label("自定义词，逗号或换行分隔");
@@ -215,6 +245,57 @@ impl TermLensWindowsApp {
         self.status = format!("检测到 {} 个词条", self.terms.len());
     }
 
+    fn import_clipboard_text(&mut self) {
+        match read_clipboard_text() {
+            Ok(text) if !text.trim().is_empty() => {
+                self.input = text;
+                self.detect();
+                self.status = format!("已从剪贴板导入，检测到 {} 个词条", self.terms.len());
+            }
+            Ok(_) => {
+                self.status = "剪贴板里没有文本".to_string();
+            }
+            Err(message) => {
+                self.status = format!("读取剪贴板失败：{message}");
+            }
+        }
+    }
+
+    fn capture_selection_after_delay(&mut self) {
+        self.status = "请在 2 秒内切回目标窗口并保持文本选中...".to_string();
+        let (tx, rx) = mpsc::channel();
+        self.capture_rx = Some(rx);
+        thread::spawn(move || {
+            thread::sleep(Duration::from_secs(2));
+            let _ = tx.send(capture_selected_text());
+        });
+    }
+
+    fn poll_capture_result(&mut self) {
+        let Some(rx) = &self.capture_rx else {
+            return;
+        };
+
+        let Ok(result) = rx.try_recv() else {
+            return;
+        };
+        self.capture_rx = None;
+
+        match result {
+            Ok(text) if !text.trim().is_empty() => {
+                self.input = text;
+                self.detect();
+                self.status = format!("已抓取选区，检测到 {} 个词条", self.terms.len());
+            }
+            Ok(_) => {
+                self.status = "没有抓取到可复制文本".to_string();
+            }
+            Err(message) => {
+                self.status = format!("抓取选区失败：{message}");
+            }
+        }
+    }
+
     fn explain_selected(&mut self) {
         if let Some(index) = self.selected {
             if let Some(term) = self.terms.get(index) {
@@ -226,6 +307,61 @@ impl TermLensWindowsApp {
             self.explanation = Some(explain_term(&first.term, Some(&self.input)));
             self.status = format!("已生成 {} 的释义", first.term);
         }
+    }
+}
+
+fn read_clipboard_text() -> Result<String, String> {
+    let mut clipboard = arboard::Clipboard::new().map_err(|err| err.to_string())?;
+    clipboard.get_text().map_err(|err| err.to_string())
+}
+
+fn capture_selected_text() -> Result<String, String> {
+    let mut clipboard = arboard::Clipboard::new().map_err(|err| err.to_string())?;
+    let previous = clipboard.get_text().ok();
+
+    send_ctrl_c()?;
+    thread::sleep(Duration::from_millis(220));
+    let captured = clipboard.get_text().map_err(|err| err.to_string())?;
+
+    if let Some(previous) = previous {
+        let _ = clipboard.set_text(previous);
+    }
+
+    Ok(captured)
+}
+
+fn send_ctrl_c() -> Result<(), String> {
+    let inputs = [
+        keyboard_input(VK_CONTROL, false),
+        keyboard_input(VK_C, false),
+        keyboard_input(VK_C, true),
+        keyboard_input(VK_CONTROL, true),
+    ];
+
+    let sent = unsafe { SendInput(&inputs, size_of::<INPUT>() as i32) };
+    if sent == inputs.len() as u32 {
+        Ok(())
+    } else {
+        Err(format!("SendInput 只发送了 {sent}/{} 个事件", inputs.len()))
+    }
+}
+
+fn keyboard_input(key: VIRTUAL_KEY, key_up: bool) -> INPUT {
+    INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: key,
+                wScan: 0,
+                dwFlags: if key_up {
+                    KEYEVENTF_KEYUP
+                } else {
+                    Default::default()
+                },
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
     }
 }
 

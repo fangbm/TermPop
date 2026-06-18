@@ -2969,8 +2969,10 @@ dependencies = [
 name = "termlens-windows"
 version = "0.1.0"
 dependencies = [
+ "arboard",
  "eframe",
  "termlens-core",
+ "windows",
 ]
 
 [[package]]
