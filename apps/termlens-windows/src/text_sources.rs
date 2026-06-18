@@ -16,6 +16,15 @@ use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 pub struct TextCapture {
     pub source: TextSourceKind,
     pub text: String,
+    pub source_rect: Option<ScreenRect>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ScreenRect {
+    pub left: f32,
+    pub top: f32,
+    pub right: f32,
+    pub bottom: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,6 +57,7 @@ impl TextSource for ClipboardTextSource {
         Ok(TextCapture {
             source: TextSourceKind::Clipboard,
             text: read_clipboard_text()?,
+            source_rect: None,
         })
     }
 }
@@ -62,6 +72,7 @@ impl TextSource for SelectionCopyTextSource {
         Ok(TextCapture {
             source: TextSourceKind::SelectionCopy,
             text: capture_selected_text()?,
+            source_rect: None,
         })
     }
 }
@@ -70,9 +81,11 @@ pub struct UiaPointedElementTextSource;
 
 impl TextSource for UiaPointedElementTextSource {
     fn capture(&self) -> Result<TextCapture, String> {
+        let (text, source_rect) = capture_uia_pointed_text()?;
         Ok(TextCapture {
             source: TextSourceKind::UiaPointedElement,
-            text: capture_uia_pointed_text()?,
+            text,
+            source_rect: Some(source_rect),
         })
     }
 }
@@ -84,6 +97,7 @@ impl TextSource for OcrPlaceholderTextSource {
         Ok(TextCapture {
             source: TextSourceKind::OcrPlaceholder,
             text: String::new(),
+            source_rect: None,
         })
     }
 }
@@ -127,7 +141,7 @@ pub fn capture_smart_text() -> Result<TextCapture, String> {
     Err(errors.join("；"))
 }
 
-fn capture_uia_pointed_text() -> Result<String, String> {
+fn capture_uia_pointed_text() -> Result<(String, ScreenRect), String> {
     let _com = ComApartment::init()?;
     let mut point = POINT::default();
     unsafe {
@@ -138,7 +152,20 @@ fn capture_uia_pointed_text() -> Result<String, String> {
         let element = automation
             .ElementFromPoint(point)
             .map_err(|err| err.message().to_string())?;
-        text_from_element(&element).ok_or_else(|| "鼠标下元素没有暴露可访问文本".to_string())
+        let rect = element
+            .CurrentBoundingRectangle()
+            .map_err(|err| err.message().to_string())?;
+        let text = text_from_element(&element)
+            .ok_or_else(|| "鼠标下元素没有暴露可访问文本".to_string())?;
+        Ok((
+            text,
+            ScreenRect {
+                left: rect.left as f32,
+                top: rect.top as f32,
+                right: rect.right as f32,
+                bottom: rect.bottom as f32,
+            },
+        ))
     }
 }
 

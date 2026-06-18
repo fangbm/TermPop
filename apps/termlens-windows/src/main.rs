@@ -1,4 +1,7 @@
-use eframe::egui::{self, Color32, RichText, ScrollArea, TextEdit, Ui};
+use eframe::egui::{
+    self, Color32, Frame, Pos2, RichText, ScrollArea, TextEdit, Ui, Vec2, ViewportCommand,
+    ViewportId,
+};
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::Duration;
@@ -7,7 +10,7 @@ use termlens_core::{
     DetectedTerm, DetectorConfig, Explanation, TermDetector, TermType, detect_terms, explain_term,
 };
 use text_sources::{
-    ClipboardTextSource, SelectionCopyTextSource, TextCapture, TextSource,
+    ClipboardTextSource, ScreenRect, SelectionCopyTextSource, TextCapture, TextSource,
     UiaPointedElementTextSource, capture_smart_text,
 };
 
@@ -41,6 +44,13 @@ struct TermLensWindowsApp {
     last_detected_custom_terms: String,
     status: String,
     capture_rx: Option<Receiver<Result<TextCapture, String>>>,
+    source_overlay: Option<SourceOverlay>,
+}
+
+#[derive(Clone)]
+struct SourceOverlay {
+    explanation: Explanation,
+    source_rect: ScreenRect,
 }
 
 impl Default for TermLensWindowsApp {
@@ -56,6 +66,7 @@ impl Default for TermLensWindowsApp {
             last_detected_custom_terms: String::new(),
             status: String::new(),
             capture_rx: None,
+            source_overlay: None,
         };
         app.detect();
         app
@@ -94,6 +105,7 @@ impl eframe::App for TermLensWindowsApp {
             .show_inside(ui, |ui| self.render_terms_panel(ui));
 
         egui::CentralPanel::default().show_inside(ui, |ui| self.render_editor_panel(ui));
+        self.render_source_overlay(ui.ctx());
     }
 }
 
@@ -355,8 +367,15 @@ impl TermLensWindowsApp {
     fn apply_capture_result(&mut self, result: Result<TextCapture, String>) {
         match result {
             Ok(capture) if !capture.text.trim().is_empty() => {
+                let source_rect = capture.source_rect;
                 self.input = capture.text;
                 self.detect();
+                self.source_overlay = source_rect.and_then(|rect| {
+                    self.terms.first().map(|term| SourceOverlay {
+                        explanation: explain_term(&term.term, Some(&self.input)),
+                        source_rect: rect,
+                    })
+                });
                 self.status = format!(
                     "已通过{}导入，检测到 {} 个词条",
                     capture.source.label(),
@@ -364,12 +383,46 @@ impl TermLensWindowsApp {
                 );
             }
             Ok(capture) => {
+                self.source_overlay = None;
                 self.status = format!("{}没有返回文本", capture.source.label());
             }
             Err(message) => {
+                self.source_overlay = None;
                 self.status = format!("提取失败：{message}");
             }
         }
+    }
+
+    fn render_source_overlay(&mut self, ctx: &egui::Context) {
+        let Some(overlay) = self.source_overlay.clone() else {
+            return;
+        };
+
+        let viewport_id = ViewportId::from_hash_of("termlens_source_overlay");
+        let builder = egui::ViewportBuilder::default()
+            .with_title("TermLens Overlay")
+            .with_position(overlay_position(overlay.source_rect))
+            .with_inner_size(Vec2::new(380.0, 210.0))
+            .with_min_inner_size(Vec2::new(320.0, 160.0))
+            .with_decorations(false)
+            .with_resizable(false)
+            .with_taskbar(false)
+            .with_always_on_top();
+
+        ctx.show_viewport_deferred(viewport_id, builder, move |ui, _class| {
+            Frame::popup(ui.style()).show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("词镜 TermLens").strong());
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("×").clicked() {
+                            ui.ctx().send_viewport_cmd(ViewportCommand::Close);
+                        }
+                    });
+                });
+                ui.separator();
+                render_explanation_card(ui, &overlay.explanation);
+            });
+        });
     }
 
     fn explain_selected(&mut self) {
@@ -384,6 +437,26 @@ impl TermLensWindowsApp {
             self.status = format!("已生成 {} 的释义", first.term);
         }
     }
+}
+
+fn overlay_position(rect: ScreenRect) -> Pos2 {
+    let width = rect.right - rect.left;
+    let height = rect.bottom - rect.top;
+    let x = if rect.right.is_finite() && width >= 0.0 {
+        rect.right + 10.0
+    } else if rect.left.is_finite() {
+        rect.left + 10.0
+    } else {
+        12.0
+    };
+    let y = if rect.top.is_finite() {
+        rect.top
+    } else if rect.bottom.is_finite() && height >= 0.0 {
+        rect.bottom + 10.0
+    } else {
+        12.0
+    };
+    Pos2::new(x.max(12.0), y.max(12.0))
 }
 
 fn parse_custom_terms(input: &str) -> Vec<String> {
