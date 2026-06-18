@@ -3,10 +3,10 @@ target/
 extension/node_modules/
 extension/dist/
 extension/termlens-edge-test.png
+release/
 
 .env
 .env.*
 *.log
 *.tmp
 *.bak
-
