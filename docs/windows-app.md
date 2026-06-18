@@ -30,7 +30,11 @@ Text capture intentionally avoids OCR. The current build reads text from the cli
 cargo run -p termlens-windows
 cargo check -p termlens-windows
 cargo test --workspace
+cargo build -p termlens-windows --release
+& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" packaging\windows\termlens.iss
 ```
+
+The Inno Setup output is written to `dist\windows\TermLens-Setup-0.1.0.exe`.
 
 To capture text without OCR:
 
