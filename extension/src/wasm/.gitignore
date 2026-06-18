@@ -1,0 +1,7 @@
+*
+!.gitignore
+!package.json
+!termlens_core.js
+!termlens_core.d.ts
+!termlens_core_bg.wasm
+!termlens_core_bg.wasm.d.ts

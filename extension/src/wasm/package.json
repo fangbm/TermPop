@@ -1,0 +1,16 @@
+{
+  "name": "termlens-core",
+  "type": "module",
+  "version": "0.1.0",
+  "license": "MIT",
+  "files": [
+    "termlens_core_bg.wasm",
+    "termlens_core.js",
+    "termlens_core.d.ts"
+  ],
+  "main": "termlens_core.js",
+  "types": "termlens_core.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

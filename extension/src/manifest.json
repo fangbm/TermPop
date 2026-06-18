@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "词镜 TermLens",
+  "description": "AI 词汇解释助手：检测网页术语并在悬浮卡片中解释。",
+  "version": "0.1.0",
+  "permissions": ["storage"],
+  "host_permissions": ["<all_urls>"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+  },
+  "background": {
+    "service_worker": "assets/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "词镜 TermLens",
+    "default_popup": "assets/popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content-loader.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/*"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

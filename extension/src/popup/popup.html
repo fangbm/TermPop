@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>词镜 TermLens</title>
+  </head>
+  <body>
+    <main id="app">
+      <header>
+        <h1 id="app-title">词镜 TermLens</h1>
+        <p>AI 词汇解释助手</p>
+      </header>
+      <section class="mode-group" aria-label="检测模式">
+        <button type="button" data-mode="auto">自动</button>
+        <button type="button" data-mode="hover">悬停</button>
+        <button type="button" data-mode="hybrid">混合</button>
+      </section>
+      <form id="llm-form" class="settings-form">
+        <label>
+          服务商
+          <select id="provider" name="provider">
+            <option value="mock">Mock</option>
+            <option value="openai">OpenAI</option>
+            <option value="kimi">Kimi</option>
+            <option value="openai-compatible">OpenAI-compatible</option>
+            <option value="anthropic">Anthropic</option>
+          </select>
+        </label>
+        <label>
+          API Key
+          <input id="api-key" name="apiKey" type="password" autocomplete="off" placeholder="sk-..." />
+        </label>
+        <label>
+          模型
+          <input id="model" name="model" type="text" placeholder="gpt-4.1-mini" />
+        </label>
+        <label>
+          Base URL
+          <input id="base-url" name="baseUrl" type="url" placeholder="https://api.openai.com/v1" />
+        </label>
+        <label>
+          解释语言
+          <select id="language" name="language">
+            <option value="auto">跟随上下文</option>
+            <option value="zh-CN">中文</option>
+            <option value="en">English</option>
+          </select>
+        </label>
+        <label class="checkbox-row">
+          <input id="include-usage-example" name="includeUsageExample" type="checkbox" />
+          <span>生成例句</span>
+        </label>
+        <div class="inline-fields">
+          <label>
+            温度
+            <input id="temperature" name="temperature" type="number" min="0" max="2" step="0.1" />
+          </label>
+          <label>
+            Tokens
+            <input id="max-tokens" name="maxTokens" type="number" min="128" max="4000" step="1" />
+          </label>
+        </div>
+        <label>
+          并发限制
+          <input id="max-concurrency" name="maxConcurrency" type="number" min="1" step="1" />
+        </label>
+        <button class="save-button" type="submit">保存 LLM 设置</button>
+      </form>
+      <p id="status" role="status"></p>
+    </main>
+    <script type="module" src="./popup.ts"></script>
+  </body>
+</html>

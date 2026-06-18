@@ -1,0 +1,12 @@
+target/
+
+extension/node_modules/
+extension/dist/
+extension/termlens-edge-test.png
+
+.env
+.env.*
+*.log
+*.tmp
+*.bak
+
