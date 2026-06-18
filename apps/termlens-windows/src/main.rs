@@ -2,9 +2,11 @@ use eframe::egui::{
     self, Color32, Frame, Pos2, RichText, ScrollArea, TextEdit, Ui, Vec2, ViewportCommand,
     ViewportId,
 };
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 mod text_sources;
 use termlens_core::{
     DetectedTerm, DetectorConfig, Explanation, TermDetector, TermType, detect_terms, explain_term,
@@ -17,6 +19,7 @@ use text_sources::{
 const SAMPLE_TEXT: &str = "Rust and React can compile shared logic to WASM. \
 Kimi, ChatGPT, and Claude can explain LLM terms in context. \
 If Fabric cannot read a Paper world, check level.dat and region .mca files.";
+const AUTO_SCREEN_POLL_INTERVAL: Duration = Duration::from_millis(850);
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
@@ -44,6 +47,10 @@ struct TermLensWindowsApp {
     last_detected_custom_terms: String,
     status: String,
     capture_rx: Option<Receiver<Result<TextCapture, String>>>,
+    auto_screen_detect: bool,
+    auto_capture_rx: Option<Receiver<Result<TextCapture, String>>>,
+    last_auto_capture_key: Option<u64>,
+    next_auto_capture_at: Instant,
     source_overlay: Option<SourceOverlay>,
 }
 
@@ -66,6 +73,10 @@ impl Default for TermLensWindowsApp {
             last_detected_custom_terms: String::new(),
             status: String::new(),
             capture_rx: None,
+            auto_screen_detect: false,
+            auto_capture_rx: None,
+            last_auto_capture_key: None,
+            next_auto_capture_at: Instant::now(),
             source_overlay: None,
         };
         app.detect();
@@ -76,7 +87,9 @@ impl Default for TermLensWindowsApp {
 impl eframe::App for TermLensWindowsApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         self.poll_capture_result();
-        if self.capture_rx.is_some() {
+        self.poll_auto_capture_result();
+        self.schedule_auto_screen_capture();
+        if self.capture_rx.is_some() || self.auto_screen_detect {
             ui.ctx().request_repaint_after(Duration::from_millis(100));
         }
 
@@ -148,14 +161,26 @@ impl TermLensWindowsApp {
                 self.terms.clear();
                 self.selected = None;
                 self.explanation = None;
+                self.source_overlay = None;
+                self.last_auto_capture_key = None;
                 self.status = "已清空".to_string();
             }
             ui.checkbox(&mut self.auto_detect, "自动检测");
+            let auto_response = ui.checkbox(&mut self.auto_screen_detect, "自动读屏(UIA)");
+            if auto_response.changed() {
+                self.last_auto_capture_key = None;
+                self.next_auto_capture_at = Instant::now();
+                self.status = if self.auto_screen_detect {
+                    "自动读屏已开启：把鼠标停在目标文本上".to_string()
+                } else {
+                    "自动读屏已关闭".to_string()
+                };
+            }
         });
 
         ui.add_space(4.0);
         ui.label(
-            RichText::new("提示：智能提取会先尝试 UI Automation，再尝试选区复制；OCR 仍默认关闭。")
+            RichText::new("提示：自动读屏和智能提取会先尝试 UI Automation；OCR 仍默认关闭。")
                 .color(Color32::from_rgb(95, 105, 120)),
         );
 
@@ -364,6 +389,70 @@ impl TermLensWindowsApp {
         self.apply_capture_result(result);
     }
 
+    fn schedule_auto_screen_capture(&mut self) {
+        if !self.auto_screen_detect || self.auto_capture_rx.is_some() || self.capture_rx.is_some() {
+            return;
+        }
+
+        let now = Instant::now();
+        if now < self.next_auto_capture_at {
+            return;
+        }
+
+        self.next_auto_capture_at = now + AUTO_SCREEN_POLL_INTERVAL;
+        let (tx, rx) = mpsc::channel();
+        self.auto_capture_rx = Some(rx);
+        thread::spawn(move || {
+            let _ = tx.send(UiaPointedElementTextSource.capture());
+        });
+    }
+
+    fn poll_auto_capture_result(&mut self) {
+        let Some(rx) = &self.auto_capture_rx else {
+            return;
+        };
+
+        let Ok(result) = rx.try_recv() else {
+            return;
+        };
+        self.auto_capture_rx = None;
+        self.apply_auto_capture_result(result);
+    }
+
+    fn apply_auto_capture_result(&mut self, result: Result<TextCapture, String>) {
+        let Ok(capture) = result else {
+            return;
+        };
+
+        if capture.text.trim().is_empty() {
+            return;
+        }
+
+        let key = capture_key(&capture);
+        if self.last_auto_capture_key == Some(key) {
+            return;
+        }
+        self.last_auto_capture_key = Some(key);
+
+        let source_rect = capture.source_rect;
+        self.input = capture.text;
+        self.detect();
+
+        if let (Some(rect), Some(term)) = (source_rect, self.terms.first()) {
+            self.selected = Some(0);
+            let explanation = explain_term(&term.term, Some(&self.input));
+            self.explanation = Some(explanation.clone());
+            self.source_overlay = Some(SourceOverlay {
+                explanation,
+                source_rect: rect,
+            });
+            self.status = format!("自动读屏：检测到 {} 个词条", self.terms.len());
+        } else {
+            self.source_overlay = None;
+            self.status = "自动读屏：未发现可解释词条".to_string();
+        }
+    }
+
     fn apply_capture_result(&mut self, result: Result<TextCapture, String>) {
         match result {
             Ok(capture) if !capture.text.trim().is_empty() => {
@@ -437,6 +526,19 @@ impl TermLensWindowsApp {
             self.status = format!("已生成 {} 的释义", first.term);
         }
     }
+}
+
+fn capture_key(capture: &TextCapture) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    capture.source.hash(&mut hasher);
+    capture.text.hash(&mut hasher);
+    if let Some(rect) = capture.source_rect {
+        rect.left.to_bits().hash(&mut hasher);
+        rect.top.to_bits().hash(&mut hasher);
+        rect.right.to_bits().hash(&mut hasher);
+        rect.bottom.to_bits().hash(&mut hasher);
+    }
+    hasher.finish()
 }
 
 fn overlay_position(rect: ScreenRect) -> Pos2 {

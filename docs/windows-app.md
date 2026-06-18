@@ -10,6 +10,7 @@ The Windows app is intentionally small:
 - Import text directly from the clipboard.
 - Capture currently selected text after a short delay by sending `Ctrl+C`.
 - Capture accessible text under the mouse with Windows UI Automation.
+- Automatically poll accessible text under the mouse with Windows UI Automation.
 - Run a first-pass "smart capture" pipeline: UI Automation, selection copy, then OCR placeholder.
 - Detect terms with `termlens-core`.
 - Add comma-separated custom terms.
@@ -19,6 +20,8 @@ The Windows app is intentionally small:
 The browser extension remains the primary Phase 1 delivery surface. The Windows app is the start of a native desktop surface and currently does not call external LLM providers.
 
 Text capture intentionally avoids OCR. The current build reads text from the clipboard, selectable regions that support copy, and Windows UI Automation for controls that expose accessibility text. OCR remains a disabled placeholder and is only a future fallback.
+
+`自动读屏(UIA)` is the first low-friction mode. When enabled, TermLens periodically reads the accessible text under the mouse cursor, runs local term detection, and opens the source-position explanation overlay when terms are found. It does not yet draw per-word rectangles over the original application text; that requires a later TextPattern bounding-rectangle pass.
 
 ## Commands
 
@@ -35,10 +38,17 @@ To capture text without OCR:
 3. TermLens first tries Windows UI Automation at the mouse location.
 4. If UI Automation does not expose text, TermLens sends `Ctrl+C`, imports the copied text, and restores the previous clipboard text when possible.
 
+For automatic capture:
+
+1. Enable `自动读屏(UIA)`.
+2. Move the mouse over browser, document, or app text that exposes accessibility text.
+3. TermLens updates the detected terms and shows a nearby explanation overlay when a term is found.
+
 ## Next Steps
 
 - Move provider settings and LLM calls into a shared Rust module.
 - Add encrypted local storage for API keys.
 - Add global term cache import/export.
 - Expand Windows UI Automation extraction with TextPattern and ValuePattern support.
+- Use UI Automation text ranges to draw per-term overlays at the original text coordinates.
 - Add Windows installer packaging.

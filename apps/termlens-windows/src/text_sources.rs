@@ -27,7 +27,7 @@ pub struct ScreenRect {
     pub bottom: f32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum TextSourceKind {
     Clipboard,
     SelectionCopy,
