@@ -1,4 +1,5 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize};
 use termlens_core::{DetectedTerm, Explanation, explain_term};
 
@@ -32,6 +33,17 @@ struct ScreenRectPayload {
     top: f32,
     right: f32,
     bottom: f32,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LlmSettingsPayload {
+    provider: String,
+    api_key: String,
+    model: String,
+    base_url: String,
+    temperature: f32,
+    max_tokens: u32,
 }
 
 impl From<ScreenRect> for ScreenRectPayload {
@@ -69,6 +81,19 @@ fn explain(term: String, context: String) -> Explanation {
 }
 
 #[tauri::command]
+async fn fetch_llm_text(
+    settings: LlmSettingsPayload,
+    system: String,
+    prompt: String,
+) -> Result<String, String> {
+    if settings.provider == "anthropic" {
+        return fetch_anthropic_text(settings, system, prompt).await;
+    }
+
+    fetch_openai_compatible_text(settings, system, prompt).await
+}
+
+#[tauri::command]
 fn set_overlay_clickthrough(app: AppHandle, enabled: bool) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("overlay") {
         window
@@ -76,6 +101,143 @@ fn set_overlay_clickthrough(app: AppHandle, enabled: bool) -> Result<(), String>
             .map_err(|err| err.to_string())?;
     }
     Ok(())
+}
+
+async fn fetch_openai_compatible_text(
+    settings: LlmSettingsPayload,
+    system: String,
+    prompt: String,
+) -> Result<String, String> {
+    let client = reqwest::Client::new();
+    let url = format!("{}/chat/completions", normalize_base_url(&settings.base_url));
+    let response = client
+        .post(url)
+        .bearer_auth(settings.api_key)
+        .json(&json!({
+            "model": settings.model,
+            "temperature": settings.temperature,
+            "max_tokens": settings.max_tokens,
+            "messages": [
+                { "role": "system", "content": system },
+                { "role": "user", "content": prompt }
+            ]
+        }))
+        .send()
+        .await
+        .map_err(|err| err.to_string())?;
+
+    let status = response.status();
+    let text = response.text().await.map_err(|err| err.to_string())?;
+    if !status.is_success() {
+        return Err(format_provider_error(status.as_u16(), &text));
+    }
+
+    let payload = serde_json::from_str::<Value>(&text).map_err(|err| err.to_string())?;
+    extract_openai_compatible_text(&payload)
+        .ok_or_else(|| format!("LLM response did not include usable text. Raw response: {}", truncate(&text, 600)))
+}
+
+async fn fetch_anthropic_text(
+    settings: LlmSettingsPayload,
+    system: String,
+    prompt: String,
+) -> Result<String, String> {
+    let client = reqwest::Client::new();
+    let url = format!("{}/messages", normalize_base_url(&settings.base_url));
+    let response = client
+        .post(url)
+        .header("x-api-key", settings.api_key)
+        .header("anthropic-version", "2023-06-01")
+        .json(&json!({
+            "model": settings.model,
+            "max_tokens": settings.max_tokens,
+            "temperature": settings.temperature,
+            "system": system,
+            "messages": [{ "role": "user", "content": prompt }]
+        }))
+        .send()
+        .await
+        .map_err(|err| err.to_string())?;
+
+    let status = response.status();
+    let text = response.text().await.map_err(|err| err.to_string())?;
+    if !status.is_success() {
+        return Err(format_provider_error(status.as_u16(), &text));
+    }
+
+    let payload = serde_json::from_str::<Value>(&text).map_err(|err| err.to_string())?;
+    payload
+        .get("content")
+        .and_then(Value::as_array)
+        .and_then(|parts| {
+            parts
+                .iter()
+                .find(|part| part.get("type").and_then(Value::as_str) == Some("text"))
+                .and_then(|part| part.get("text").and_then(Value::as_str))
+        })
+        .map(str::to_string)
+        .ok_or_else(|| format!("LLM response did not include text content. Raw response: {}", truncate(&text, 600)))
+}
+
+fn extract_openai_compatible_text(payload: &Value) -> Option<String> {
+    let choice = payload.get("choices")?.as_array()?.first()?;
+    [
+        choice.pointer("/message/content"),
+        choice.pointer("/message/reasoning_content"),
+        choice.pointer("/message/reasoning"),
+        choice.get("text"),
+    ]
+    .into_iter()
+    .flatten()
+    .filter_map(stringify_provider_text)
+    .map(|text| text.trim().to_string())
+    .find(|text| !text.is_empty())
+}
+
+fn stringify_provider_text(value: &Value) -> Option<String> {
+    if let Some(text) = value.as_str() {
+        return Some(text.to_string());
+    }
+
+    value.as_array().map(|parts| {
+        parts
+            .iter()
+            .filter_map(|part| {
+                part.as_str()
+                    .map(str::to_string)
+                    .or_else(|| part.get("text").and_then(Value::as_str).map(str::to_string))
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    })
+}
+
+fn normalize_base_url(value: &str) -> String {
+    value.trim_end_matches('/').to_string()
+}
+
+fn format_provider_error(status: u16, text: &str) -> String {
+    if let Ok(payload) = serde_json::from_str::<Value>(text) {
+        if let Some(message) = payload.pointer("/error/message").and_then(Value::as_str) {
+            return message.to_string();
+        }
+        if let Some(message) = payload.get("message").and_then(Value::as_str) {
+            return message.to_string();
+        }
+    }
+    if text.trim().is_empty() {
+        format!("HTTP {status}")
+    } else {
+        format!("HTTP {status}: {}", truncate(text, 600))
+    }
+}
+
+fn truncate(value: &str, max_len: usize) -> String {
+    if value.chars().count() <= max_len {
+        return value.to_string();
+    }
+
+    format!("{}...", value.chars().take(max_len).collect::<String>())
 }
 
 fn matched_highlights(term_rects: &[TermSourceRect], terms: &[DetectedTerm]) -> Vec<HighlightPayload> {
@@ -116,6 +278,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             capture_terms,
             explain,
+            fetch_llm_text,
             set_overlay_clickthrough
         ])
         .run(tauri::generate_context!())

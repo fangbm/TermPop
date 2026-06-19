@@ -17,8 +17,9 @@ body {
 }
 
 .settings-root {
-  min-height: 100vh;
+  height: 100vh;
   background: #f7f8fb;
+  overflow: auto;
 }
 
 .settings-header {
@@ -89,6 +90,132 @@ body {
 
 .status-text {
   color: #526077;
+}
+
+.settings-section {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid #dde3ee;
+}
+
+.settings-section h2 {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.form-grid label {
+  display: grid;
+  gap: 5px;
+  font-size: 13px;
+  color: #526077;
+}
+
+.form-grid .wide {
+  grid-column: 1 / -1;
+}
+
+.form-grid input,
+.form-grid select {
+  min-width: 0;
+  height: 34px;
+  box-sizing: border-box;
+  border: 1px solid #cfd7e6;
+  border-radius: 6px;
+  padding: 0 10px;
+  color: #182033;
+  background: white;
+  font: inherit;
+}
+
+.toggle-row.compact {
+  min-height: 30px;
+  color: #182033;
+}
+
+.button-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.button-row button {
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid #cfd7e6;
+  border-radius: 6px;
+  color: #182033;
+  background: white;
+  font: inherit;
+}
+
+.button-row button:hover {
+  border-color: #6b8bc2;
+  background: #f2f6ff;
+}
+
+.test-logs {
+  display: grid;
+  gap: 8px;
+  max-height: 210px;
+  overflow: auto;
+}
+
+.log-entry {
+  padding: 9px 10px;
+  border: 1px solid #dce4ef;
+  border-left-width: 4px;
+  border-radius: 7px;
+  background: white;
+}
+
+.log-entry.success {
+  border-left-color: #1c9c62;
+}
+
+.log-entry.error {
+  border-left-color: #cc3d3d;
+}
+
+.log-entry.info {
+  border-left-color: #4c78b8;
+}
+
+.log-entry div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.log-entry b {
+  font-size: 13px;
+}
+
+.log-entry time {
+  flex: none;
+  color: #7a8496;
+  font-size: 12px;
+}
+
+.log-entry pre {
+  margin: 7px 0 0;
+  max-height: 90px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #526077;
+  font: 12px/1.45 Consolas, "Cascadia Mono", monospace;
+}
+
+.empty-log {
+  margin: 0;
+  color: #7a8496;
 }
 
 .overlay-root {

@@ -9,6 +9,8 @@ This app is the Tauri replacement path for the earlier egui Windows prototype.
 - The overlay is mouse-pass-through by default, so source applications remain clickable.
 - Rust commands reuse `termlens-core` and the existing Windows UI Automation capture pipeline.
 - The first version auto-shows the explanation for the first detected term near the source rectangle.
+- The settings window includes LLM provider configuration and a connection test log.
+- LLM HTTP requests are sent from the Rust backend to avoid WebView CORS issues.
 
 ## Commands
 
@@ -25,6 +27,15 @@ The no-bundle build produces:
 ```text
 target\release\termlens-tauri.exe
 ```
+
+## LLM Settings
+
+The settings window stores LLM configuration in local app `localStorage`:
+
+- Provider: `mock`, OpenAI, Kimi, OpenAI-compatible / StepFun, or Anthropic.
+- Base URL, model, API key, language, temperature, max tokens, and example generation.
+- `测试 LLM` sends a small JSON-only prompt and appends the result to the test log.
+- Overlay explanations use the configured provider when the provider is not `mock` and an API key is present; otherwise they fall back to Rust mock explanations.
 
 ## Current Limits
 

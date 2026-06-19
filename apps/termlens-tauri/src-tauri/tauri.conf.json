@@ -15,8 +15,8 @@
         "label": "settings",
         "title": "词镜 TermLens",
         "url": "index.html?window=settings",
-        "width": 420,
-        "height": 360,
+        "width": 560,
+        "height": 760,
         "resizable": false,
         "decorations": true,
         "transparent": false
