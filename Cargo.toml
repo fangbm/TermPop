@@ -1,5 +1,9 @@
 [workspace]
-members = ["apps/termlens-windows", "crates/termlens-core"]
+members = [
+    "apps/termlens-tauri/src-tauri",
+    "apps/termlens-windows",
+    "crates/termlens-core",
+]
 resolver = "3"
 
 [workspace.package]
