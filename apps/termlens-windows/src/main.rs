@@ -1,9 +1,11 @@
 use eframe::egui::{
-    self, Color32, Frame, Pos2, Rect, RichText, ScrollArea, Stroke, TextEdit, Ui, Vec2,
-    ViewportCommand, ViewportId,
+    self, Color32, FontData, FontDefinitions, FontFamily, Frame, Pos2, Rect, RichText, ScrollArea,
+    Stroke, TextEdit, Ui, Vec2, ViewportCommand, ViewportId,
 };
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -32,8 +34,46 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "词镜 TermLens",
         options,
-        Box::new(|_cc| Ok(Box::new(TermLensWindowsApp::default()))),
+        Box::new(|cc| {
+            install_chinese_fonts(&cc.egui_ctx);
+            Ok(Box::new(TermLensWindowsApp::default()))
+        }),
     )
+}
+
+fn install_chinese_fonts(ctx: &egui::Context) {
+    let Some((font_name, font_bytes)) = load_system_chinese_font() else {
+        return;
+    };
+
+    let mut fonts = FontDefinitions::default();
+    fonts.font_data.insert(
+        font_name.clone(),
+        Arc::new(FontData::from_owned(font_bytes)),
+    );
+
+    for family in [FontFamily::Proportional, FontFamily::Monospace] {
+        fonts
+            .families
+            .entry(family)
+            .or_default()
+            .insert(0, font_name.clone());
+    }
+
+    ctx.set_fonts(fonts);
+}
+
+fn load_system_chinese_font() -> Option<(String, Vec<u8>)> {
+    let windir = std::env::var_os("WINDIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+    for file_name in ["Deng.ttf", "simhei.ttf", "msyh.ttc", "simsun.ttc"] {
+        let path = windir.join("Fonts").join(file_name);
+        if let Ok(bytes) = std::fs::read(&path) {
+            return Some((format!("termlens-cjk-{file_name}"), bytes));
+        }
+    }
+    None
 }
 
 struct TermLensWindowsApp {
