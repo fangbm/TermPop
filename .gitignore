@@ -1,12 +1,17 @@
 target/
+dist/
 
 extension/node_modules/
 extension/dist/
 extension/termlens-edge-test.png
+
+apps/termlens-tauri/node_modules/
+apps/termlens-tauri/dist/
+apps/termlens-tauri/src-tauri/gen/
+release/
 
 .env
 .env.*
 *.log
 *.tmp
 *.bak
-

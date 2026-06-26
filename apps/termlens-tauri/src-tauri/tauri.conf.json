@@ -1,0 +1,53 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "词镜 TermLens",
+  "version": "0.1.0",
+  "identifier": "com.fangbm.termlens",
+  "build": {
+    "beforeDevCommand": "vite --host 127.0.0.1",
+    "beforeBuildCommand": "npm run typecheck && vite build",
+    "devUrl": "http://127.0.0.1:1430",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "settings",
+        "title": "词镜 TermLens",
+        "url": "index.html?window=settings",
+        "width": 560,
+        "height": 760,
+        "resizable": false,
+        "decorations": true,
+        "transparent": false
+      },
+      {
+        "label": "overlay",
+        "title": "TermLens Overlay",
+        "url": "index.html?window=overlay",
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
+  }
+}

@@ -12,7 +12,8 @@ export default defineConfig({
       input: {
         background: resolve(__dirname, "src/background/service-worker.ts"),
         content: resolve(__dirname, "src/content/main.ts"),
-        popup: resolve(__dirname, "src/popup/popup.html")
+        popup: resolve(__dirname, "src/popup/popup.html"),
+        pdfViewer: resolve(__dirname, "src/pdf-viewer/pdf-viewer.html")
       },
       output: {
         entryFileNames: "assets/[name].js",
@@ -30,6 +31,7 @@ export default defineConfig({
         copyFileSync(resolve(__dirname, "src/manifest.json"), resolve(__dirname, "dist/manifest.json"));
         copyFileSync(resolve(__dirname, "src/content/loader.js"), resolve(__dirname, "dist/content-loader.js"));
         copyFileSync(resolve(__dirname, "dist/src/popup/popup.html"), resolve(__dirname, "dist/assets/popup.html"));
+        copyFileSync(resolve(__dirname, "dist/src/pdf-viewer/pdf-viewer.html"), resolve(__dirname, "dist/assets/pdf-viewer.html"));
       }
     }
   ]

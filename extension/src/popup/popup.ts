@@ -15,6 +15,10 @@ const includeUsageExampleInput = document.querySelector<HTMLInputElement>("#incl
 const temperatureInput = document.querySelector<HTMLInputElement>("#temperature");
 const maxTokensInput = document.querySelector<HTMLInputElement>("#max-tokens");
 const maxConcurrencyInput = document.querySelector<HTMLInputElement>("#max-concurrency");
+const pdfTools = document.querySelector<HTMLElement>(".pdf-tools");
+const openPdfViewerButton = document.querySelector<HTMLButtonElement>("#open-pdf-viewer");
+const AUTO_SAVE_DELAY_MS = 400;
+let autoSaveTimer: number | undefined;
 
 void init();
 
@@ -23,6 +27,8 @@ async function init(): Promise<void> {
   setActive(settings.mode);
   renderLlmSettings(settings.llm);
   renderAppName(settings.llm.language);
+  renderModeLabels(settings.llm.language);
+  await renderPdfToolsVisibility();
 
   for (const button of buttons) {
     button.addEventListener("click", () => {
@@ -33,15 +39,32 @@ async function init(): Promise<void> {
 
   providerInput?.addEventListener("change", () => {
     applyProviderDefaults(providerInput.value as LlmProvider);
+    void saveLlm();
   });
 
   languageInput?.addEventListener("change", () => {
-    renderAppName((languageInput.value || "auto") as ExplanationLanguage);
+    const language = (languageInput.value || "auto") as ExplanationLanguage;
+    renderAppName(language);
+    renderModeLabels(language);
+    void saveLlm();
   });
 
   llmForm?.addEventListener("submit", (event) => {
     event.preventDefault();
     void saveLlm();
+  });
+
+  for (const input of [apiKeyInput, modelInput, baseUrlInput, temperatureInput, maxTokensInput, maxConcurrencyInput]) {
+    input?.addEventListener("input", scheduleLlmAutoSave);
+    input?.addEventListener("change", scheduleLlmAutoSave);
+  }
+
+  includeUsageExampleInput?.addEventListener("change", () => {
+    void saveLlm();
+  });
+
+  openPdfViewerButton?.addEventListener("click", () => {
+    void openPdfViewerForActiveTab();
   });
 }
 
@@ -49,7 +72,7 @@ async function saveMode(mode: TermLensMode): Promise<void> {
   await setMode(mode);
   setActive(mode);
   if (status) {
-    status.textContent = "已保存。刷新页面后应用检测模式。";
+    status.textContent = "已保存。当前页面会自动切换展示方式。";
   }
 }
 
@@ -59,7 +82,62 @@ function setActive(mode: TermLensMode): void {
   }
 }
 
+async function openPdfViewerForActiveTab(): Promise<void> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const sourceUrl = tab?.url;
+  if (!sourceUrl) {
+    if (status) status.textContent = "没有找到当前标签页。";
+    return;
+  }
+
+  const pdfUrl = extractPdfUrl(sourceUrl);
+  if (!pdfUrl) {
+    if (status) status.textContent = "当前页面不是可识别的 PDF。";
+    return;
+  }
+
+  const viewerUrl = chrome.runtime.getURL(`assets/pdf-viewer.html?src=${encodeURIComponent(pdfUrl)}`);
+  await chrome.tabs.create({ url: viewerUrl, active: true });
+  window.close();
+}
+
+async function renderPdfToolsVisibility(): Promise<void> {
+  if (!pdfTools) {
+    return;
+  }
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  pdfTools.hidden = !extractPdfUrl(tab?.url ?? "");
+}
+
 async function saveLlm(): Promise<void> {
+  if (autoSaveTimer !== undefined) {
+    window.clearTimeout(autoSaveTimer);
+    autoSaveTimer = undefined;
+  }
+
+  const llm = collectLlmSettings();
+  renderNormalizedLlmFields(llm);
+  await setLlmSettings(llm);
+  renderAppName(llm.language);
+  renderModeLabels(llm.language);
+  if (status) {
+    status.textContent = llm.provider === "mock" ? "已自动保存。当前使用本地 Mock 解释。" : "已自动保存。当前使用 LLM 解释。";
+  }
+}
+
+function scheduleLlmAutoSave(): void {
+  if (autoSaveTimer !== undefined) {
+    window.clearTimeout(autoSaveTimer);
+  }
+  if (status) {
+    status.textContent = "正在自动保存...";
+  }
+  autoSaveTimer = window.setTimeout(() => {
+    void saveLlm();
+  }, AUTO_SAVE_DELAY_MS);
+}
+
+function collectLlmSettings(): LlmSettings {
   const llm: LlmSettings = {
     provider: (providerInput?.value || "mock") as LlmProvider,
     apiKey: apiKeyInput?.value.trim() || "",
@@ -71,12 +149,7 @@ async function saveLlm(): Promise<void> {
     temperature: clampNumber(Number(temperatureInput?.value), 0, 2, 0.2),
     maxTokens: Math.round(clampNumber(Number(maxTokensInput?.value), 128, 4000, 450))
   };
-
-  await setLlmSettings(llm);
-  renderAppName(llm.language);
-  if (status) {
-    status.textContent = llm.provider === "mock" ? "已保存。当前使用本地 Mock 解释。" : "已保存。当前使用 LLM 解释。";
-  }
+  return llm;
 }
 
 function renderAppName(language: ExplanationLanguage): void {
@@ -87,7 +160,17 @@ function renderAppName(language: ExplanationLanguage): void {
   }
 }
 
+function renderModeLabels(language: ExplanationLanguage): void {
+  for (const button of buttons) {
+    button.textContent = language === "en" ? button.dataset.labelEn ?? "" : button.dataset.labelZh ?? "";
+  }
+}
+
 function renderLlmSettings(llm: LlmSettings): void {
+  renderNormalizedLlmFields(llm);
+}
+
+function renderNormalizedLlmFields(llm: LlmSettings): void {
   if (providerInput) providerInput.value = llm.provider;
   if (apiKeyInput) apiKeyInput.value = llm.apiKey;
   if (modelInput) modelInput.value = llm.model;
@@ -133,6 +216,18 @@ function defaultModel(provider: LlmProvider): string {
 
 function normalizeBaseUrl(value: string): string {
   return value.replace(/\/+$/, "");
+}
+
+function extractPdfUrl(value: string): string | undefined {
+  if (/^chrome-extension:/i.test(value)) {
+    const src = new URL(value).searchParams.get("src");
+    return src && isPdfUrl(src) ? src : undefined;
+  }
+  return isPdfUrl(value) ? value : undefined;
+}
+
+function isPdfUrl(value: string): boolean {
+  return /^(https?|file):/i.test(value) && /\.pdf(?:[?#].*)?$/i.test(decodeURIComponent(value));
 }
 
 function clampNumber(value: number, min: number, max: number, fallback: number): number {

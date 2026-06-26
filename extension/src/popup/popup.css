@@ -33,6 +33,32 @@ p {
   margin-top: 16px;
 }
 
+.pdf-tools {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #eff6ff;
+}
+
+.pdf-tools[hidden] {
+  display: none;
+}
+
+.pdf-tools button {
+  border-color: #2563eb;
+  color: #1d4ed8;
+  background: #ffffff;
+}
+
+.pdf-tools p {
+  margin: 0;
+  color: #475569;
+  line-height: 1.45;
+}
+
 .settings-form {
   display: grid;
   gap: 10px;
@@ -109,11 +135,11 @@ button.is-active {
   color: #ffffff;
 }
 
-.save-button {
-  width: 100%;
-  border-color: #172033;
-  background: #172033;
-  color: #ffffff;
+.auto-save-hint {
+  margin: 0;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 650;
 }
 
 #status {

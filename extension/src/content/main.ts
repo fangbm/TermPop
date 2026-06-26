@@ -8,12 +8,17 @@ import type {
   DetectedTerm,
   ExplainRequest,
   ExplainResponse,
+  ExplainSelectionRequest,
+  ExplainSelectionResponse,
   Explanation,
   GetCachedTermsRequest,
   GetCachedTermsResponse,
   TermLensMode
 } from "../shared/types";
+import { TermLensOverlayController } from "../shared/overlay";
+import { filterAllowedDetectedTerms, findAllowedOccurrences } from "../shared/term-matching";
 import styles from "./styles.css?inline";
+import overlayStyles from "../shared/overlay.css?inline";
 
 const MAX_HIGHLIGHTS_AUTO = 80;
 const MAX_HIGHLIGHTS_HYBRID = 40;
@@ -22,32 +27,62 @@ const LLM_DETECTION_CONCURRENCY = 5;
 const LLM_DETECTION_NODE_LIMIT = 40;
 const HIGHLIGHT_CLASS = "termlens-highlight";
 const ROOT_ID = "termlens-overlay-root";
+const SETTINGS_KEY = "termlens.settings";
 const RESCAN_DELAY_MS = 500;
+const HOVER_SHOW_DELAY_MS = 420;
 
-let overlay: OverlayController | undefined;
-let activeMode: TermLensMode = "auto";
+let overlay: TermLensOverlayController | undefined;
+let activeMode: TermLensMode = "hover";
 let scanTimer: number | undefined;
 let cacheFlushTimer: number | undefined;
+let selectionAnchor: HTMLElement | undefined;
+let mutationObserver: MutationObserver | undefined;
+let scanGeneration = 0;
+let lastContextMenuPoint: { x: number; y: number; time: number } | undefined;
 let globalCachedTerms: CachedTermEntry[] = [];
 const pageExplanationCache = new Map<string, Explanation>();
 const pendingCachedTerms = new Map<string, DetectedTerm>();
+const hoverTimers = new WeakMap<HTMLElement, number>();
+const debugOptions = readDebugOptions();
+
+type DetectionModeOverride = "primary" | "llm" | "all";
+type TextNodeSpan = {
+  node: Text;
+  start: number;
+  end: number;
+};
+
+interface DebugOptions {
+  detectionMode?: DetectionModeOverride;
+  disableCache: boolean;
+}
 
 void boot();
 
 async function boot(): Promise<void> {
   await initWasm({ module_or_path: chrome.runtime.getURL("assets/termlens_core_bg.wasm") });
   injectStyles();
-  overlay = new OverlayController();
+  overlay = new TermLensOverlayController({
+    rootId: ROOT_ID,
+    anchorSelector: `.${HIGHLIGHT_CLASS}`
+  });
 
   const settings = await getSettings();
-  globalCachedTerms = await loadGlobalCachedTerms();
-  activeMode = settings.mode;
-  if (settings.mode === "hover") {
+  globalCachedTerms = debugOptions.disableCache ? [] : await loadGlobalCachedTerms();
+  activeMode = debugOptions.detectionMode ? "hover" : settings.mode;
+  console.info("TermLens content boot", {
+    mode: activeMode,
+    debugOptions,
+    url: location.href
+  });
+  setupSelectionMessageListener();
+  setupSelectionPointerTracking();
+  setupModeChangeListener();
+  if (activeMode === "selection" && !debugOptions.detectionMode) {
     return;
   }
 
-  void scanAndHighlight(settings.mode);
-  observeDynamicContent();
+  startAutomaticHighlighting();
 }
 
 function injectStyles(): void {
@@ -57,11 +92,16 @@ function injectStyles(): void {
 
   const style = document.createElement("style");
   style.id = "termlens-styles";
-  style.textContent = styles;
+  style.textContent = `${styles}\n${overlayStyles}`;
   document.documentElement.append(style);
 }
 
 async function scanAndHighlight(mode: TermLensMode): Promise<void> {
+  if (mode === "selection" && !debugOptions.detectionMode) {
+    return;
+  }
+
+  const currentScanGeneration = ++scanGeneration;
   const limit = mode === "hybrid" ? MAX_HIGHLIGHTS_HYBRID : MAX_HIGHLIGHTS_AUTO;
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
@@ -84,12 +124,20 @@ async function scanAndHighlight(mode: TermLensMode): Promise<void> {
   const termHighlightCounts = new Map<string, number>();
   const llmCandidates: Text[] = [];
 
+  if (debugOptions.detectionMode === "llm") {
+    await scanLlmDebugBlocks(limit, termHighlightCounts);
+    return;
+  }
+
   for (const node of nodes) {
+    if (!isCurrentScan(currentScanGeneration)) {
+      return;
+    }
     if (highlighted >= limit) {
       break;
     }
 
-    const terms = detectTermsLocally(node.data);
+    const terms = shouldUseLocalDetection() ? detectTermsLocally(node.data) : [];
     rememberDetectedTerms(terms);
     if (terms.length === 0) {
       if (shouldAskLlmForNode(node)) {
@@ -99,6 +147,9 @@ async function scanAndHighlight(mode: TermLensMode): Promise<void> {
     }
 
     const allowedTerms = takeAllowedTerms(terms, termHighlightCounts, limit - highlighted);
+    if (!isCurrentScan(currentScanGeneration)) {
+      return;
+    }
     highlighted += highlightTextNode(node, allowedTerms);
   }
 
@@ -108,6 +159,9 @@ async function scanAndHighlight(mode: TermLensMode): Promise<void> {
 
   const candidates = llmCandidates.slice(0, LLM_DETECTION_NODE_LIMIT);
   for (let index = 0; index < candidates.length && highlighted < limit; index += LLM_DETECTION_CONCURRENCY) {
+    if (!isCurrentScan(currentScanGeneration)) {
+      return;
+    }
     const chunk = candidates.slice(index, index + LLM_DETECTION_CONCURRENCY);
     const detected = await Promise.all(
       chunk.map(async (node) => ({
@@ -117,6 +171,9 @@ async function scanAndHighlight(mode: TermLensMode): Promise<void> {
     );
 
     for (const { node, terms } of detected) {
+      if (!isCurrentScan(currentScanGeneration)) {
+        return;
+      }
       if (highlighted >= limit) {
         break;
       }
@@ -132,6 +189,136 @@ async function scanAndHighlight(mode: TermLensMode): Promise<void> {
       highlighted += highlightTextNode(node, allowedTerms);
     }
   }
+}
+
+function isCurrentScan(scanId: number): boolean {
+  return scanId === scanGeneration && (activeMode !== "selection" || Boolean(debugOptions.detectionMode));
+}
+
+async function scanLlmDebugBlocks(limit: number, termHighlightCounts: Map<string, number>): Promise<number> {
+  const blocks = getLlmDebugScanBlocks().slice(0, LLM_DETECTION_NODE_LIMIT);
+  const batches = collectLlmDebugBlockBatches(blocks);
+  let highlighted = 0;
+
+  for (const batch of batches) {
+    if (highlighted >= limit) {
+      break;
+    }
+
+    console.info("TermLens LLM block batch request", {
+      textPreview: batch.text.slice(0, 260),
+      nodeCount: batch.spans.length
+    });
+    const terms = await detectTerms(batch.text);
+    const allowedTerms = takeAllowedTerms(terms, termHighlightCounts, limit - highlighted);
+    highlighted += highlightTextNodeSpans(batch.spans, allowedTerms);
+  }
+
+  return highlighted;
+}
+
+function collectLlmDebugBlockBatches(blocks: HTMLElement[]): Array<{ text: string; spans: TextNodeSpan[] }> {
+  const batches: Array<{ text: string; spans: TextNodeSpan[] }> = [];
+  let currentText = "";
+  let currentSpans: TextNodeSpan[] = [];
+  const maxBatchLength = 3000;
+
+  for (const block of blocks) {
+    const blockText = collectTextNodeSpans(block);
+    if (blockText.text.trim().length < 12 || blockText.spans.length === 0) {
+      continue;
+    }
+
+    const separator = currentText ? "\n\n" : "";
+    if (currentText && currentText.length + separator.length + blockText.text.length > maxBatchLength) {
+      batches.push({ text: currentText, spans: currentSpans });
+      currentText = "";
+      currentSpans = [];
+    }
+
+    const offset = currentText ? currentText.length + 2 : 0;
+    if (currentText) {
+      currentText += "\n\n";
+    }
+    currentText += blockText.text;
+    currentSpans.push(...blockText.spans.map((span) => ({
+      ...span,
+      start: offset + span.start,
+      end: offset + span.end
+    })));
+  }
+
+  if (currentText) {
+    batches.push({ text: currentText, spans: currentSpans });
+  }
+
+  return batches;
+}
+
+function getLlmDebugScanBlocks(): HTMLElement[] {
+  const scopedBlocks = [...document.querySelectorAll<HTMLElement>("[data-termlens-scan] p, [data-termlens-scan] li")];
+  if (scopedBlocks.length > 0) {
+    return scopedBlocks.filter(isVisibleElement);
+  }
+
+  return [...document.querySelectorAll<HTMLElement>("article p, article li, main p")]
+    .filter((element) => !element.closest("[data-termlens-ignore]"))
+    .filter(isVisibleElement);
+}
+
+function isVisibleElement(element: HTMLElement): boolean {
+  if (element.closest("[data-termlens-ignore]")) {
+    return false;
+  }
+
+  const style = window.getComputedStyle(element);
+  return style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0";
+}
+
+function collectTextNodeSpans(root: HTMLElement): { text: string; spans: TextNodeSpan[] } {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (!node.textContent?.trim() || !isHighlightableTextNode(node)) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+
+  let text = "";
+  const spans: TextNodeSpan[] = [];
+  while (walker.nextNode()) {
+    const node = walker.currentNode as Text;
+    const start = text.length;
+    text += node.data;
+    spans.push({
+      node,
+      start,
+      end: text.length
+    });
+  }
+
+  return { text, spans };
+}
+
+function highlightTextNodeSpans(spans: TextNodeSpan[], terms: DetectedTerm[]): number {
+  let count = 0;
+  for (const span of spans) {
+    if (!span.node.parentNode || !isHighlightableTextNode(span.node)) {
+      continue;
+    }
+
+    const nodeTerms = terms
+      .filter((term) => term.start >= span.start && term.end <= span.end)
+      .map((term) => ({
+        ...term,
+        start: term.start - span.start,
+        end: term.end - span.start
+      }));
+    count += highlightTextNode(span.node, nodeTerms);
+  }
+
+  return count;
 }
 
 function takeAllowedTerms(terms: DetectedTerm[], counts: Map<string, number>, remaining: number): DetectedTerm[] {
@@ -158,8 +345,73 @@ function shouldAskLlmForNode(node: Text): boolean {
   return text.length >= 12 && text.length <= 1200;
 }
 
+function setupModeChangeListener(): void {
+  if (debugOptions.detectionMode) {
+    return;
+  }
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== "local" || !changes[SETTINGS_KEY]) {
+      return;
+    }
+    void getSettings().then((settings) => {
+      applyModeChange(settings.mode);
+    });
+  });
+}
+
+function applyModeChange(nextMode: TermLensMode): void {
+  if (activeMode === nextMode) {
+    return;
+  }
+
+  activeMode = nextMode;
+  console.info("TermLens mode changed", { mode: activeMode });
+  if (activeMode === "selection") {
+    stopAutomaticHighlighting();
+    removeAllHighlights();
+    overlay?.hide();
+    return;
+  }
+
+  removeAllHighlights();
+  startAutomaticHighlighting();
+}
+
+function startAutomaticHighlighting(): void {
+  observeDynamicContent();
+  void scanAndHighlight(activeMode);
+}
+
+function stopAutomaticHighlighting(): void {
+  scanGeneration += 1;
+  if (scanTimer !== undefined) {
+    window.clearTimeout(scanTimer);
+    scanTimer = undefined;
+  }
+  mutationObserver?.disconnect();
+  mutationObserver = undefined;
+}
+
+function removeAllHighlights(): void {
+  scanGeneration += 1;
+  const highlights = Array.from(document.querySelectorAll<HTMLElement>(`.${HIGHLIGHT_CLASS}`));
+  for (const highlight of highlights) {
+    const parent = highlight.parentNode;
+    if (!parent) {
+      continue;
+    }
+    parent.replaceChild(document.createTextNode(highlight.textContent ?? ""), highlight);
+    parent.normalize();
+  }
+}
+
 function observeDynamicContent(): void {
-  const observer = new MutationObserver((mutations) => {
+  if (mutationObserver) {
+    return;
+  }
+
+  mutationObserver = new MutationObserver((mutations) => {
     if (mutations.every((mutation) => mutation.target instanceof Element && mutation.target.closest(`#${ROOT_ID}, .${HIGHLIGHT_CLASS}`))) {
       return;
     }
@@ -167,7 +419,7 @@ function observeDynamicContent(): void {
     scheduleScan();
   });
 
-  observer.observe(document.body, {
+  mutationObserver.observe(document.body, {
     childList: true,
     subtree: true,
     characterData: true
@@ -175,7 +427,7 @@ function observeDynamicContent(): void {
 }
 
 function scheduleScan(): void {
-  if (activeMode === "hover") {
+  if (activeMode === "selection" && !debugOptions.detectionMode) {
     return;
   }
 
@@ -189,19 +441,167 @@ function scheduleScan(): void {
   }, RESCAN_DELAY_MS);
 }
 
+function setupSelectionMessageListener(): void {
+  chrome.runtime.onMessage.addListener((message: ExplainSelectionRequest, _sender, sendResponse) => {
+    if (message.type !== "TERMLENS_EXPLAIN_SELECTION") {
+      return false;
+    }
+
+    void explainSelectedText(message.term)
+      .then(() => sendResponse({ ok: true } satisfies ExplainSelectionResponse))
+      .catch((error: unknown) => {
+        const reason = error instanceof Error ? error.message : String(error);
+        sendResponse({ ok: false, error: reason } satisfies ExplainSelectionResponse);
+      });
+    return true;
+  });
+}
+
+function setupSelectionPointerTracking(): void {
+  document.addEventListener(
+    "contextmenu",
+    (event) => {
+      lastContextMenuPoint = {
+        x: event.clientX,
+        y: event.clientY,
+        time: Date.now()
+      };
+    },
+    true
+  );
+}
+
+async function explainSelectedText(rawTerm: string): Promise<void> {
+  const termText = normalizeSelectedTerm(rawTerm);
+  if (!termText) {
+    return;
+  }
+
+  const anchor = ensureSelectionAnchor();
+  anchorFromSelection(anchor, lastContextMenuPoint);
+  const term: DetectedTerm = {
+    term: termText,
+    start: 0,
+    end: termText.length,
+    term_type: "Custom",
+    confidence: 1,
+    source: "User"
+  };
+
+  await showExplanation(anchor, term, selectionContext(termText), { refresh: false, pin: true });
+}
+
+function normalizeSelectedTerm(value: string): string {
+  return value.replace(/\s+/g, " ").trim().slice(0, 120);
+}
+
+function ensureSelectionAnchor(): HTMLElement {
+  if (selectionAnchor?.isConnected) {
+    return selectionAnchor;
+  }
+
+  selectionAnchor = document.createElement("span");
+  selectionAnchor.id = "termlens-selection-anchor";
+  selectionAnchor.style.position = "fixed";
+  selectionAnchor.style.width = "1px";
+  selectionAnchor.style.height = "1px";
+  selectionAnchor.style.pointerEvents = "none";
+  selectionAnchor.style.opacity = "0";
+  selectionAnchor.style.zIndex = "-1";
+  document.documentElement.append(selectionAnchor);
+  return selectionAnchor;
+}
+
+function anchorFromSelection(anchor: HTMLElement, fallbackPoint?: { x: number; y: number; time: number }): void {
+  const selection = window.getSelection();
+  const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : undefined;
+  const rect = firstUsableRect(range?.getClientRects()) ?? range?.getBoundingClientRect();
+
+  if (rect && rect.width > 0 && rect.height > 0) {
+    anchor.style.left = `${rect.left}px`;
+    anchor.style.top = `${rect.top}px`;
+    anchor.style.width = `${Math.max(1, rect.width)}px`;
+    anchor.style.height = `${Math.max(1, rect.height)}px`;
+    return;
+  }
+
+  if (fallbackPoint && Date.now() - fallbackPoint.time < 8000) {
+    anchor.style.left = `${clampViewportX(fallbackPoint.x)}px`;
+    anchor.style.top = `${clampViewportY(fallbackPoint.y)}px`;
+    anchor.style.width = "1px";
+    anchor.style.height = "1px";
+    return;
+  }
+
+  anchor.style.left = `${Math.max(0, window.innerWidth / 2 - 1)}px`;
+  anchor.style.top = `${Math.max(0, window.innerHeight / 2 - 1)}px`;
+  anchor.style.width = "1px";
+  anchor.style.height = "1px";
+}
+
+function clampViewportX(value: number): number {
+  return Math.min(Math.max(0, value), Math.max(0, window.innerWidth - 1));
+}
+
+function clampViewportY(value: number): number {
+  return Math.min(Math.max(0, value), Math.max(0, window.innerHeight - 1));
+}
+
+function firstUsableRect(rects: DOMRectList | undefined): DOMRect | undefined {
+  if (!rects) {
+    return undefined;
+  }
+  for (const rect of Array.from(rects)) {
+    if (rect.width > 0 && rect.height > 0) {
+      return rect;
+    }
+  }
+  return undefined;
+}
+
+function selectionContext(term: string): string {
+  const bodyText = document.body.innerText.replace(/\s+/g, " ").trim();
+  const index = bodyText.toLocaleLowerCase().indexOf(term.toLocaleLowerCase());
+  if (index < 0) {
+    return term;
+  }
+  const start = Math.max(0, index - 500);
+  const end = Math.min(bodyText.length, index + term.length + 500);
+  return bodyText.slice(start, end);
+}
+
 async function detectTerms(text: string): Promise<DetectedTerm[]> {
   try {
+    console.info("TermLens detect terms request", {
+      detectionMode: debugOptions.detectionMode,
+      disableCache: debugOptions.disableCache,
+      textPreview: text.slice(0, 180)
+    });
     const response = await chrome.runtime.sendMessage({
       type: "TERMLENS_DETECT_TERMS",
-      text
+      text,
+      detectionMode: debugOptions.detectionMode
     } satisfies DetectTermsRequest) as DetectTermsResponse;
 
     if (response.ok && response.terms) {
-      mergeGlobalCachedTerms(response.terms);
+      console.info("TermLens detect terms response", {
+        count: response.terms.length,
+        debug: response.debug,
+        terms: response.terms.map((term) => term.term).slice(0, 20)
+      });
+      if (!debugOptions.disableCache) {
+        mergeGlobalCachedTerms(response.terms);
+      }
       return response.terms;
     }
-  } catch {
+    console.warn("TermLens detect terms failed response", response);
+  } catch (error) {
+    console.warn("TermLens detect terms request failed", error);
     // Local WASM fallback below keeps highlighting usable if the service worker is unavailable.
+  }
+
+  if (debugOptions.detectionMode === "llm") {
+    return [];
   }
 
   return detectTermsLocally(text);
@@ -214,7 +614,8 @@ function detectTermsLocally(text: string): DetectedTerm[] {
     start: byteOffsetToJsIndex(text, term.start),
     end: byteOffsetToJsIndex(text, term.end)
   }));
-  return dedupeDetectedTerms([...rustTerms, ...detectCachedTermsLocally(text)]);
+  const cachedTerms = debugOptions.disableCache ? [] : detectCachedTermsLocally(text);
+  return dedupeDetectedTerms(filterAllowedDetectedTerms(text, [...rustTerms, ...cachedTerms]));
 }
 
 async function loadGlobalCachedTerms(): Promise<CachedTermEntry[]> {
@@ -236,7 +637,7 @@ async function loadGlobalCachedTerms(): Promise<CachedTermEntry[]> {
 function detectCachedTermsLocally(text: string): DetectedTerm[] {
   const terms: DetectedTerm[] = [];
   for (const entry of globalCachedTerms) {
-    for (const [start, end] of findAllOccurrences(text, entry.term)) {
+    for (const [start, end] of findAllowedOccurrences(text, entry.term)) {
       terms.push({
         term: text.slice(start, end),
         start,
@@ -251,6 +652,10 @@ function detectCachedTermsLocally(text: string): DetectedTerm[] {
 }
 
 function rememberDetectedTerms(terms: DetectedTerm[]): void {
+  if (debugOptions.disableCache) {
+    return;
+  }
+
   let changed = false;
   for (const term of terms) {
     const key = explanationCacheKey(term.term);
@@ -282,6 +687,10 @@ function rememberDetectedTerms(terms: DetectedTerm[]): void {
 }
 
 function mergeGlobalCachedTerms(terms: DetectedTerm[]): void {
+  if (debugOptions.disableCache) {
+    return;
+  }
+
   if (terms.length === 0) {
     return;
   }
@@ -308,18 +717,19 @@ function mergeGlobalCachedTerms(terms: DetectedTerm[]): void {
   globalCachedTerms = [...byKey.values()];
 }
 
-function findAllOccurrences(text: string, term: string): Array<[number, number]> {
-  const matches: Array<[number, number]> = [];
-  let from = 0;
-  while (from < text.length) {
-    const index = text.indexOf(term, from);
-    if (index < 0) {
-      break;
-    }
-    matches.push([index, index + term.length]);
-    from = index + Math.max(term.length, 1);
-  }
-  return matches;
+function readDebugOptions(): DebugOptions {
+  const params = new URLSearchParams(window.location.search);
+  const detectionMode = params.get("termlensDetection");
+  return {
+    detectionMode: detectionMode === "primary" || detectionMode === "llm" || detectionMode === "all"
+      ? detectionMode
+      : undefined,
+    disableCache: params.get("termlensCache") === "0" || params.get("termlensNoCache") === "1"
+  };
+}
+
+function shouldUseLocalDetection(): boolean {
+  return debugOptions.detectionMode !== "llm";
 }
 
 function dedupeDetectedTerms(terms: DetectedTerm[]): DetectedTerm[] {
@@ -372,7 +782,7 @@ function isHighlightableTextNode(node: Node): boolean {
     return false;
   }
 
-  const blocked = parent.closest("script, style, noscript, input, textarea, select, option, [contenteditable='true']");
+  const blocked = parent.closest("script, style, noscript, input, textarea, select, option, [contenteditable='true'], [data-termlens-ignore]");
   if (blocked) {
     return false;
   }
@@ -409,11 +819,18 @@ function highlightTextNode(node: Text, terms: DetectedTerm[]): number {
     wrapper.dataset.term = term.term;
     wrapper.dataset.termType = term.term_type;
     wrapper.textContent = text.slice(term.start, term.end);
-    wrapper.addEventListener("mouseenter", () => {
-      void showExplanation(wrapper, term, text, false);
+    wrapper.addEventListener("mouseenter", (event) => {
+      scheduleHoverExplanation(wrapper, term, text, event);
     });
     wrapper.addEventListener("mouseleave", () => {
+      cancelHoverExplanation(wrapper);
       overlay?.scheduleHide();
+    });
+    wrapper.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      cancelHoverExplanation(wrapper);
+      void showExplanation(wrapper, term, text, { refresh: false, pin: true, pointer: event });
     });
     fragment.append(wrapper);
 
@@ -429,123 +846,80 @@ function highlightTextNode(node: Text, terms: DetectedTerm[]): number {
   return count;
 }
 
-async function showExplanation(anchor: HTMLElement, term: DetectedTerm, context: string, refresh: boolean): Promise<void> {
-  const cacheKey = explanationCacheKey(term.term);
+interface ShowExplanationOptions {
+  refresh: boolean;
+  pin: boolean;
+  pointer?: MouseEvent | PointerEvent;
+}
+function scheduleHoverExplanation(anchor: HTMLElement, term: DetectedTerm, context: string, pointer: MouseEvent): void {
+  cancelHoverExplanation(anchor);
+  const timer = window.setTimeout(() => {
+    hoverTimers.delete(anchor);
+    if (!anchor.matches(":hover")) {
+      return;
+    }
+    void showExplanation(anchor, term, context, { refresh: false, pin: false, pointer });
+  }, HOVER_SHOW_DELAY_MS);
+  hoverTimers.set(anchor, timer);
+}
+
+function cancelHoverExplanation(anchor: HTMLElement): void {
+  const timer = hoverTimers.get(anchor);
+  if (timer === undefined) {
+    return;
+  }
+  window.clearTimeout(timer);
+  hoverTimers.delete(anchor);
+}
+
+async function showExplanation(anchor: HTMLElement, term: DetectedTerm, context: string, options: ShowExplanationOptions): Promise<void> {
+  const cacheKey = explanationResultCacheKey(term.term, context);
   const cached = pageExplanationCache.get(cacheKey);
-  if (cached && !refresh) {
+  if (cached && !options.refresh) {
     overlay?.showExplanation(anchor, cached, () => {
-      void showExplanation(anchor, term, context, true);
-    });
+      void showExplanation(anchor, term, context, { refresh: true, pin: true });
+    }, options.pin, true, options.pointer);
     return;
   }
 
-  overlay?.showLoading(anchor, term.term);
+  overlay?.showLoading(anchor, term.term, options.pin, !options.refresh, options.pointer);
 
   const response = await chrome.runtime.sendMessage({
     type: "TERMLENS_EXPLAIN",
     term: term.term,
     context,
     cacheScope: cacheKey,
-    refresh
+    refresh: options.refresh
   } satisfies ExplainRequest) as ExplainResponse;
 
   if (!response.ok || !response.explanation) {
-    overlay?.showError(anchor, term.term, response.error ?? "暂时无法解释这个词。");
+    overlay?.showError(anchor, term.term, response.error ?? "暂时无法解释这个词。", options.pin, !options.refresh, options.pointer);
     return;
   }
 
   pageExplanationCache.set(cacheKey, response.explanation);
+  if (!options.pin && !anchor.matches(":hover") && !overlay?.isPointerOverCard()) {
+    return;
+  }
+
   overlay?.showExplanation(anchor, response.explanation, () => {
-    void showExplanation(anchor, term, context, true);
-  });
+    void showExplanation(anchor, term, context, { refresh: true, pin: true });
+  }, options.pin, !options.refresh, options.pointer);
 }
 
 function explanationCacheKey(term: string): string {
   return term.trim().toLocaleLowerCase();
 }
 
-class OverlayController {
-  private readonly root: HTMLDivElement;
-  private hideTimer: number | undefined;
-
-  constructor() {
-    this.root = document.createElement("div");
-    this.root.id = ROOT_ID;
-    this.root.addEventListener("mouseenter", () => this.cancelHide());
-    this.root.addEventListener("mouseleave", () => this.scheduleHide());
-    document.documentElement.append(this.root);
-  }
-
-  showLoading(anchor: HTMLElement, term: string): void {
-    this.render(anchor, `<div class="termlens-card-title">${escapeHtml(term)}</div><div class="termlens-muted">正在生成解释...</div>`);
-  }
-
-  showError(anchor: HTMLElement, term: string, message: string): void {
-    this.render(
-      anchor,
-      `<div class="termlens-card-title">${escapeHtml(term)}</div><div class="termlens-error">${escapeHtml(message)}</div>`
-    );
-  }
-
-  showExplanation(anchor: HTMLElement, explanation: Explanation, onRefresh: () => void): void {
-    const related = explanation.related_terms.map((term) => `<span>${escapeHtml(term)}</span>`).join("");
-    this.render(
-      anchor,
-      `<div class="termlens-card-header">
-         <div class="termlens-card-title">${escapeHtml(explanation.term)}</div>
-         <button class="termlens-refresh-button" type="button" title="重新生成解释" aria-label="重新生成解释">↻</button>
-       </div>
-       <div class="termlens-category">${escapeHtml(explanation.category)}</div>
-       <div class="termlens-definition">${escapeHtml(explanation.definition)}</div>
-       ${explanation.usage_example ? `<div class="termlens-example">${escapeHtml(explanation.usage_example)}</div>` : ""}
-       <div class="termlens-related">${related}</div>`
-    );
-    this.root.querySelector<HTMLButtonElement>(".termlens-refresh-button")?.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      onRefresh();
-    });
-  }
-
-  scheduleHide(): void {
-    this.cancelHide();
-    this.hideTimer = window.setTimeout(() => {
-      this.root.classList.remove("is-visible");
-    }, 160);
-  }
-
-  private cancelHide(): void {
-    if (this.hideTimer !== undefined) {
-      window.clearTimeout(this.hideTimer);
-      this.hideTimer = undefined;
-    }
-  }
-
-  private render(anchor: HTMLElement, html: string): void {
-    this.cancelHide();
-    this.root.innerHTML = `<div class="termlens-card">${html}</div>`;
-    this.root.classList.add("is-visible");
-
-    const anchorRect = anchor.getBoundingClientRect();
-    const cardRect = this.root.getBoundingClientRect();
-    const left = clamp(anchorRect.left + anchorRect.width / 2 - cardRect.width / 2, 12, window.innerWidth - cardRect.width - 12);
-    const topCandidate = anchorRect.top - cardRect.height - 10;
-    const top = topCandidate > 12 ? topCandidate : anchorRect.bottom + 10;
-
-    this.root.style.left = `${left + window.scrollX}px`;
-    this.root.style.top = `${top + window.scrollY}px`;
-  }
+function explanationResultCacheKey(term: string, context: string): string {
+  return `${explanationCacheKey(term)}\n${hashString(context.replace(/\s+/g, " ").trim().slice(0, 1200))}`;
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max);
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll("\"", "&quot;")
-    .replaceAll("'", "&#039;");
+function hashString(value: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
 }
