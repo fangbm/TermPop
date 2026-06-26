@@ -1,9 +1,11 @@
 import initWasm, { detect_terms_json, explain_term_json } from "../wasm/termlens_core.js";
 import { getSettings } from "../shared/settings";
+import { filterAllowedDetectedTerms, findAllowedOccurrences, findAllowedOccurrencesIgnoreCase } from "../shared/term-matching";
 import type {
   AddCachedTermsRequest,
   AddCachedTermsResponse,
   CachedTermEntry,
+  DetectTermsDebug,
   DetectTermsRequest,
   DetectTermsResponse,
   DetectedTerm,
@@ -12,6 +14,7 @@ import type {
   GetCachedTermsResponse,
   ExplainRequest,
   ExplainResponse,
+  ExplainSelectionRequest,
   Explanation,
   LlmSettings,
   TermType
@@ -21,10 +24,33 @@ const explanationCache = new Map<string, Explanation>();
 const detectionCache = new Map<string, DetectedTerm[]>();
 const wasmReady = initWasm({ module_or_path: chrome.runtime.getURL("assets/termlens_core_bg.wasm") });
 const GLOBAL_TERM_CACHE_KEY = "termlens.globalTermCache";
+const EXPLANATION_CACHE_KEY = "termlens.explanationCache";
 const MAX_GLOBAL_CACHED_TERMS = 3000;
-const LLM_DETECTION_TIMEOUT_MS = 8000;
+const MAX_EXPLANATION_CACHE_ENTRIES = 5000;
+const EXPLANATION_CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+const SETTINGS_KEY = "termlens.settings";
+const SELECTION_CONTEXT_MENU_ID = "termlens-explain-selection";
+const LLM_DETECTION_TIMEOUT_MS = 120000;
+const LLM_DETECTION_CHUNK_SIZE = 3000;
+const LLM_DETECTION_CHUNK_OVERLAP = 80;
+const LLM_REJECTED_SIMPLE_TERMS = new Set([
+  "task",
+  "tasks",
+  "data",
+  "model",
+  "models",
+  "result",
+  "results",
+  "best",
+  "new",
+  "old",
+  "french",
+  "german",
+  "english"
+]);
 let activeLlmRequests = 0;
 let globalTermCache: Map<string, CachedTermEntry> | undefined;
+let persistentExplanationCache: Map<string, CachedExplanationEntry> | undefined;
 const explanationQueue: LlmQueueEntry[] = [];
 const detectionQueue: LlmQueueEntry[] = [];
 
@@ -39,6 +65,88 @@ interface LlmQueueEntry {
   start: () => void;
   signal: AbortSignal;
   maxActiveRequests: number;
+}
+
+interface CachedExplanationEntry {
+  key: string;
+  explanation: Explanation;
+  created_at: number;
+  last_used_at: number;
+}
+
+interface DetectionResult {
+  terms: DetectedTerm[];
+  debug?: DetectTermsDebug;
+}
+
+interface ParsedDetectedTerms {
+  terms: DetectedTerm[];
+  debug: Required<Pick<DetectTermsDebug, "rawCandidateCount" | "matchedCount" | "rejectedCount" | "unmatchedCount" | "sampleCandidates" | "sampleMatchedTerms">>;
+}
+
+interface DetectedTermCandidate {
+  term?: unknown;
+  term_type?: unknown;
+  type?: unknown;
+  category?: unknown;
+  confidence?: unknown;
+}
+
+void syncContextMenus();
+
+chrome.runtime.onInstalled.addListener(() => {
+  void syncContextMenus();
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local" && changes[SETTINGS_KEY]) {
+    void syncContextMenus();
+  }
+});
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === SELECTION_CONTEXT_MENU_ID && tab?.id && info.selectionText?.trim()) {
+    void getSettings().then(async (settings) => {
+      if (settings.mode === "hover") {
+        return;
+      }
+      try {
+        await chrome.tabs.sendMessage(tab.id as number, {
+          type: "TERMLENS_EXPLAIN_SELECTION",
+          term: info.selectionText ?? ""
+        } satisfies ExplainSelectionRequest);
+      } catch (error) {
+        console.warn("TermLens selection explain could not run on this page.", error);
+      }
+    });
+  }
+});
+
+async function syncContextMenus(): Promise<void> {
+  const settings = await getSettings();
+  syncSelectionContextMenu(settings);
+}
+
+function syncSelectionContextMenu(settings: Awaited<ReturnType<typeof getSettings>>): void {
+  const visible = settings.mode === "selection" || settings.mode === "hybrid";
+  const title = settings.llm.language === "en" ? "Explain selection with TermLens" : "用词镜解释选中文本";
+
+  chrome.contextMenus.update(SELECTION_CONTEXT_MENU_ID, { title, visible }, () => {
+    if (!chrome.runtime.lastError) {
+      return;
+    }
+    chrome.contextMenus.create(
+      {
+        id: SELECTION_CONTEXT_MENU_ID,
+        title,
+        contexts: ["selection"],
+        visible
+      },
+      () => {
+        void chrome.runtime.lastError;
+      }
+    );
+  });
 }
 
 chrome.runtime.onMessage.addListener(
@@ -64,8 +172,8 @@ chrome.runtime.onMessage.addListener(
   }
 
   if (message.type === "TERMLENS_DETECT_TERMS") {
-    detectTerms(message.text)
-      .then((terms) => sendResponse({ ok: true, terms } satisfies DetectTermsResponse))
+    detectTerms(message.text, message.detectionMode ?? "all")
+      .then((result) => sendResponse({ ok: true, terms: result.terms, debug: result.debug } satisfies DetectTermsResponse))
       .catch((error: unknown) => {
         const reason = error instanceof Error ? error.message : String(error);
         sendResponse({ ok: false, error: reason } satisfies DetectTermsResponse);
@@ -87,39 +195,56 @@ chrome.runtime.onMessage.addListener(
   return true;
 });
 
-async function detectTerms(text: string): Promise<DetectedTerm[]> {
+async function detectTerms(text: string, detectionMode: "primary" | "llm" | "all"): Promise<DetectionResult> {
   await wasmReady;
   const settings = await getSettings();
   const trimmed = text.trim();
   if (!trimmed) {
-    return [];
+    return { terms: [] };
   }
 
-  const cacheKey = `${settings.llm.provider}\n${settings.llm.baseUrl}\n${settings.llm.model}\n${settings.llm.language}\n${text}`;
+  const cacheKey = `${detectionMode}\n${settings.llm.provider}\n${settings.llm.baseUrl}\n${settings.llm.model}\n${settings.llm.language}\n${text}`;
   const cached = detectionCache.get(cacheKey);
   if (cached) {
-    return cached;
+    return { terms: cached };
   }
 
-  const cachedTerms = await detectGlobalCachedTerms(text);
-  let terms: DetectedTerm[];
-  if (settings.llm.provider === "mock" || !settings.llm.apiKey.trim()) {
-    terms = rustDetect(text);
-  } else {
+  const primaryTerms = dedupeDetectedTerms(filterAllowedDetectedTerms(text, [
+    ...rustDetect(text),
+    ...await detectGlobalCachedTerms(text)
+  ]));
+  if (detectionMode === "primary") {
+    detectionCache.set(cacheKey, primaryTerms);
+    return { terms: primaryTerms };
+  }
+
+  let llmTerms: DetectedTerm[] = [];
+  let llmDebug: DetectTermsDebug | undefined;
+  if (settings.llm.provider !== "mock" && settings.llm.apiKey.trim()) {
     try {
-      terms = await fetchLlmDetectedTerms(text, settings.llm);
-      if (terms.length === 0) {
-        terms = rustDetect(text);
+      const result = await fetchLlmDetectedTerms(text, settings.llm);
+      llmTerms = result.terms;
+      llmDebug = result.debug;
+    } catch (error) {
+      if (detectionMode === "llm") {
+        throw error;
       }
-    } catch {
-      terms = rustDetect(text);
     }
   }
 
-  terms = dedupeDetectedTerms([...terms, ...cachedTerms]);
-  void addGlobalCachedTerms(terms);
+  if (detectionMode === "llm") {
+    llmTerms = dedupeDetectedTerms(filterAllowedDetectedTerms(text, llmTerms));
+    detectionCache.set(cacheKey, llmTerms);
+    return { terms: llmTerms, debug: { ...llmDebug, matchedCount: llmTerms.length } };
+  }
+
+  const terms = mergePrimaryThenLlmTerms(
+    primaryTerms,
+    dedupeDetectedTerms(filterAllowedDetectedTerms(text, llmTerms))
+  );
+  void addGlobalCachedTerms(primaryTerms);
   detectionCache.set(cacheKey, terms);
-  return terms;
+  return { terms, debug: llmDebug };
 }
 
 async function getCachedTerms(): Promise<CachedTermEntry[]> {
@@ -132,7 +257,11 @@ async function detectGlobalCachedTerms(text: string): Promise<DetectedTerm[]> {
   const terms: DetectedTerm[] = [];
 
   for (const entry of cache.values()) {
-    for (const [start, end] of findAllOccurrences(text, entry.term)) {
+    if (isRejectedLlmSimpleTerm(entry.term)) {
+      continue;
+    }
+
+    for (const [start, end] of findAllowedOccurrences(text, entry.term)) {
       terms.push({
         term: text.slice(start, end),
         start,
@@ -153,6 +282,10 @@ async function addGlobalCachedTerms(terms: DetectedTerm[]): Promise<void> {
   const now = Date.now();
 
   for (const term of terms) {
+    if (term.source === "Ner") {
+      continue;
+    }
+
     const normalized = normalizeCacheTerm(term.term);
     if (!shouldCacheTerm(term.term, normalized)) {
       continue;
@@ -195,6 +328,10 @@ async function loadGlobalTermCache(): Promise<Map<string, CachedTermEntry>> {
   const terms = Array.isArray(stored[GLOBAL_TERM_CACHE_KEY]) ? stored[GLOBAL_TERM_CACHE_KEY] as CachedTermEntry[] : [];
   globalTermCache = new Map();
   for (const entry of terms) {
+    if (entry.source === "Ner") {
+      continue;
+    }
+
     const normalized = normalizeCacheTerm(entry.term);
     if (shouldCacheTerm(entry.term, normalized)) {
       globalTermCache.set(normalized, {
@@ -226,19 +363,28 @@ function pruneGlobalTermCache(cache: Map<string, CachedTermEntry>): void {
 
 function shouldCacheTerm(term: string, normalized: string): boolean {
   const trimmed = term.trim();
-  return trimmed.length >= 2 && trimmed.length <= 80 && normalized.length >= 2;
+  return trimmed.length >= 2
+    && trimmed.length <= 80
+    && normalized.length >= 2
+    && !isRejectedLlmSimpleTerm(trimmed);
 }
 
 async function explain(term: string, context: string | undefined, cacheScope: string | undefined, refresh: boolean): Promise<Explanation> {
   await wasmReady;
   const settings = await getSettings();
 
-  const normalizedTerm = normalizeCacheTerm(term);
-  const scope = cacheScope || normalizedTerm;
-  const cacheKey = `${settings.llm.provider}\n${settings.llm.baseUrl}\n${settings.llm.model}\n${settings.llm.language}\n${settings.llm.includeUsageExample}\n${scope}`;
-  const cached = explanationCache.get(cacheKey);
-  if (cached && !refresh) {
-    return cached;
+  const cacheKey = buildExplanationCacheKey(term, context, cacheScope, settings.llm);
+  if (!refresh) {
+    const cached = explanationCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const persistent = await getPersistentExplanation(cacheKey);
+    if (persistent) {
+      explanationCache.set(cacheKey, persistent);
+      return persistent;
+    }
   }
 
   const explanation =
@@ -247,7 +393,115 @@ async function explain(term: string, context: string | undefined, cacheScope: st
       : await fetchLlmExplanation(term, context, settings.llm);
 
   explanationCache.set(cacheKey, explanation);
+  await setPersistentExplanation(cacheKey, explanation);
   return explanation;
+}
+
+async function getPersistentExplanation(cacheKey: string): Promise<Explanation | undefined> {
+  const cache = await loadPersistentExplanationCache();
+  const cached = cache.get(cacheKey);
+  if (!cached) {
+    return undefined;
+  }
+
+  const now = Date.now();
+  if (now - cached.created_at > EXPLANATION_CACHE_TTL_MS) {
+    cache.delete(cacheKey);
+    void savePersistentExplanationCache(cache);
+    return undefined;
+  }
+
+  cached.last_used_at = now;
+  void savePersistentExplanationCache(cache);
+  return cached.explanation;
+}
+
+async function setPersistentExplanation(cacheKey: string, explanation: Explanation): Promise<void> {
+  const cache = await loadPersistentExplanationCache();
+  const now = Date.now();
+  cache.set(cacheKey, {
+    key: cacheKey,
+    explanation,
+    created_at: cache.get(cacheKey)?.created_at ?? now,
+    last_used_at: now
+  });
+  prunePersistentExplanationCache(cache);
+  await savePersistentExplanationCache(cache);
+}
+
+async function loadPersistentExplanationCache(): Promise<Map<string, CachedExplanationEntry>> {
+  if (persistentExplanationCache) {
+    return persistentExplanationCache;
+  }
+
+  const stored = await chrome.storage.local.get(EXPLANATION_CACHE_KEY);
+  const entries = Array.isArray(stored[EXPLANATION_CACHE_KEY]) ? stored[EXPLANATION_CACHE_KEY] as CachedExplanationEntry[] : [];
+  const now = Date.now();
+  persistentExplanationCache = new Map();
+
+  for (const entry of entries) {
+    if (!entry?.key || !isExplanation(entry.explanation)) {
+      continue;
+    }
+
+    const createdAt = Number.isFinite(entry.created_at) ? entry.created_at : now;
+    if (now - createdAt > EXPLANATION_CACHE_TTL_MS) {
+      continue;
+    }
+
+    persistentExplanationCache.set(entry.key, {
+      key: entry.key,
+      explanation: entry.explanation,
+      created_at: createdAt,
+      last_used_at: Number.isFinite(entry.last_used_at) ? entry.last_used_at : createdAt
+    });
+  }
+
+  prunePersistentExplanationCache(persistentExplanationCache);
+  return persistentExplanationCache;
+}
+
+async function savePersistentExplanationCache(cache: Map<string, CachedExplanationEntry>): Promise<void> {
+  await chrome.storage.local.set({
+    [EXPLANATION_CACHE_KEY]: [...cache.values()]
+  });
+}
+
+function prunePersistentExplanationCache(cache: Map<string, CachedExplanationEntry>): void {
+  if (cache.size <= MAX_EXPLANATION_CACHE_ENTRIES) {
+    return;
+  }
+
+  const keep = [...cache.values()]
+    .sort((left, right) => right.last_used_at - left.last_used_at || right.created_at - left.created_at)
+    .slice(0, MAX_EXPLANATION_CACHE_ENTRIES);
+  cache.clear();
+  for (const entry of keep) {
+    cache.set(entry.key, entry);
+  }
+}
+
+function buildExplanationCacheKey(term: string, context: string | undefined, cacheScope: string | undefined, settings: LlmSettings): string {
+  const provider = settings.provider;
+  const baseUrl = normalizeBaseUrl(settings.baseUrl || defaultBaseUrl(settings.provider));
+  const model = settings.model || defaultModel(settings.provider);
+  const normalizedTerm = normalizeCacheTerm(term);
+  const contextFingerprint = hashString(normalizeCacheContext(context));
+  const scopeFingerprint = hashString((cacheScope || "global").slice(0, 1200));
+  return [
+    provider,
+    baseUrl,
+    model,
+    settings.language,
+    settings.includeUsageExample ? "example" : "no-example",
+    normalizedTerm,
+    scopeFingerprint,
+    contextFingerprint
+  ].join("\n");
+}
+
+function normalizeCacheContext(context: string | undefined): string {
+  return (context ?? "").replace(/\s+/g, " ").trim().slice(0, 1200);
 }
 
 function mockExplain(term: string, context: string | undefined, language: ExplanationLanguage, includeUsageExample: boolean): Explanation {
@@ -370,26 +624,83 @@ async function fetchAnthropicExplanation(
   return parseExplanation(content, term, settings.includeUsageExample);
 }
 
-async function fetchLlmDetectedTerms(text: string, settings: LlmSettings): Promise<DetectedTerm[]> {
-  if (settings.provider === "anthropic") {
-    const content = await runWithLlmConcurrency(settings, { priority: "detection", timeoutMs: LLM_DETECTION_TIMEOUT_MS }, (signal) =>
-      fetchAnthropicText(settings, buildTermExtractionPrompt(text, settings.language), signal)
+async function fetchLlmDetectedTerms(text: string, settings: LlmSettings): Promise<DetectionResult> {
+  const terms: DetectedTerm[] = [];
+  const chunks = splitTextForLlmDetection(text);
+  const debug: DetectTermsDebug = {
+    rawCandidateCount: 0,
+    matchedCount: 0,
+    rejectedCount: 0,
+    unmatchedCount: 0,
+    chunkCount: chunks.length,
+    sampleCandidates: [],
+    sampleMatchedTerms: []
+  };
+
+  for (const chunk of chunks) {
+    const prompt = buildTermExtractionPrompt(chunk.text, settings.language, chunk.index + 1, chunks.length);
+    const content = settings.provider === "anthropic"
+      ? await runWithLlmConcurrency(settings, { priority: "detection", timeoutMs: LLM_DETECTION_TIMEOUT_MS }, (signal) =>
+          fetchAnthropicText(settings, prompt, signal)
+        )
+      : await runWithLlmConcurrency(settings, { priority: "detection", timeoutMs: LLM_DETECTION_TIMEOUT_MS }, (signal) =>
+          fetchOpenAiCompatibleDetectionText(
+            settings,
+            "You extract vocabulary that would benefit from explanation. Do not explain, reason, analyze, or restate the task. Your entire response must be exactly one minified JSON object and nothing else.",
+            prompt,
+            signal
+          )
+        );
+
+    console.info(
+      `TermLens LLM detection raw response ${chunk.index + 1}/${chunks.length}`,
+      {
+        provider: settings.provider,
+        model: settings.model || defaultModel(settings.provider),
+        chunkStart: chunk.start,
+        inputPreview: truncate(chunk.text, 500),
+        rawContent: content
+      }
     );
-    return parseDetectedTerms(content, text);
+
+    let parsed: ParsedDetectedTerms;
+    try {
+      parsed = parseDetectedTerms(content, chunk.text, chunk.start);
+    } catch (error) {
+      console.error(
+        `TermLens LLM detection parse failed ${chunk.index + 1}/${chunks.length}`,
+        {
+          error: error instanceof Error ? error.message : String(error),
+          provider: settings.provider,
+          model: settings.model || defaultModel(settings.provider),
+          chunkStart: chunk.start,
+          inputPreview: truncate(chunk.text, 1000),
+          rawContent: content
+        }
+      );
+      throw new Error(`LLM response was not valid JSON. Raw response: ${truncate(content.replace(/\s+/g, " ").trim(), 1000)}`);
+    }
+    const parsedTerms = parsed.terms;
+    debug.rawCandidateCount = (debug.rawCandidateCount ?? 0) + parsed.debug.rawCandidateCount;
+    debug.matchedCount = (debug.matchedCount ?? 0) + parsed.debug.matchedCount;
+    debug.rejectedCount = (debug.rejectedCount ?? 0) + parsed.debug.rejectedCount;
+    debug.unmatchedCount = (debug.unmatchedCount ?? 0) + parsed.debug.unmatchedCount;
+    debug.sampleCandidates = [...debug.sampleCandidates ?? [], ...parsed.debug.sampleCandidates].slice(0, 12);
+    debug.sampleMatchedTerms = [...debug.sampleMatchedTerms ?? [], ...parsed.debug.sampleMatchedTerms].slice(0, 12);
+    console.info(
+      `TermLens LLM detection chunk ${chunk.index + 1}/${chunks.length}: ${parsedTerms.length} matched terms`,
+      parsedTerms.map((term) => term.term)
+    );
+    terms.push(...parsedTerms);
   }
 
-  const content = await runWithLlmConcurrency(settings, { priority: "detection", timeoutMs: LLM_DETECTION_TIMEOUT_MS }, (signal) =>
-    fetchOpenAiCompatibleText(
-      settings,
-      "You extract vocabulary that would benefit from explanation. Return strict JSON only.",
-      buildTermExtractionPrompt(text, settings.language),
-      signal
-    )
-  );
-  return parseDetectedTerms(content, text);
+  const dedupedTerms = dedupeDetectedTerms(terms);
+  debug.matchedCount = dedupedTerms.length;
+  debug.sampleMatchedTerms = dedupedTerms.map((term) => term.term).slice(0, 12);
+  return { terms: dedupedTerms, debug };
 }
 
-async function fetchOpenAiCompatibleText(settings: LlmSettings, system: string, prompt: string, signal?: AbortSignal): Promise<string> {
+async function fetchOpenAiCompatibleDetectionText(settings: LlmSettings, system: string, prompt: string, signal?: AbortSignal): Promise<string> {
   const baseUrl = normalizeBaseUrl(settings.baseUrl || defaultBaseUrl(settings.provider));
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
@@ -399,8 +710,9 @@ async function fetchOpenAiCompatibleText(settings: LlmSettings, system: string, 
     },
     body: JSON.stringify({
       model: settings.model || defaultModel(settings.provider),
-      temperature: Math.min(settings.temperature, 0.3),
-      max_tokens: Math.max(settings.maxTokens, 450),
+      temperature: Math.min(settings.temperature, 0.1),
+      response_format: { type: "json_object" },
+      reasoning_effort: "low",
       messages: [
         { role: "system", content: system },
         { role: "user", content: prompt }
@@ -414,7 +726,7 @@ async function fetchOpenAiCompatibleText(settings: LlmSettings, system: string, 
   }
 
   const payload = await response.json();
-  const content = extractOpenAiCompatibleText(payload);
+  const content = extractOpenAiCompatibleAnswerText(payload);
   return content;
 }
 
@@ -545,9 +857,8 @@ async function fetchAnthropicText(settings: LlmSettings, prompt: string, signal?
     },
     body: JSON.stringify({
       model: settings.model || defaultModel(settings.provider),
-      max_tokens: Math.max(settings.maxTokens, 450),
-      temperature: Math.min(settings.temperature, 0.3),
-      system: `${languageInstruction(settings.language)} You extract vocabulary that would benefit from explanation. Return strict JSON only.`,
+      temperature: Math.min(settings.temperature, 0.1),
+      system: `${languageInstruction(settings.language)} You extract vocabulary that would benefit from explanation. Do not explain, reason, analyze, or restate the task. Your entire response must be exactly one minified JSON object and nothing else.`,
       messages: [{ role: "user", content: prompt }]
     }),
     signal
@@ -567,38 +878,49 @@ async function fetchAnthropicText(settings: LlmSettings, prompt: string, signal?
   return content;
 }
 
-function buildTermExtractionPrompt(text: string, language: ExplanationLanguage): string {
+function buildTermExtractionPrompt(text: string, language: ExplanationLanguage, chunkNumber: number, totalChunks: number): string {
   return [
     languageInstruction(language),
-    "From the text below, identify terms that a reader may want explained in context.",
+    `From text segment ${chunkNumber}/${totalChunks} below, identify terms that a reader may want explained in context.`,
     "Prefer domain-specific nouns, file names, commands, APIs, acronyms, product names, framework names, and proper nouns.",
-    "Do not include ordinary function words or full sentences.",
-    "Each term must be an exact substring of the text.",
+    "Do not include ordinary function words, full sentences, generic academic words, or common task nouns.",
+    "Reject simple context words such as task, tasks, data, model, models, result, results, best, English, French, and German unless they are part of a longer domain-specific phrase.",
+    "Each term must be an exact substring copied from the text with the same casing and punctuation.",
     "Return JSON only in this shape:",
     "{\"terms\":[{\"term\":\"exact text\",\"term_type\":\"Tech|Brand|Person|Place|Acronym|Custom\",\"confidence\":0.0}]}",
     "",
-    `Text: ${truncate(text, 1200)}`
+    `Text: ${text}`
   ].join("\n");
 }
 
-function parseDetectedTerms(content: string, sourceText: string): DetectedTerm[] {
-  const parsed = JSON.parse(extractJsonObject(content)) as {
-    terms?: Array<{ term?: unknown; term_type?: unknown; confidence?: unknown }>;
-  };
-  const candidates = parsed.terms ?? [];
+function parseDetectedTerms(content: string, sourceText: string, sourceOffset = 0): ParsedDetectedTerms {
+  const parsed = JSON.parse(extractJsonPayload(content)) as unknown;
+  const candidates = normalizeDetectedTermCandidates(parsed);
   const results: DetectedTerm[] = [];
   const occupied = new Set<string>();
+  let rejected = 0;
+  let unmatched = 0;
+  const sampleCandidates: string[] = [];
 
   for (const candidate of candidates) {
     const rawTerm = String(candidate.term ?? "").trim();
-    if (!rawTerm || rawTerm.length > 80) {
+    if (rawTerm && sampleCandidates.length < 12) {
+      sampleCandidates.push(rawTerm);
+    }
+    if (!rawTerm || rawTerm.length > 80 || isRejectedLlmSimpleTerm(rawTerm)) {
+      rejected += 1;
       continue;
     }
 
-    const termType = normalizeTermType(candidate.term_type);
+    const termType = normalizeTermType(candidate.term_type ?? candidate.type ?? candidate.category);
     const confidence = normalizeConfidence(candidate.confidence);
-    const matches = findAllOccurrences(sourceText, rawTerm);
-    for (const [start, end] of matches) {
+    const matches = findAllowedOccurrences(sourceText, rawTerm);
+    const resolvedMatches = matches.length > 0 ? matches : findAllowedOccurrencesIgnoreCase(sourceText, rawTerm);
+    if (resolvedMatches.length === 0) {
+      unmatched += 1;
+      continue;
+    }
+    for (const [start, end] of resolvedMatches) {
       const key = `${start}:${end}`;
       if (occupied.has(key)) {
         continue;
@@ -606,8 +928,8 @@ function parseDetectedTerms(content: string, sourceText: string): DetectedTerm[]
       occupied.add(key);
       results.push({
         term: sourceText.slice(start, end),
-        start,
-        end,
+        start: sourceOffset + start,
+        end: sourceOffset + end,
         term_type: termType,
         confidence,
         source: "Ner"
@@ -615,7 +937,168 @@ function parseDetectedTerms(content: string, sourceText: string): DetectedTerm[]
     }
   }
 
-  return dedupeDetectedTerms(results);
+  console.info(
+    `TermLens LLM detection parsed ${candidates.length} candidates, matched ${results.length}, rejected ${rejected}, unmatched ${unmatched}`,
+    candidates.map((candidate) => candidate.term).filter(Boolean).slice(0, 20)
+  );
+  const terms = dedupeDetectedTerms(results);
+  return {
+    terms,
+    debug: {
+      rawCandidateCount: candidates.length,
+      matchedCount: terms.length,
+      rejectedCount: rejected,
+      unmatchedCount: unmatched,
+      sampleCandidates,
+      sampleMatchedTerms: terms.map((term) => term.term).slice(0, 12)
+    }
+  };
+}
+
+function normalizeDetectedTermCandidates(parsed: unknown): DetectedTermCandidate[] {
+  if (Array.isArray(parsed)) {
+    return parsed.flatMap(normalizeDetectedTermCandidate);
+  }
+
+  if (parsed && typeof parsed === "object") {
+    const object = parsed as Record<string, unknown>;
+    const singleCandidate = normalizeDetectedTermCandidate(object);
+    if (singleCandidate.length > 0) {
+      return singleCandidate;
+    }
+
+    for (const value of [
+      object.terms,
+      object.data,
+      object.result,
+      object.results,
+      object.vocabulary,
+      object.keywords,
+      object.items,
+      object.entities
+    ]) {
+      if (Array.isArray(value)) {
+        return value.flatMap(normalizeDetectedTermCandidate);
+      }
+    }
+  }
+
+  return [];
+}
+
+function normalizeDetectedTermCandidate(value: unknown): DetectedTermCandidate[] {
+  if (typeof value === "string") {
+    return [{ term: value }];
+  }
+
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+
+  const object = value as Record<string, unknown>;
+  const term = object.term
+    ?? object.text
+    ?? object.word
+    ?? object.name
+    ?? object.label
+    ?? object.phrase
+    ?? object.keyword
+    ?? object.entity
+    ?? object.vocabulary;
+
+  if (typeof term !== "string") {
+    return [];
+  }
+
+  return [{
+    term,
+    term_type: object.term_type ?? object.type ?? object.category,
+    type: object.type,
+    category: object.category,
+    confidence: object.confidence ?? object.score
+  }];
+}
+
+function splitTextForLlmDetection(text: string): Array<{ text: string; start: number; index: number }> {
+  const chunks: Array<{ text: string; start: number; index: number }> = [];
+  let start = 0;
+
+  while (start < text.length) {
+    const end = findLlmChunkEnd(text, start);
+    const chunkText = text.slice(start, end).trim();
+    if (chunkText) {
+      const leadingWhitespace = text.slice(start, end).length - text.slice(start, end).trimStart().length;
+      chunks.push({
+        text: chunkText,
+        start: start + leadingWhitespace,
+        index: chunks.length
+      });
+    }
+
+    if (end >= text.length) {
+      break;
+    }
+    start = Math.max(end - LLM_DETECTION_CHUNK_OVERLAP, start + 1);
+  }
+
+  return chunks;
+}
+
+function findLlmChunkEnd(text: string, start: number): number {
+  const target = Math.min(start + LLM_DETECTION_CHUNK_SIZE, text.length);
+  if (target >= text.length) {
+    return text.length;
+  }
+
+  const softBreak = Math.max(
+    text.lastIndexOf("\n", target),
+    text.lastIndexOf(". ", target),
+    text.lastIndexOf("。", target),
+    text.lastIndexOf("; ", target)
+  );
+  if (softBreak > start + Math.floor(LLM_DETECTION_CHUNK_SIZE * 0.6)) {
+    return softBreak + 1;
+  }
+
+  const space = text.lastIndexOf(" ", target);
+  if (space > start + Math.floor(LLM_DETECTION_CHUNK_SIZE * 0.6)) {
+    return space + 1;
+  }
+
+  return target;
+}
+
+function isRejectedLlmSimpleTerm(term: string): boolean {
+  const normalized = term.trim().toLocaleLowerCase();
+  if (LLM_REJECTED_SIMPLE_TERMS.has(normalized)) {
+    return true;
+  }
+
+  return /^[a-z]+$/i.test(term)
+    && term.length <= 7
+    && LLM_REJECTED_SIMPLE_TERMS.has(normalized.replace(/s$/, ""));
+}
+
+function mergePrimaryThenLlmTerms(primaryTerms: DetectedTerm[], llmTerms: DetectedTerm[]): DetectedTerm[] {
+  const merged = [...primaryTerms];
+  for (const term of llmTerms) {
+    if (!merged.some((existing) => rangesOverlap(existing.start, existing.end, term.start, term.end))) {
+      merged.push(term);
+    }
+  }
+
+  return merged.sort((left, right) => left.start - right.start || sourcePriority(left) - sourcePriority(right) || right.confidence - left.confidence);
+}
+
+function sourcePriority(term: DetectedTerm): number {
+  if (term.source === "Rule" || term.source === "Dictionary" || term.source === "User") {
+    return 0;
+  }
+  return 1;
+}
+
+function rangesOverlap(leftStart: number, leftEnd: number, rightStart: number, rightEnd: number): boolean {
+  return leftStart < rightEnd && rightStart < leftEnd;
 }
 
 function rustDetect(text: string): DetectedTerm[] {
@@ -624,20 +1107,6 @@ function rustDetect(text: string): DetectedTerm[] {
     start: byteOffsetToJsIndex(text, term.start),
     end: byteOffsetToJsIndex(text, term.end)
   }));
-}
-
-function findAllOccurrences(text: string, term: string): Array<[number, number]> {
-  const matches: Array<[number, number]> = [];
-  let from = 0;
-  while (from < text.length) {
-    const index = text.indexOf(term, from);
-    if (index < 0) {
-      break;
-    }
-    matches.push([index, index + term.length]);
-    from = index + Math.max(term.length, 1);
-  }
-  return matches;
 }
 
 function dedupeDetectedTerms(terms: DetectedTerm[]): DetectedTerm[] {
@@ -804,6 +1273,31 @@ function extractOpenAiCompatibleText(payload: unknown): string {
   throw new Error(`LLM response did not include usable text. Raw response: ${truncate(JSON.stringify(payload), 500)}`);
 }
 
+function extractOpenAiCompatibleAnswerText(payload: unknown): string {
+  const data = payload as {
+    choices?: Array<{
+      message?: {
+        content?: unknown;
+      };
+      text?: unknown;
+    }>;
+  };
+  const choice = data.choices?.[0];
+  const candidates = [
+    choice?.message?.content,
+    choice?.text
+  ];
+
+  for (const candidate of candidates) {
+    const text = stringifyProviderText(candidate).trim();
+    if (text) {
+      return text;
+    }
+  }
+
+  throw new Error(`LLM response did not include final answer content. Raw response: ${truncate(JSON.stringify(payload), 1000)}`);
+}
+
 function stringifyProviderText(value: unknown): string {
   if (typeof value === "string") {
     return value;
@@ -852,6 +1346,90 @@ function extractJsonObject(content: string): string {
   throw new Error("LLM response was not valid JSON.");
 }
 
+function extractJsonPayload(content: string): string {
+  const trimmed = content.trim();
+  if (isParseableJson(trimmed)) {
+    return trimmed;
+  }
+
+  const objectCandidate = findParseableJsonCandidate(trimmed, "{", "}");
+  if (objectCandidate) {
+    return objectCandidate;
+  }
+
+  const arrayCandidate = findParseableJsonCandidate(trimmed, "[", "]");
+  if (arrayCandidate) {
+    return arrayCandidate;
+  }
+
+  throw new Error("LLM response was not valid JSON.");
+}
+
+function findParseableJsonCandidate(text: string, open: "{" | "[", close: "}" | "]"): string | undefined {
+  for (let start = text.indexOf(open); start >= 0; start = text.indexOf(open, start + 1)) {
+    const end = findMatchingJsonEnd(text, start, open, close);
+    if (end < 0) {
+      continue;
+    }
+
+    const candidate = text.slice(start, end + 1);
+    if (isParseableJson(candidate)) {
+      return candidate;
+    }
+  }
+
+  return undefined;
+}
+
+function findMatchingJsonEnd(text: string, start: number, open: "{" | "[", close: "}" | "]"): number {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === "\"") {
+      inString = true;
+      continue;
+    }
+
+    if (char === open) {
+      depth += 1;
+      continue;
+    }
+
+    if (char === close) {
+      depth -= 1;
+      if (depth === 0) {
+        return index;
+      }
+    }
+  }
+
+  return -1;
+}
+
+function isParseableJson(value: string): boolean {
+  try {
+    JSON.parse(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function formatProviderError(response: Response): Promise<string> {
   const text = await response.text();
   try {
@@ -868,6 +1446,27 @@ function normalizeBaseUrl(baseUrl: string): string {
 
 function normalizeCacheTerm(term: string): string {
   return term.trim().toLocaleLowerCase();
+}
+
+function isExplanation(value: unknown): value is Explanation {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const explanation = value as Partial<Explanation>;
+  return typeof explanation.term === "string"
+    && typeof explanation.definition === "string"
+    && typeof explanation.category === "string"
+    && Array.isArray(explanation.related_terms);
+}
+
+function hashString(value: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
 }
 
 function defaultBaseUrl(provider: string): string {

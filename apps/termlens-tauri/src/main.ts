@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./styles.css";
 
@@ -88,7 +89,7 @@ if (currentWindow.label === "overlay") {
 }
 
 function renderSettings(root: HTMLDivElement) {
-  const autoCaptureEnabled = localStorage.getItem("termlens.autoCapture") !== "false";
+  const autoCaptureEnabled = localStorage.getItem("termlens.autoCapture") === "true";
   const clickthroughEnabled = localStorage.getItem("termlens.clickthrough") !== "false";
   const llm = getLlmSettings();
   root.className = "settings-root";
@@ -103,8 +104,13 @@ function renderSettings(root: HTMLDivElement) {
     <main class="settings-main">
       <label class="toggle-row">
         <input id="autoCapture" type="checkbox" ${autoCaptureEnabled ? "checked" : ""} />
-        <span>自动读屏并原位高亮</span>
+        <span>实验：自动读屏并原位高亮</span>
       </label>
+      <div class="hotkey-panel">
+        <b>选词解释热键</b>
+        <span>选中任意词或短语后按 Ctrl+Alt+E，在鼠标附近显示解释。</span>
+        <button id="testSelection" type="button">测试选中文本</button>
+      </div>
       <label class="toggle-row">
         <input id="clickthrough" type="checkbox" ${clickthroughEnabled ? "checked" : ""} />
         <span>高亮层鼠标穿透</span>
@@ -163,6 +169,7 @@ function renderSettings(root: HTMLDivElement) {
         <div class="button-row">
           <button id="saveLlm" type="button">保存配置</button>
           <button id="testLlm" type="button">测试 LLM</button>
+          <button id="testCapture" type="button">测试捕获</button>
           <button id="clearLogs" type="button">清空日志</button>
         </div>
       </section>
@@ -202,13 +209,22 @@ function renderSettings(root: HTMLDivElement) {
   root.querySelector<HTMLButtonElement>("#testLlm")?.addEventListener("click", () => {
     void testLlmFromSettings(root);
   });
+  root.querySelector<HTMLButtonElement>("#testCapture")?.addEventListener("click", () => {
+    void testCaptureFromSettings(root);
+  });
+  root.querySelector<HTMLButtonElement>("#testSelection")?.addEventListener("click", () => {
+    void testSelectionFromSettings(root);
+  });
   root.querySelector<HTMLButtonElement>("#clearLogs")?.addEventListener("click", () => {
     localStorage.removeItem(TEST_LOGS_KEY);
     renderTestLogs(root);
   });
 
   window.addEventListener("storage", () => updateSettingsMetrics(root));
-  window.setInterval(() => updateSettingsMetrics(root), 800);
+  window.setInterval(() => {
+    updateSettingsMetrics(root);
+    renderTestLogs(root);
+  }, 800);
   updateSettingsMetrics(root);
   renderTestLogs(root);
 }
@@ -226,6 +242,7 @@ function renderOverlay(root: HTMLDivElement) {
   root.className = "overlay-root";
   root.innerHTML = `
     <div id="highlightLayer" class="highlight-layer"></div>
+    <div id="overlayStatus" class="overlay-status hidden"></div>
     <section id="explanationCard" class="explanation-card hidden"></section>
   `;
 
@@ -233,11 +250,39 @@ function renderOverlay(root: HTMLDivElement) {
   void invoke("set_overlay_clickthrough", { enabled: clickthroughEnabled });
 
   let lastKey = "";
+  let lastCaptureLogKey = "";
+  let lastCaptureError = "";
+  let captureInFlight = false;
+  let selectionVisibleUntil = 0;
+
+  void listen<CaptureResponse>("selection-capture", (event) => {
+    selectionVisibleUntil = Date.now() + 10000;
+    localStorage.setItem("termlens.latestCapture", JSON.stringify(event.payload));
+    logCaptureResult(event.payload);
+    void drawCapture(event.payload);
+  });
+  void listen<string>("selection-capture-error", (event) => {
+    selectionVisibleUntil = Date.now() + 5000;
+    appendTestLog("error", "选词解释失败", event.payload);
+    updateOverlayStatus("选词解释失败", event.payload);
+  });
+  void listen<string>("selection-hotkey-error", (event) => {
+    appendTestLog("error", "热键注册失败", event.payload);
+    updateOverlayStatus("热键注册失败", event.payload);
+  });
+
   const tick = async () => {
-    if (localStorage.getItem("termlens.autoCapture") === "false") {
+    if (captureInFlight) {
+      return;
+    }
+    if (localStorage.getItem("termlens.autoCapture") !== "true") {
+      if (Date.now() < selectionVisibleUntil) {
+        return;
+      }
       clearOverlay();
       return;
     }
+    captureInFlight = true;
     try {
       const capture = await invoke<CaptureResponse>("capture_terms");
       const key = makeCaptureKey(capture);
@@ -246,9 +291,23 @@ function renderOverlay(root: HTMLDivElement) {
       }
       lastKey = key;
       localStorage.setItem("termlens.latestCapture", JSON.stringify(capture));
+      lastCaptureError = "";
+      const logKey = makeCaptureLogKey(capture);
+      if (logKey !== lastCaptureLogKey) {
+        lastCaptureLogKey = logKey;
+        logCaptureResult(capture);
+      }
       void drawCapture(capture);
-    } catch {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message !== lastCaptureError) {
+        lastCaptureError = message;
+        appendTestLog("error", "捕获失败", message);
+        updateOverlayStatus("捕获失败", message);
+      }
       clearOverlay();
+    } finally {
+      captureInFlight = false;
     }
   };
 
@@ -264,9 +323,12 @@ async function drawCapture(capture: CaptureResponse) {
   }
 
   layer.innerHTML = "";
-  for (const highlight of capture.highlights) {
+  const highlights = capture.highlights.length > 0
+    ? capture.highlights.map((highlight) => ({ ...highlight, rect: screenRectToCssRect(highlight.rect) }))
+    : approximateHighlights(capture);
+  for (const highlight of highlights) {
     const mark = document.createElement("div");
-    mark.className = "source-highlight";
+    mark.className = `source-highlight${capture.highlights.length > 0 ? "" : " fallback-highlight"}`;
     mark.style.left = `${highlight.rect.left}px`;
     mark.style.top = `${highlight.rect.top}px`;
     mark.style.width = `${Math.max(4, highlight.rect.right - highlight.rect.left)}px`;
@@ -275,7 +337,7 @@ async function drawCapture(capture: CaptureResponse) {
     layer.appendChild(mark);
   }
 
-  const firstRect = capture.highlights[0]?.rect ?? capture.sourceRect;
+  const firstRect = highlights[0]?.rect ?? (capture.sourceRect ? screenRectToCssRect(capture.sourceRect) : null);
   const explanation = await explanationForCapture(capture);
   if (!explanation || !firstRect) {
     card.classList.add("hidden");
@@ -300,6 +362,14 @@ async function drawCapture(capture: CaptureResponse) {
 function clearOverlay() {
   document.querySelector<HTMLDivElement>("#highlightLayer")!.innerHTML = "";
   document.querySelector<HTMLElement>("#explanationCard")!.classList.add("hidden");
+  document.querySelector<HTMLElement>("#overlayStatus")?.classList.add("hidden");
+}
+
+function updateOverlayStatus(title: string, detail: string) {
+  const status = document.querySelector<HTMLElement>("#overlayStatus");
+  if (!status) return;
+  status.classList.remove("hidden");
+  status.innerHTML = `<b>${escapeHtml(title)}</b><span>${escapeHtml(detail)}</span>`;
 }
 
 function makeCaptureKey(capture: CaptureResponse) {
@@ -312,6 +382,82 @@ function makeCaptureKey(capture: CaptureResponse) {
       )
       .join("|")
   ].join("::");
+}
+
+function approximateHighlights(capture: CaptureResponse): Highlight[] {
+  if (!capture.sourceRect || capture.terms.length === 0 || !isVisibleRect(capture.sourceRect)) {
+    return [];
+  }
+
+  const rect = clampRectToViewport(screenRectToCssRect(capture.sourceRect));
+  const lines = capture.text.split(/\r?\n/);
+  const lineHeight = Math.max(18, Math.min(30, (rect.bottom - rect.top) / Math.max(1, Math.min(lines.length, 12))));
+  const highlights: Highlight[] = [];
+  let offset = 0;
+
+  for (const line of lines) {
+    const lineStart = offset;
+    const lineEnd = lineStart + line.length;
+    const lineIndex = highlights.length;
+    for (const term of capture.terms) {
+      if (term.end <= lineStart || term.start >= lineEnd) continue;
+      const startInLine = Math.max(0, term.start - lineStart);
+      const endInLine = Math.min(line.length, term.end - lineStart);
+      const denominator = Math.max(1, line.length);
+      const left = rect.left + (startInLine / denominator) * (rect.right - rect.left);
+      const right = rect.left + (endInLine / denominator) * (rect.right - rect.left);
+      const top = rect.top + lineIndex * lineHeight;
+      highlights.push({
+        term: term.term,
+        rect: {
+          left,
+          top,
+          right: Math.max(left + 10, right),
+          bottom: top + lineHeight
+        }
+      });
+    }
+    offset = lineEnd + 1;
+    if (highlights.length >= 24) break;
+  }
+
+  return highlights.slice(0, 24);
+}
+
+function screenRectToCssRect(rect: ScreenRect): ScreenRect {
+  const scale = screenCoordinateScale(rect);
+  return {
+    left: rect.left / scale,
+    top: rect.top / scale,
+    right: rect.right / scale,
+    bottom: rect.bottom / scale
+  };
+}
+
+function screenCoordinateScale(rect: ScreenRect) {
+  const dpr = window.devicePixelRatio || 1;
+  if (dpr <= 1) return 1;
+
+  const outsideCssViewport = rect.right > window.innerWidth + 8 || rect.bottom > window.innerHeight + 8;
+  const fitsAfterScaling = rect.right / dpr <= window.innerWidth + 8 && rect.bottom / dpr <= window.innerHeight + 8;
+  return outsideCssViewport && fitsAfterScaling ? dpr : 1;
+}
+
+function isVisibleRect(rect: ScreenRect) {
+  return rect.right > rect.left && rect.bottom > rect.top;
+}
+
+function clampRectToViewport(rect: ScreenRect): ScreenRect {
+  return {
+    left: Math.max(0, Math.min(window.innerWidth - 8, rect.left)),
+    top: Math.max(0, Math.min(window.innerHeight - 8, rect.top)),
+    right: Math.max(8, Math.min(window.innerWidth, rect.right)),
+    bottom: Math.max(8, Math.min(window.innerHeight, rect.bottom))
+  };
+}
+
+function makeCaptureLogKey(capture: CaptureResponse) {
+  return [capture.text.slice(0, 240), capture.terms.map((term) => term.term).join("|")].join("::");
 }
 
 function readLatestCapture(): CaptureResponse | null {
@@ -390,6 +536,50 @@ async function testLlmFromSettings(root: HTMLElement) {
     appendTestLog("error", "LLM 测试失败", error instanceof Error ? error.message : String(error));
   }
   renderTestLogs(root);
+}
+
+async function testCaptureFromSettings(root: HTMLDivElement) {
+  appendTestLog("info", "准备测试屏幕捕获", "请在 1.5 秒内把鼠标移到要识别的网页文本上。");
+  renderTestLogs(root);
+  try {
+    await wait(1500);
+    const capture = await invoke<CaptureResponse>("capture_terms");
+    localStorage.setItem("termlens.latestCapture", JSON.stringify(capture));
+    logCaptureResult(capture);
+  } catch (error) {
+    appendTestLog("error", "屏幕捕获失败", error instanceof Error ? error.message : String(error));
+  }
+  updateSettingsMetrics(root);
+  renderTestLogs(root);
+}
+
+async function testSelectionFromSettings(root: HTMLDivElement) {
+  appendTestLog("info", "开始测试选中文本", "请先在任意窗口选中词或短语，再回到此处点击测试。全局热键是 Ctrl+Alt+E。");
+  renderTestLogs(root);
+  try {
+    const capture = await invoke<CaptureResponse>("capture_selection_terms");
+    localStorage.setItem("termlens.latestCapture", JSON.stringify(capture));
+    logCaptureResult(capture);
+  } catch (error) {
+    appendTestLog("error", "选中文本测试失败", error instanceof Error ? error.message : String(error));
+  }
+  updateSettingsMetrics(root);
+  renderTestLogs(root);
+}
+
+function logCaptureResult(capture: CaptureResponse) {
+  const terms = capture.terms.map((term) => term.term).join(", ") || "无";
+  const preview = capture.text.trim().slice(0, 600) || "未捕获到文本";
+  const approximateCount = capture.highlights.length === 0 ? approximateHighlights(capture).length : 0;
+  appendTestLog(
+    capture.terms.length > 0 ? "success" : "info",
+    `捕获完成：${capture.terms.length} 个词条，${capture.highlights.length} 个精确矩形${approximateCount ? `，${approximateCount} 个近似矩形` : ""}`,
+    [`词条：${terms}`, `文本预览：${preview}`].join("\n")
+  );
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 async function explanationForCapture(capture: CaptureResponse): Promise<Explanation | null> {

@@ -60,6 +60,8 @@ impl TextSourceKind {
     }
 }
 
+const UIA_PARENT_SEARCH_DEPTH: usize = 10;
+
 pub trait TextSource {
     fn capture(&self) -> Result<TextCapture, String>;
 }
@@ -159,6 +161,10 @@ pub fn capture_smart_text() -> Result<TextCapture, String> {
     Err(errors.join("；"))
 }
 
+fn has_detectable_terms(text: &str) -> bool {
+    !detect_terms(text).is_empty()
+}
+
 fn capture_uia_pointed_text() -> Result<(String, ScreenRect, Vec<TermSourceRect>), String> {
     let _com = ComApartment::init()?;
     let mut point = POINT::default();
@@ -170,22 +176,103 @@ fn capture_uia_pointed_text() -> Result<(String, ScreenRect, Vec<TermSourceRect>
         let element = automation
             .ElementFromPoint(point)
             .map_err(|err| err.message().to_string())?;
-        let rect = element
-            .CurrentBoundingRectangle()
-            .map_err(|err| err.message().to_string())?;
-        let (text, term_rects) = text_from_element(&element)
+        let (text, source_rect, term_rects) = text_from_element_tree(&automation, &element)
             .ok_or_else(|| "鼠标下元素没有暴露可访问文本".to_string())?;
         Ok((
             text,
-            ScreenRect {
-                left: rect.left as f32,
-                top: rect.top as f32,
-                right: rect.right as f32,
-                bottom: rect.bottom as f32,
-            },
+            source_rect,
             term_rects,
         ))
     }
+}
+
+fn text_from_element_tree(
+    automation: &IUIAutomation,
+    element: &IUIAutomationElement,
+) -> Option<(String, ScreenRect, Vec<TermSourceRect>)> {
+    if let Some(result) = text_from_element_with_rect(element) {
+        return Some(result);
+    }
+
+    if let Ok(result) = unsafe { automation.ControlViewWalker() } {
+        if let Some(text) = text_from_parents(&result, element) {
+            return Some(text);
+        }
+    }
+
+    if let Ok(result) = unsafe { automation.RawViewWalker() } {
+        if let Some(text) = text_from_parents(&result, element) {
+            return Some(text);
+        }
+    }
+
+    None
+}
+
+fn text_from_parents(
+    walker: &windows::Win32::UI::Accessibility::IUIAutomationTreeWalker,
+    element: &IUIAutomationElement,
+) -> Option<(String, ScreenRect, Vec<TermSourceRect>)> {
+    let mut current = element.clone();
+    for _ in 0..UIA_PARENT_SEARCH_DEPTH {
+        let Ok(parent) = (unsafe { walker.GetParentElement(&current) }) else {
+            break;
+        };
+
+        if let Some(result) = text_from_basic_properties_with_rect(&parent) {
+            if has_detectable_terms(&result.0) {
+                return Some(result);
+            }
+        }
+
+        if let Some(result) = text_from_element_with_rect(&parent) {
+            return Some(result);
+        }
+        current = parent;
+    }
+    None
+}
+
+fn text_from_element_with_rect(
+    element: &IUIAutomationElement,
+) -> Option<(String, ScreenRect, Vec<TermSourceRect>)> {
+    let (text, term_rects) = text_from_element(element)?;
+    let source_rect = element_rect(element)
+        .or_else(|| first_rect_for_term_ranges(&term_rects))
+        .unwrap_or(ScreenRect {
+            left: 0.0,
+            top: 0.0,
+            right: 0.0,
+            bottom: 0.0,
+        });
+    Some((text, source_rect, term_rects))
+}
+
+fn text_from_basic_properties_with_rect(
+    element: &IUIAutomationElement,
+) -> Option<(String, ScreenRect, Vec<TermSourceRect>)> {
+    let text = text_from_basic_properties(element)?;
+    let source_rect = element_rect(element)?;
+    Some((text, source_rect, Vec::new()))
+}
+
+fn element_rect(element: &IUIAutomationElement) -> Option<ScreenRect> {
+    let rect = unsafe { element.CurrentBoundingRectangle().ok()? };
+    let screen_rect = ScreenRect {
+        left: rect.left as f32,
+        top: rect.top as f32,
+        right: rect.right as f32,
+        bottom: rect.bottom as f32,
+    };
+    if screen_rect.right > screen_rect.left && screen_rect.bottom > screen_rect.top {
+        Some(screen_rect)
+    } else {
+        None
+    }
+}
+
+fn first_rect_for_term_ranges(term_rects: &[TermSourceRect]) -> Option<ScreenRect> {
+    term_rects.first().map(|term_rect| term_rect.rect)
 }
 
 fn text_from_element(element: &IUIAutomationElement) -> Option<(String, Vec<TermSourceRect>)> {
@@ -193,6 +280,10 @@ fn text_from_element(element: &IUIAutomationElement) -> Option<(String, Vec<Term
         return Some(text_pattern_result);
     }
 
+    text_from_basic_properties(element).map(|text| (text, Vec::new()))
+}
+
+fn text_from_basic_properties(element: &IUIAutomationElement) -> Option<String> {
     let mut values = Vec::new();
 
     if let Ok(name) = unsafe { element.CurrentName() } {
@@ -210,7 +301,6 @@ fn text_from_element(element: &IUIAutomationElement) -> Option<(String, Vec<Term
         .map(|value| value.trim().to_string())
         .filter(|value| value.len() >= 2)
         .max_by_key(|value| value.len())
-        .map(|text| (text, Vec::new()))
 }
 
 fn text_from_text_pattern(element: &IUIAutomationElement) -> Option<(String, Vec<TermSourceRect>)> {
@@ -254,7 +344,7 @@ fn term_rects_from_text_range(
             continue;
         };
 
-        if let Some(rect) = first_bounding_rect(&term_range) {
+        if let Some(rect) = first_bounding_rect(&term_range).filter(|rect| plausible_term_rect(rect, &term.term)) {
             rects.push(TermSourceRect {
                 term: term.term,
                 rect,
@@ -267,6 +357,18 @@ fn term_rects_from_text_range(
     }
 
     rects
+}
+
+fn plausible_term_rect(rect: &ScreenRect, term: &str) -> bool {
+    let width = rect.right - rect.left;
+    let height = rect.bottom - rect.top;
+    if width <= 1.0 || height <= 1.0 {
+        return false;
+    }
+
+    let term_len = term.chars().count().max(1) as f32;
+    let max_width = (term_len * height * 1.4).max(32.0);
+    height <= 44.0 && width <= max_width
 }
 
 fn first_bounding_rect(range: &IUIAutomationTextRange) -> Option<ScreenRect> {

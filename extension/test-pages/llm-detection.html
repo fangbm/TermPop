@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TermLens LLM-only Detection Test</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Arial, Helvetica, sans-serif;
+        line-height: 1.55;
+      }
+
+      body {
+        margin: 0;
+        background: #f5f7fb;
+        color: #1e293b;
+      }
+
+      main {
+        max-width: 860px;
+        margin: 48px auto;
+        padding: 32px;
+        background: #ffffff;
+        border: 1px solid #d8dee8;
+        border-radius: 8px;
+      }
+
+      h1 {
+        margin: 0 0 16px;
+        font-size: 28px;
+      }
+
+      .note {
+        margin: 0 0 24px;
+        padding: 12px 14px;
+        background: #eef5ff;
+        border: 1px solid #cfe0ff;
+        border-radius: 6px;
+        color: #334155;
+      }
+
+      article {
+        font-size: 18px;
+      }
+
+      code {
+        padding: 2px 5px;
+        background: #eef2f7;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1 data-termlens-ignore>TermLens LLM-only Detection Test</h1>
+      <p class="note" data-termlens-ignore>
+        Open this page with <code>?termlensDetection=llm&amp;termlensCache=0</code>.
+        The extension should skip Rust/local cached terms and ask the LLM to extract terms from normal web text.
+      </p>
+
+      <article data-termlens-scan>
+        <p>
+          The Transformer is a network architecture based entirely on attention mechanisms,
+          dispensing with recurrence and convolutions. Experiments on machine translation
+          tasks show that these models are more parallelizable and can achieve strong BLEU
+          scores on WMT 2014 English-to-German and English-to-French benchmarks.
+        </p>
+
+        <p>
+          Recurrent neural networks, convolutional neural networks, encoder-decoder models,
+          multi-head attention, positional encoding, scaled dot-product attention, residual
+          connections, layer normalization, and softmax are all important terms in this
+          context. The paper also discusses GPUs, TPUs, sequence transduction, self-attention,
+          and auto-regressive decoding.
+        </p>
+
+        <p>
+          A good LLM detector should prefer terms such as RNN, CNN, BLEU, WMT 2014,
+          Transformer, multi-head attention, positional encoding, self-attention,
+          sequence transduction, encoder-decoder, and scaled dot-product attention.
+          It should avoid generic words such as task, data, result, model, English,
+          French, and German unless they are part of a longer technical phrase.
+        </p>
+      </article>
+    </main>
+  </body>
+</html>

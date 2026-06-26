@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TermLens PDF Viewer</title>
+  </head>
+  <body>
+    <header class="viewer-toolbar">
+      <div>
+        <h1>词镜 TermLens PDF</h1>
+        <p id="viewer-status">准备加载 PDF...</p>
+      </div>
+      <button id="reload-button" type="button" title="重新识别">重新识别</button>
+    </header>
+    <main id="pdf-root" class="pdf-root"></main>
+    <script type="module" src="./pdf-viewer.ts"></script>
+  </body>
+</html>

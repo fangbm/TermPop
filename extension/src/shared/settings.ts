@@ -1,7 +1,7 @@
 import type { ExtensionSettings, LlmSettings, TermLensMode } from "./types";
 
 export const DEFAULT_SETTINGS: ExtensionSettings = {
-  mode: "auto",
+  mode: "hover",
   llm: {
     provider: "mock",
     apiKey: "",
@@ -19,15 +19,26 @@ const SETTINGS_KEY = "termlens.settings";
 
 export async function getSettings(): Promise<ExtensionSettings> {
   const stored = await chrome.storage.local.get(SETTINGS_KEY);
-  const partial = stored[SETTINGS_KEY] as Partial<ExtensionSettings> | undefined;
+  const partial = stored[SETTINGS_KEY] as (Partial<ExtensionSettings> & { mode?: string }) | undefined;
   return {
     ...DEFAULT_SETTINGS,
     ...partial,
+    mode: normalizeMode(partial?.mode),
     llm: {
       ...DEFAULT_SETTINGS.llm,
       ...partial?.llm
     }
   };
+}
+
+function normalizeMode(mode: string | undefined): TermLensMode {
+  if (mode === "selection" || mode === "hybrid" || mode === "hover") {
+    return mode;
+  }
+  if (mode === "auto") {
+    return "hover";
+  }
+  return DEFAULT_SETTINGS.mode;
 }
 
 export async function setMode(mode: TermLensMode): Promise<void> {

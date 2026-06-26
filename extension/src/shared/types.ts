@@ -1,6 +1,6 @@
 export type TermType = "Tech" | "Brand" | "Person" | "Place" | "Acronym" | "Custom";
 export type DetectionSource = "Rule" | "Dictionary" | "Ner" | "User";
-export type TermLensMode = "auto" | "hover" | "hybrid";
+export type TermLensMode = "hover" | "selection" | "hybrid";
 export type LlmProvider = "mock" | "openai" | "kimi" | "openai-compatible" | "anthropic";
 export type ExplanationLanguage = "auto" | "zh-CN" | "en";
 
@@ -61,15 +61,37 @@ export interface ExplainResponse {
   error?: string;
 }
 
+export interface ExplainSelectionRequest {
+  type: "TERMLENS_EXPLAIN_SELECTION";
+  term: string;
+}
+
+export interface ExplainSelectionResponse {
+  ok: boolean;
+  error?: string;
+}
+
 export interface DetectTermsRequest {
   type: "TERMLENS_DETECT_TERMS";
   text: string;
+  detectionMode?: "primary" | "llm" | "all";
 }
 
 export interface DetectTermsResponse {
   ok: boolean;
   terms?: DetectedTerm[];
+  debug?: DetectTermsDebug;
   error?: string;
+}
+
+export interface DetectTermsDebug {
+  rawCandidateCount?: number;
+  matchedCount?: number;
+  rejectedCount?: number;
+  unmatchedCount?: number;
+  chunkCount?: number;
+  sampleCandidates?: string[];
+  sampleMatchedTerms?: string[];
 }
 
 export interface GetCachedTermsRequest {

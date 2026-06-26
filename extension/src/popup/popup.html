@@ -12,9 +12,13 @@
         <p>AI 词汇解释助手</p>
       </header>
       <section class="mode-group" aria-label="检测模式">
-        <button type="button" data-mode="auto">自动</button>
-        <button type="button" data-mode="hover">悬停</button>
-        <button type="button" data-mode="hybrid">混合</button>
+        <button type="button" data-mode="hover" data-label-zh="悬停" data-label-en="Hover">悬停</button>
+        <button type="button" data-mode="selection" data-label-zh="划词" data-label-en="Selection">划词</button>
+        <button type="button" data-mode="hybrid" data-label-zh="混合" data-label-en="Hybrid">混合</button>
+      </section>
+      <section class="pdf-tools">
+        <button id="open-pdf-viewer" type="button">用 TermLens 打开当前 PDF</button>
+        <p>适用于网页 PDF 或本地 PDF 文件。浏览器可能需要为插件开启“允许访问文件网址”。</p>
       </section>
       <form id="llm-form" class="settings-form">
         <label>
@@ -65,7 +69,7 @@
           并发限制
           <input id="max-concurrency" name="maxConcurrency" type="number" min="1" step="1" />
         </label>
-        <button class="save-button" type="submit">保存 LLM 设置</button>
+        <p class="auto-save-hint">LLM 设置会自动保存。</p>
       </form>
       <p id="status" role="status"></p>
     </main>

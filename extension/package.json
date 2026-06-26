@@ -11,5 +11,8 @@
     "@types/chrome": "^0.0.306",
     "typescript": "^5.8.3",
     "vite": "^6.3.5"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^6.0.227"
   }
 }

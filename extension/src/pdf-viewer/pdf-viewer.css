@@ -1,0 +1,145 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #eef2f7;
+  color: #172033;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.viewer-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 64px;
+  padding: 12px 18px;
+  border-bottom: 1px solid #d7dee9;
+  background: rgba(248, 250, 252, 0.96);
+  backdrop-filter: blur(10px);
+}
+
+.viewer-toolbar h1 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.viewer-toolbar p {
+  margin: 3px 0 0;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.viewer-toolbar button {
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #334155;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.pdf-root {
+  display: grid;
+  justify-content: center;
+  gap: 18px;
+  padding: 22px;
+}
+
+.pdf-page {
+  position: relative;
+  overflow: hidden;
+  background: #ffffff;
+  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.18);
+}
+
+.pdf-page canvas {
+  display: block;
+}
+
+.pdf-highlight-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+
+.pdf-text-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  opacity: 0;
+  line-height: 1;
+  pointer-events: none;
+  text-align: initial;
+  transform-origin: 0 0;
+}
+
+.pdf-text-layer :is(span, br) {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  transform-origin: 0% 0%;
+  user-select: none;
+}
+
+.pdf-text-layer > :not(.markedContent),
+.pdf-text-layer .markedContent span:not(.markedContent) {
+  --font-height: 0;
+  --scale-x: 1;
+  --rotate: 0deg;
+  font-size: calc(var(--total-scale-factor) * var(--font-height));
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x));
+}
+
+.pdf-text-layer .markedContent {
+  display: contents;
+}
+
+.pdf-highlight {
+  appearance: none;
+  position: absolute;
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: rgba(255, 214, 64, 0.32);
+  box-shadow:
+    inset 0 -2px 0 rgba(245, 156, 0, 0.9),
+    0 0 0 1px rgba(245, 156, 0, 0.16);
+  color: transparent;
+  cursor: help;
+}
+
+.pdf-highlight:focus {
+  outline: none;
+}
+
+.pdf-highlight:focus-visible {
+  outline: 1px solid rgba(37, 99, 235, 0.55);
+  outline-offset: 1px;
+}
+
+.pdf-highlight[data-term-type="Brand"] {
+  background: rgba(251, 146, 60, 0.24);
+  box-shadow:
+    inset 0 -2px 0 rgba(217, 119, 6, 0.95),
+    0 0 0 1px rgba(217, 119, 6, 0.14);
+}
+
+.pdf-highlight[data-term-type="Acronym"] {
+  background: rgba(248, 113, 113, 0.22);
+  box-shadow:
+    inset 0 -2px 0 rgba(220, 38, 38, 0.9),
+    0 0 0 1px rgba(220, 38, 38, 0.14);
+}
