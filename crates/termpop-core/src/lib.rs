@@ -205,7 +205,7 @@ pub fn explain_term(term: &str, context: Option<&str>) -> Explanation {
     Explanation {
         term: normalized.to_string(),
         definition: format!(
-            "{} is a {} term that TermLens detected for explanation.{}",
+            "{} is a {} term that TermPop detected for explanation.{}",
             normalized,
             category.to_lowercase(),
             context_hint
@@ -389,10 +389,10 @@ mod tests {
     #[test]
     fn user_terms_are_custom() {
         let detector = TermDetector::new(DetectorConfig {
-            user_terms: vec!["TermLens".to_string()],
+            user_terms: vec!["TermPop".to_string()],
             min_confidence: 0.5,
         });
-        let terms = detector.detect("TermLens explains vocabulary.");
+        let terms = detector.detect("TermPop explains vocabulary.");
 
         assert_eq!(terms.len(), 1);
         assert_eq!(terms[0].term_type, TermType::Custom);

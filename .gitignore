@@ -3,11 +3,11 @@ dist/
 
 extension/node_modules/
 extension/dist/
-extension/termlens-edge-test.png
+extension/termpop-edge-test.png
 
-apps/termlens-tauri/node_modules/
-apps/termlens-tauri/dist/
-apps/termlens-tauri/src-tauri/gen/
+apps/termpop-tauri/node_modules/
+apps/termpop-tauri/dist/
+apps/termpop-tauri/src-tauri/gen/
 release/
 
 .env

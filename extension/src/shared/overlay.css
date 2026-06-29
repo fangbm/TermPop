@@ -1,4 +1,4 @@
-#termlens-overlay-root {
+#termpop-overlay-root {
   position: fixed;
   z-index: 900;
   display: none;
@@ -9,11 +9,11 @@
   line-height: 1.45;
 }
 
-#termlens-overlay-root.is-visible {
+#termpop-overlay-root.is-visible {
   display: block;
 }
 
-#termlens-overlay-root .termlens-card {
+#termpop-overlay-root .termpop-card {
   box-sizing: border-box;
   width: 100%;
   padding: 12px;
@@ -23,12 +23,12 @@
   box-shadow: 0 12px 32px rgba(15, 23, 42, 0.2);
 }
 
-#termlens-overlay-root .termlens-card-title {
+#termpop-overlay-root .termpop-card-title {
   font-size: 14px;
   font-weight: 700;
 }
 
-#termlens-overlay-root .termlens-card-header {
+#termpop-overlay-root .termpop-card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -36,7 +36,7 @@
   margin-bottom: 2px;
 }
 
-#termlens-overlay-root .termlens-refresh-button {
+#termpop-overlay-root .termpop-refresh-button {
   width: 24px;
   height: 24px;
   flex: 0 0 auto;
@@ -50,34 +50,34 @@
   cursor: pointer;
 }
 
-#termlens-overlay-root .termlens-refresh-button:hover {
+#termpop-overlay-root .termpop-refresh-button:hover {
   border-color: #2563eb;
   background: #eff6ff;
 }
 
-#termlens-overlay-root .termlens-category {
+#termpop-overlay-root .termpop-category {
   margin-bottom: 8px;
   color: #2563eb;
   font-size: 12px;
   font-weight: 600;
 }
 
-#termlens-overlay-root .termlens-definition {
+#termpop-overlay-root .termpop-definition {
   margin-bottom: 8px;
 }
 
-#termlens-overlay-root .termlens-example {
+#termpop-overlay-root .termpop-example {
   margin-bottom: 8px;
   color: #4b5563;
 }
 
-#termlens-overlay-root .termlens-related {
+#termpop-overlay-root .termpop-related {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
 
-#termlens-overlay-root .termlens-related span {
+#termpop-overlay-root .termpop-related span {
   padding: 2px 6px;
   border-radius: 999px;
   background: #eef2ff;
@@ -85,10 +85,10 @@
   font-size: 12px;
 }
 
-#termlens-overlay-root .termlens-muted {
+#termpop-overlay-root .termpop-muted {
   color: #6b7280;
 }
 
-#termlens-overlay-root .termlens-error {
+#termpop-overlay-root .termpop-error {
   color: #b91c1c;
 }

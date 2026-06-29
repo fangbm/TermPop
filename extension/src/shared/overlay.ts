@@ -15,7 +15,7 @@ interface Point {
   y: number;
 }
 
-export class TermLensOverlayController {
+export class TermPopOverlayController {
   private readonly root: HTMLDivElement;
   private readonly anchorSelector: string;
   private hideTimer: number | undefined;
@@ -30,6 +30,12 @@ export class TermLensOverlayController {
     this.anchorSelector = options.anchorSelector;
     this.root = document.createElement("div");
     this.root.id = options.rootId;
+    Object.assign(this.root.style, {
+      position: "fixed",
+      zIndex: "900",
+      display: "none",
+      width: "min(340px, calc(100vw - 24px))"
+    });
     this.root.addEventListener("mouseenter", () => {
       this.pointerOverCard = true;
       this.cancelHide();
@@ -46,13 +52,13 @@ export class TermLensOverlayController {
   }
 
   showLoading(anchor: HTMLElement, term: string, keepVisible = false, resetPlacement = false, pointer?: OverlayPointer): void {
-    this.render(anchor, `<div class="termlens-card-title">${escapeHtml(term)}</div><div class="termlens-muted">正在生成解释...</div>`, keepVisible, resetPlacement, pointer);
+    this.render(anchor, `<div class="termpop-card-title">${escapeHtml(term)}</div><div class="termpop-muted">正在生成解释...</div>`, keepVisible, resetPlacement, pointer);
   }
 
   showError(anchor: HTMLElement, term: string, message: string, keepVisible = false, resetPlacement = false, pointer?: OverlayPointer): void {
     this.render(
       anchor,
-      `<div class="termlens-card-title">${escapeHtml(term)}</div><div class="termlens-error">${escapeHtml(message)}</div>`,
+      `<div class="termpop-card-title">${escapeHtml(term)}</div><div class="termpop-error">${escapeHtml(message)}</div>`,
       keepVisible,
       resetPlacement,
       pointer
@@ -63,19 +69,19 @@ export class TermLensOverlayController {
     const related = explanation.related_terms.map((term) => `<span>${escapeHtml(term)}</span>`).join("");
     this.render(
       anchor,
-      `<div class="termlens-card-header">
-         <div class="termlens-card-title">${escapeHtml(explanation.term)}</div>
-         <button class="termlens-refresh-button" type="button" title="重新生成解释" aria-label="重新生成解释">↻</button>
+      `<div class="termpop-card-header">
+         <div class="termpop-card-title">${escapeHtml(explanation.term)}</div>
+         <button class="termpop-refresh-button" type="button" title="重新生成解释" aria-label="重新生成解释">↻</button>
        </div>
-       <div class="termlens-category">${escapeHtml(explanation.category)}</div>
-       <div class="termlens-definition">${escapeHtml(explanation.definition)}</div>
-       ${explanation.usage_example ? `<div class="termlens-example">${escapeHtml(explanation.usage_example)}</div>` : ""}
-       <div class="termlens-related">${related}</div>`,
+       <div class="termpop-category">${escapeHtml(explanation.category)}</div>
+       <div class="termpop-definition">${escapeHtml(explanation.definition)}</div>
+       ${explanation.usage_example ? `<div class="termpop-example">${escapeHtml(explanation.usage_example)}</div>` : ""}
+       <div class="termpop-related">${related}</div>`,
       keepVisible,
       resetPlacement,
       pointer
     );
-    this.root.querySelector<HTMLButtonElement>(".termlens-refresh-button")?.addEventListener("click", (event) => {
+    this.root.querySelector<HTMLButtonElement>(".termpop-refresh-button")?.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
       this.pin();
@@ -100,6 +106,7 @@ export class TermLensOverlayController {
     this.pinned = false;
     this.cancelHide();
     this.root.classList.remove("is-visible");
+    this.root.style.display = "none";
     this.pointerOverCard = false;
     this.currentAnchor = undefined;
     this.anchorPoint = undefined;
@@ -153,8 +160,9 @@ export class TermLensOverlayController {
       this.anchorPoint = { x: pointer.clientX, y: pointer.clientY };
     }
     this.cancelHide();
-    this.root.innerHTML = `<div class="termlens-card">${html}</div>`;
+    this.root.innerHTML = `<div class="termpop-card">${html}</div>`;
     this.root.classList.add("is-visible");
+    this.root.style.display = "block";
     this.positionNearAnchor();
   }
 
@@ -181,10 +189,12 @@ export class TermLensOverlayController {
     const anchorRect = getBestAnchorRect(anchor, this.anchorPoint);
     if (!isRectInViewport(anchorRect)) {
       this.root.classList.remove("is-visible");
+      this.root.style.display = "none";
       return;
     }
 
     this.root.classList.add("is-visible");
+    this.root.style.display = "block";
     const cardRect = this.root.getBoundingClientRect();
     const left = clamp(anchorRect.left + anchorRect.width / 2 - cardRect.width / 2, 12, Math.max(12, window.innerWidth - cardRect.width - 12));
     const anchorCenterY = anchorRect.top + anchorRect.height / 2;

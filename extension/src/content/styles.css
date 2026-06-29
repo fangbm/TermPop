@@ -1,22 +1,22 @@
-.termlens-highlight {
+.termpop-highlight {
   border-bottom: 2px dotted #2563eb;
   cursor: help;
   transition: background-color 120ms ease, border-bottom-color 120ms ease;
 }
 
-.termlens-highlight:hover {
+.termpop-highlight:hover {
   background: rgba(37, 99, 235, 0.12);
   border-bottom-style: solid;
 }
 
-.termlens-highlight[data-term-type="Brand"] {
+.termpop-highlight[data-term-type="Brand"] {
   border-bottom-color: #d97706;
 }
 
-.termlens-highlight[data-term-type="Acronym"] {
+.termpop-highlight[data-term-type="Acronym"] {
   border-bottom-color: #dc2626;
 }
 
-.termlens-highlight[data-term-type="Custom"] {
+.termpop-highlight[data-term-type="Custom"] {
   border-bottom-color: #4b5563;
 }

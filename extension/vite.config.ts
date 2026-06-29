@@ -24,7 +24,7 @@ export default defineConfig({
   },
   plugins: [
     {
-      name: "termlens-copy-static-extension-assets",
+      name: "termpop-copy-static-extension-assets",
       closeBundle() {
         mkdirSync(resolve(__dirname, "dist"), { recursive: true });
         mkdirSync(resolve(__dirname, "dist/assets"), { recursive: true });

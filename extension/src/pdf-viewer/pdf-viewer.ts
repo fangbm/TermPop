@@ -9,7 +9,7 @@ import type {
   ExplainResponse,
   Explanation
 } from "../shared/types";
-import { TermLensOverlayController } from "../shared/overlay";
+import { TermPopOverlayController } from "../shared/overlay";
 import { filterAllowedDetectedTerms } from "../shared/term-matching";
 import "../shared/overlay.css";
 import "./pdf-viewer.css";
@@ -61,7 +61,7 @@ const sourceUrl = new URLSearchParams(location.search).get("src") ?? "";
 const renderScale = Math.max(1.25, Math.min(window.devicePixelRatio || 1, 2));
 const HOVER_SHOW_DELAY_MS = 420;
 const HIGHLIGHT_CLASS = "pdf-highlight";
-const ROOT_ID = "termlens-overlay-root";
+const ROOT_ID = "termpop-overlay-root";
 const LLM_PAGE_DELAY_MS = 700;
 const LLM_NEARBY_PAGE_RADIUS = 1;
 const LLM_VIEWPORT_SCHEDULE_DELAY_MS = 250;
@@ -72,7 +72,7 @@ let activePdfPageStates: PdfPageState[] = [];
 let activePrimaryCount = 0;
 let llmSchedulerTimer: number | undefined;
 let llmQueueRunning = false;
-const overlay = new TermLensOverlayController({
+const overlay = new TermPopOverlayController({
   rootId: ROOT_ID,
   anchorSelector: `.${HIGHLIGHT_CLASS}`
 });
@@ -230,7 +230,7 @@ async function runViewportLlmQueue(): Promise<void> {
       } catch (error) {
         pageState.llmState = "failed";
         pageState.llmError = error instanceof Error ? error.message : String(error);
-        console.warn("TermLens PDF LLM detection failed", error);
+        console.warn("TermPop PDF LLM detection failed", error);
         setStatus(buildLlmStatus(`LLM 第 ${pageState.pageNumber} 页失败：${truncateStatus(pageState.llmError)}`));
       }
       await sleep(LLM_PAGE_DELAY_MS);
@@ -336,7 +336,7 @@ function isRotatedTextElement(element: HTMLElement): boolean {
 
 async function detectTerms(text: string, detectionMode: DetectTermsRequest["detectionMode"] = "all"): Promise<DetectedTerm[]> {
   const response = await chrome.runtime.sendMessage({
-    type: "TERMLENS_DETECT_TERMS",
+    type: "TERMPOP_DETECT_TERMS",
     text,
     detectionMode
   } satisfies DetectTermsRequest) as DetectTermsResponse;
@@ -486,7 +486,7 @@ async function showExplanation(anchor: HTMLElement, term: DetectedTerm, context:
 
   try {
     const response = await chrome.runtime.sendMessage({
-      type: "TERMLENS_EXPLAIN",
+      type: "TERMPOP_EXPLAIN",
       term: term.term,
       context: context.slice(0, 1600),
       cacheScope: `${sourceUrl}#page=${pageNumber}#term=${term.term.trim().toLocaleLowerCase()}`,

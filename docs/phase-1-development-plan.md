@@ -1,8 +1,8 @@
-# TermLens Phase 1 Development Plan
+# TermPop Phase 1 Development Plan
 
 ## Summary
 
-Phase 1 builds the first usable TermLens loop for Chrome and Edge:
+Phase 1 builds the first usable TermPop loop for Chrome and Edge:
 
 1. Scan browser page text.
 2. Detect technical and proper terms through the Rust core compiled to WASM.
@@ -14,9 +14,9 @@ Native desktop overlays, encrypted API key storage, persistent caches, and mobil
 ## Architecture
 
 ```text
-TermLens/
+TermPop/
 ├── crates/
-│   └── termlens-core/     # Rust core and WASM exports
+│   └── termpop-core/     # Rust core and WASM exports
 ├── extension/             # Manifest V3 browser extension
 └── docs/
 ```
@@ -25,7 +25,7 @@ The Rust crate owns the canonical data contracts and detection behavior. The bro
 
 ## Rust Core
 
-`termlens-core` provides:
+`termpop-core` provides:
 
 - `DetectedTerm`, `TermType`, `DetectionSource`, `Explanation`, and `DetectorConfig`.
 - Rule detection for languages, frameworks, cloud platforms, AI products, and common acronyms.
@@ -48,14 +48,14 @@ The extension targets Chrome/Edge Manifest V3.
 - The background worker caches mock explanations in memory for the current browser session.
 - LLM settings are configured in the popup. Supported providers are `mock`, `openai`, `kimi`, `openai-compatible`, and `anthropic`.
 - OpenAI, Kimi, and custom providers use OpenAI-compatible `/chat/completions`; Anthropic uses `/messages`.
-- If the provider is `mock` or no API key is configured, TermLens falls back to the Rust mock explanation.
+- If the provider is `mock` or no API key is configured, TermPop falls back to the Rust mock explanation.
 - API keys are currently stored in `chrome.storage.local`; this is suitable for local Phase 1 testing, not final secure storage.
 
 ## Commands
 
 ```powershell
 cargo test --workspace
-wasm-pack build crates/termlens-core --target web --out-dir ../../extension/src/wasm --features wasm
+wasm-pack build crates/termpop-core --target web --out-dir ../../extension/src/wasm --features wasm
 cd extension
 npm install
 npm run typecheck
@@ -67,7 +67,7 @@ Load `extension/dist` as an unpacked extension in Chrome or Edge.
 ## Acceptance Criteria
 
 - Rust tests pass.
-- WASM build creates `extension/src/wasm/termlens_core.js` and `termlens_core_bg.wasm`.
+- WASM build creates `extension/src/wasm/termpop_core.js` and `termpop_core_bg.wasm`.
 - Extension typecheck and production build pass.
 - On a page containing `Rust React AWS LLM ChatGPT`, detected terms are highlighted.
 - Hovering a highlighted term shows an explanation card.

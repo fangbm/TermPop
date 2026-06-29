@@ -1,5 +1,5 @@
 import { getSettings, setLlmSettings, setMode } from "../shared/settings";
-import type { ExplanationLanguage, LlmProvider, LlmSettings, TermLensMode } from "../shared/types";
+import type { ExplanationLanguage, LlmProvider, LlmSettings, TermPopMode } from "../shared/types";
 import "./popup.css";
 
 const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-mode]"));
@@ -32,7 +32,7 @@ async function init(): Promise<void> {
 
   for (const button of buttons) {
     button.addEventListener("click", () => {
-      const mode = button.dataset.mode as TermLensMode;
+      const mode = button.dataset.mode as TermPopMode;
       void saveMode(mode);
     });
   }
@@ -68,7 +68,7 @@ async function init(): Promise<void> {
   });
 }
 
-async function saveMode(mode: TermLensMode): Promise<void> {
+async function saveMode(mode: TermPopMode): Promise<void> {
   await setMode(mode);
   setActive(mode);
   if (status) {
@@ -76,7 +76,7 @@ async function saveMode(mode: TermLensMode): Promise<void> {
   }
 }
 
-function setActive(mode: TermLensMode): void {
+function setActive(mode: TermPopMode): void {
   for (const button of buttons) {
     button.classList.toggle("is-active", button.dataset.mode === mode);
   }
@@ -153,7 +153,7 @@ function collectLlmSettings(): LlmSettings {
 }
 
 function renderAppName(language: ExplanationLanguage): void {
-  const name = language === "en" ? "TermLens" : "词镜 TermLens";
+  const name = language === "en" ? "TermPop" : "TermPop";
   document.title = name;
   if (appTitle) {
     appTitle.textContent = name;

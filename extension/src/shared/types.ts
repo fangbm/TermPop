@@ -1,6 +1,6 @@
 export type TermType = "Tech" | "Brand" | "Person" | "Place" | "Acronym" | "Custom";
 export type DetectionSource = "Rule" | "Dictionary" | "Ner" | "User";
-export type TermLensMode = "hover" | "selection" | "hybrid";
+export type TermPopMode = "hover" | "selection" | "hybrid";
 export type LlmProvider = "mock" | "openai" | "kimi" | "openai-compatible" | "anthropic";
 export type ExplanationLanguage = "auto" | "zh-CN" | "en";
 
@@ -31,7 +31,7 @@ export interface Explanation {
 }
 
 export interface ExtensionSettings {
-  mode: TermLensMode;
+  mode: TermPopMode;
   llm: LlmSettings;
 }
 
@@ -48,7 +48,7 @@ export interface LlmSettings {
 }
 
 export interface ExplainRequest {
-  type: "TERMLENS_EXPLAIN";
+  type: "TERMPOP_EXPLAIN";
   term: string;
   context?: string;
   cacheScope?: string;
@@ -62,7 +62,7 @@ export interface ExplainResponse {
 }
 
 export interface ExplainSelectionRequest {
-  type: "TERMLENS_EXPLAIN_SELECTION";
+  type: "TERMPOP_EXPLAIN_SELECTION";
   term: string;
 }
 
@@ -72,7 +72,7 @@ export interface ExplainSelectionResponse {
 }
 
 export interface DetectTermsRequest {
-  type: "TERMLENS_DETECT_TERMS";
+  type: "TERMPOP_DETECT_TERMS";
   text: string;
   detectionMode?: "primary" | "llm" | "all";
 }
@@ -95,7 +95,7 @@ export interface DetectTermsDebug {
 }
 
 export interface GetCachedTermsRequest {
-  type: "TERMLENS_GET_CACHED_TERMS";
+  type: "TERMPOP_GET_CACHED_TERMS";
 }
 
 export interface GetCachedTermsResponse {
@@ -105,7 +105,7 @@ export interface GetCachedTermsResponse {
 }
 
 export interface AddCachedTermsRequest {
-  type: "TERMLENS_ADD_CACHED_TERMS";
+  type: "TERMPOP_ADD_CACHED_TERMS";
   terms: DetectedTerm[];
 }
 

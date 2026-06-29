@@ -1,4 +1,4 @@
-/* @ts-self-types="./termlens_core.d.ts" */
+/* @ts-self-types="./termpop_core.d.ts" */
 
 /**
  * @param {string} input
@@ -72,7 +72,7 @@ function __wbg_get_imports() {
     };
     return {
         __proto__: null,
-        "./termlens_core_bg.js": import0,
+        "./termpop_core_bg.js": import0,
     };
 }
 
@@ -242,7 +242,7 @@ async function __wbg_init(module_or_path) {
     }
 
     if (module_or_path === undefined) {
-        module_or_path = new URL('termlens_core_bg.wasm', import.meta.url);
+        module_or_path = new URL('termpop_core_bg.wasm', import.meta.url);
     }
     const imports = __wbg_get_imports();
 

@@ -1,4 +1,4 @@
-import initWasm, { detect_terms_json, explain_term_json } from "../wasm/termlens_core.js";
+import initWasm, { detect_terms_json, explain_term_json } from "../wasm/termpop_core.js";
 import { getSettings } from "../shared/settings";
 import { filterAllowedDetectedTerms, findAllowedOccurrences, findAllowedOccurrencesIgnoreCase } from "../shared/term-matching";
 import type {
@@ -22,14 +22,14 @@ import type {
 
 const explanationCache = new Map<string, Explanation>();
 const detectionCache = new Map<string, DetectedTerm[]>();
-const wasmReady = initWasm({ module_or_path: chrome.runtime.getURL("assets/termlens_core_bg.wasm") });
-const GLOBAL_TERM_CACHE_KEY = "termlens.globalTermCache";
-const EXPLANATION_CACHE_KEY = "termlens.explanationCache";
+const wasmReady = initWasm({ module_or_path: chrome.runtime.getURL("assets/termpop_core_bg.wasm") });
+const GLOBAL_TERM_CACHE_KEY = "termpop.globalTermCache";
+const EXPLANATION_CACHE_KEY = "termpop.explanationCache";
 const MAX_GLOBAL_CACHED_TERMS = 3000;
 const MAX_EXPLANATION_CACHE_ENTRIES = 5000;
 const EXPLANATION_CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
-const SETTINGS_KEY = "termlens.settings";
-const SELECTION_CONTEXT_MENU_ID = "termlens-explain-selection";
+const SETTINGS_KEY = "termpop.settings";
+const SELECTION_CONTEXT_MENU_ID = "termpop-explain-selection";
 const LLM_DETECTION_TIMEOUT_MS = 120000;
 const LLM_DETECTION_CHUNK_SIZE = 3000;
 const LLM_DETECTION_CHUNK_OVERLAP = 80;
@@ -48,7 +48,8 @@ const LLM_REJECTED_SIMPLE_TERMS = new Set([
   "german",
   "english"
 ]);
-let activeLlmRequests = 0;
+let activeExplanationRequests = 0;
+let activeDetectionRequests = 0;
 let globalTermCache: Map<string, CachedTermEntry> | undefined;
 let persistentExplanationCache: Map<string, CachedExplanationEntry> | undefined;
 const explanationQueue: LlmQueueEntry[] = [];
@@ -64,6 +65,7 @@ interface LlmRunOptions {
 interface LlmQueueEntry {
   start: () => void;
   signal: AbortSignal;
+  priority: LlmPriority;
   maxActiveRequests: number;
 }
 
@@ -112,11 +114,11 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
       }
       try {
         await chrome.tabs.sendMessage(tab.id as number, {
-          type: "TERMLENS_EXPLAIN_SELECTION",
+          type: "TERMPOP_EXPLAIN_SELECTION",
           term: info.selectionText ?? ""
         } satisfies ExplainSelectionRequest);
       } catch (error) {
-        console.warn("TermLens selection explain could not run on this page.", error);
+        console.warn("TermPop selection explain could not run on this page.", error);
       }
     });
   }
@@ -129,7 +131,7 @@ async function syncContextMenus(): Promise<void> {
 
 function syncSelectionContextMenu(settings: Awaited<ReturnType<typeof getSettings>>): void {
   const visible = settings.mode === "selection" || settings.mode === "hybrid";
-  const title = settings.llm.language === "en" ? "Explain selection with TermLens" : "用词镜解释选中文本";
+  const title = settings.llm.language === "en" ? "Explain selection with TermPop" : "用 TermPop 解释选中文本";
 
   chrome.contextMenus.update(SELECTION_CONTEXT_MENU_ID, { title, visible }, () => {
     if (!chrome.runtime.lastError) {
@@ -151,7 +153,7 @@ function syncSelectionContextMenu(settings: Awaited<ReturnType<typeof getSetting
 
 chrome.runtime.onMessage.addListener(
   (message: ExplainRequest | DetectTermsRequest | GetCachedTermsRequest | AddCachedTermsRequest, _sender, sendResponse) => {
-  if (message.type === "TERMLENS_GET_CACHED_TERMS") {
+  if (message.type === "TERMPOP_GET_CACHED_TERMS") {
     getCachedTerms()
       .then((terms) => sendResponse({ ok: true, terms } satisfies GetCachedTermsResponse))
       .catch((error: unknown) => {
@@ -161,7 +163,7 @@ chrome.runtime.onMessage.addListener(
     return true;
   }
 
-  if (message.type === "TERMLENS_ADD_CACHED_TERMS") {
+  if (message.type === "TERMPOP_ADD_CACHED_TERMS") {
     addGlobalCachedTerms(message.terms)
       .then(() => sendResponse({ ok: true } satisfies AddCachedTermsResponse))
       .catch((error: unknown) => {
@@ -171,7 +173,7 @@ chrome.runtime.onMessage.addListener(
     return true;
   }
 
-  if (message.type === "TERMLENS_DETECT_TERMS") {
+  if (message.type === "TERMPOP_DETECT_TERMS") {
     detectTerms(message.text, message.detectionMode ?? "all")
       .then((result) => sendResponse({ ok: true, terms: result.terms, debug: result.debug } satisfies DetectTermsResponse))
       .catch((error: unknown) => {
@@ -181,7 +183,7 @@ chrome.runtime.onMessage.addListener(
     return true;
   }
 
-  if (message.type !== "TERMLENS_EXPLAIN") {
+  if (message.type !== "TERMPOP_EXPLAIN") {
     return false;
   }
 
@@ -653,7 +655,7 @@ async function fetchLlmDetectedTerms(text: string, settings: LlmSettings): Promi
         );
 
     console.info(
-      `TermLens LLM detection raw response ${chunk.index + 1}/${chunks.length}`,
+      `TermPop LLM detection raw response ${chunk.index + 1}/${chunks.length}`,
       {
         provider: settings.provider,
         model: settings.model || defaultModel(settings.provider),
@@ -668,7 +670,7 @@ async function fetchLlmDetectedTerms(text: string, settings: LlmSettings): Promi
       parsed = parseDetectedTerms(content, chunk.text, chunk.start);
     } catch (error) {
       console.error(
-        `TermLens LLM detection parse failed ${chunk.index + 1}/${chunks.length}`,
+        `TermPop LLM detection parse failed ${chunk.index + 1}/${chunks.length}`,
         {
           error: error instanceof Error ? error.message : String(error),
           provider: settings.provider,
@@ -688,7 +690,7 @@ async function fetchLlmDetectedTerms(text: string, settings: LlmSettings): Promi
     debug.sampleCandidates = [...debug.sampleCandidates ?? [], ...parsed.debug.sampleCandidates].slice(0, 12);
     debug.sampleMatchedTerms = [...debug.sampleMatchedTerms ?? [], ...parsed.debug.sampleMatchedTerms].slice(0, 12);
     console.info(
-      `TermLens LLM detection chunk ${chunk.index + 1}/${chunks.length}: ${parsedTerms.length} matched terms`,
+      `TermPop LLM detection chunk ${chunk.index + 1}/${chunks.length}: ${parsedTerms.length} matched terms`,
       parsedTerms.map((term) => term.term)
     );
     terms.push(...parsedTerms);
@@ -749,15 +751,15 @@ async function runWithLlmConcurrency<T>(
     if (timeoutId !== undefined) {
       clearTimeout(timeoutId);
     }
-    releaseLlmSlot();
+    releaseLlmSlot(options.priority);
   }
 }
 
 async function acquireLlmSlot(settings: LlmSettings, priority: LlmPriority, signal: AbortSignal): Promise<void> {
   const limit = normalizeConcurrency(settings.maxConcurrency);
   const maxActiveRequests = maxActiveRequestsForPriority(priority, limit);
-  if (activeLlmRequests < maxActiveRequests) {
-    activeLlmRequests += 1;
+  if (activeRequestsForPriority(priority) < maxActiveRequests) {
+    incrementActiveRequests(priority);
     return;
   }
 
@@ -774,6 +776,7 @@ async function acquireLlmSlot(settings: LlmSettings, priority: LlmPriority, sign
 
     entry = {
       signal,
+      priority,
       maxActiveRequests,
       start: () => {
         cleanup();
@@ -782,7 +785,7 @@ async function acquireLlmSlot(settings: LlmSettings, priority: LlmPriority, sign
           scheduleNextLlmRequest();
           return;
         }
-        activeLlmRequests += 1;
+        incrementActiveRequests(priority);
         resolve();
       }
     };
@@ -800,7 +803,7 @@ function scheduleNextLlmRequest(): void {
 }
 
 function takeStartableEntry(queue: LlmQueueEntry[]): LlmQueueEntry | undefined {
-  const index = queue.findIndex((entry) => activeLlmRequests < entry.maxActiveRequests);
+  const index = queue.findIndex((entry) => activeRequestsForPriority(entry.priority) < entry.maxActiveRequests);
   if (index < 0) {
     return undefined;
   }
@@ -833,9 +836,31 @@ function maxActiveRequestsForPriority(priority: LlmPriority, limit: number): num
   return Math.max(limit - 1, 1);
 }
 
-function releaseLlmSlot(): void {
-  activeLlmRequests = Math.max(0, activeLlmRequests - 1);
+function releaseLlmSlot(priority: LlmPriority): void {
+  decrementActiveRequests(priority);
   scheduleNextLlmRequest();
+}
+
+function activeRequestsForPriority(priority: LlmPriority): number {
+  return priority === "explanation" ? activeExplanationRequests : activeDetectionRequests;
+}
+
+function incrementActiveRequests(priority: LlmPriority): void {
+  if (priority === "explanation") {
+    activeExplanationRequests += 1;
+    return;
+  }
+
+  activeDetectionRequests += 1;
+}
+
+function decrementActiveRequests(priority: LlmPriority): void {
+  if (priority === "explanation") {
+    activeExplanationRequests = Math.max(0, activeExplanationRequests - 1);
+    return;
+  }
+
+  activeDetectionRequests = Math.max(0, activeDetectionRequests - 1);
 }
 
 function normalizeConcurrency(value: number): number {
@@ -938,7 +963,7 @@ function parseDetectedTerms(content: string, sourceText: string, sourceOffset = 
   }
 
   console.info(
-    `TermLens LLM detection parsed ${candidates.length} candidates, matched ${results.length}, rejected ${rejected}, unmatched ${unmatched}`,
+    `TermPop LLM detection parsed ${candidates.length} candidates, matched ${results.length}, rejected ${rejected}, unmatched ${unmatched}`,
     candidates.map((candidate) => candidate.term).filter(Boolean).slice(0, 20)
   );
   const terms = dedupeDetectedTerms(results);
@@ -1432,12 +1457,34 @@ function isParseableJson(value: string): boolean {
 
 async function formatProviderError(response: Response): Promise<string> {
   const text = await response.text();
+  const fallback = providerErrorFallback(response);
   try {
     const json = JSON.parse(text) as { error?: { message?: string }; message?: string };
-    return json.error?.message || json.message || `${response.status} ${response.statusText}`;
+    const message = (json.error?.message || json.message || "").trim();
+    if (message && message.toLowerCase() !== "unauthorized") {
+      return message;
+    }
+    return fallback;
   } catch {
-    return text || `${response.status} ${response.statusText}`;
+    const message = text.trim();
+    if (message && message.toLowerCase() !== "unauthorized") {
+      return message;
+    }
+    return fallback;
   }
+}
+
+function providerErrorFallback(response: Response): string {
+  if (response.status === 401) {
+    return "LLM API 授权失败，请检查插件设置里的 API Key、Base URL 和模型。";
+  }
+  if (response.status === 403) {
+    return "LLM API 拒绝访问，请检查 API Key 权限或账号状态。";
+  }
+  if (response.status === 429) {
+    return "LLM API 请求过于频繁，请稍后再试。";
+  }
+  return `LLM API 请求失败：${response.status} ${response.statusText}`;
 }
 
 function normalizeBaseUrl(baseUrl: string): string {

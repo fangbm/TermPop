@@ -1,4 +1,4 @@
-import type { ExtensionSettings, LlmSettings, TermLensMode } from "./types";
+import type { ExtensionSettings, LlmSettings, TermPopMode } from "./types";
 
 export const DEFAULT_SETTINGS: ExtensionSettings = {
   mode: "hover",
@@ -15,7 +15,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   }
 };
 
-const SETTINGS_KEY = "termlens.settings";
+const SETTINGS_KEY = "termpop.settings";
 
 export async function getSettings(): Promise<ExtensionSettings> {
   const stored = await chrome.storage.local.get(SETTINGS_KEY);
@@ -31,7 +31,7 @@ export async function getSettings(): Promise<ExtensionSettings> {
   };
 }
 
-function normalizeMode(mode: string | undefined): TermLensMode {
+function normalizeMode(mode: string | undefined): TermPopMode {
   if (mode === "selection" || mode === "hybrid" || mode === "hover") {
     return mode;
   }
@@ -41,7 +41,7 @@ function normalizeMode(mode: string | undefined): TermLensMode {
   return DEFAULT_SETTINGS.mode;
 }
 
-export async function setMode(mode: TermLensMode): Promise<void> {
+export async function setMode(mode: TermPopMode): Promise<void> {
   const settings = await getSettings();
   await chrome.storage.local.set({
     [SETTINGS_KEY]: {
