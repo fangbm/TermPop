@@ -288,7 +288,7 @@ function Nav({
             <a href={GITHUB_URL}>{t.nav.github}</a>
           </div>
           <label className="language-select">
-            <span className="sr-only">{t.nav.languageLabel}</span>
+            <span>Language</span>
             <select
               aria-label={t.nav.languageLabel}
               value={language}

@@ -114,41 +114,53 @@ main {
 }
 
 .language-select {
+  gap: 9px;
+  min-height: 42px;
+  padding: 0 13px 0 16px;
+  color: #344054;
+  background: rgba(255, 255, 255, 0.74);
   border-radius: 999px;
-}
-
-.language-select select {
-  min-height: 36px;
-  padding: 0 34px 0 14px;
-  border: 0;
-  border-radius: 999px;
-  color: var(--ink);
-  background:
-    linear-gradient(45deg, transparent 50%, #667085 50%) calc(100% - 15px) 50% / 6px 6px no-repeat,
-    linear-gradient(135deg, #667085 50%, transparent 50%) calc(100% - 10px) 50% / 6px 6px no-repeat,
-    rgba(255, 255, 255, 0.64);
   box-shadow:
-    inset 0 0 0 1px rgba(17, 24, 39, 0.08),
-    0 10px 28px rgba(24, 39, 75, 0.06);
-  appearance: none;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 750;
-  cursor: pointer;
+    inset 0 0 0 1px rgba(37, 99, 235, 0.16),
+    0 10px 28px rgba(24, 39, 75, 0.07);
+  font-size: 15px;
+  font-weight: 760;
   transition:
     background-color 180ms ease,
     box-shadow 180ms ease,
     color 180ms ease;
 }
 
+.language-select:hover {
+  color: var(--blue);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow:
+    inset 0 0 0 1px rgba(37, 99, 235, 0.28),
+    0 14px 36px rgba(37, 99, 235, 0.1);
+}
+
+.language-select select {
+  min-height: 42px;
+  padding: 0 28px 0 0;
+  border: 0;
+  border-radius: 999px;
+  color: var(--ink);
+  background:
+    linear-gradient(45deg, transparent 50%, #667085 50%) calc(100% - 15px) 50% / 6px 6px no-repeat,
+    linear-gradient(135deg, #667085 50%, transparent 50%) calc(100% - 10px) 50% / 6px 6px no-repeat;
+  box-shadow: none;
+  appearance: none;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 760;
+  cursor: pointer;
+  transition: color 180ms ease;
+}
+
 .language-select select:hover {
   background:
     linear-gradient(45deg, transparent 50%, var(--blue) 50%) calc(100% - 15px) 50% / 6px 6px no-repeat,
-    linear-gradient(135deg, var(--blue) 50%, transparent 50%) calc(100% - 10px) 50% / 6px 6px no-repeat,
-    rgba(255, 255, 255, 0.9);
-  box-shadow:
-    inset 0 0 0 1px rgba(37, 99, 235, 0.2),
-    0 12px 32px rgba(37, 99, 235, 0.1);
+    linear-gradient(135deg, var(--blue) 50%, transparent 50%) calc(100% - 10px) 50% / 6px 6px no-repeat;
 }
 
 .language-select select:focus-visible {
@@ -566,12 +578,16 @@ main {
   }
 
   .language-select {
-    font-size: 12px;
+    gap: 7px;
+    min-height: 40px;
+    padding: 0 10px 0 12px;
+    font-size: 14px;
   }
 
   .language-select select {
-    min-height: 34px;
-    padding-left: 12px;
+    min-height: 40px;
+    padding-right: 26px;
+    font-size: 14px;
   }
 
   .hero {
