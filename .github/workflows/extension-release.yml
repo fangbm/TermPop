@@ -2,9 +2,14 @@ name: Build Extension Release
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - "v*"
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, for example v0.1.0"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -33,6 +38,39 @@ jobs:
       - name: Install wasm-pack
         run: cargo install wasm-pack --locked
 
+      - name: Resolve release version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            version="${{ inputs.version }}"
+          else
+            version="${GITHUB_REF_NAME}"
+          fi
+
+          if [[ ! "${version}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Release version must look like v0.1.0; got '${version}'." >&2
+            exit 1
+          fi
+
+          manifest_version="$(node -p "require('./extension/src/manifest.json').version")"
+          package_version="$(node -p "require('./extension/package.json').version")"
+          expected_version="${version#v}"
+
+          if [ "${manifest_version}" != "${expected_version}" ]; then
+            echo "Manifest version ${manifest_version} does not match ${version}." >&2
+            exit 1
+          fi
+
+          if [ "${package_version}" != "${expected_version}" ]; then
+            echo "Extension package version ${package_version} does not match ${version}." >&2
+            exit 1
+          fi
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "plain_version=${expected_version}" >> "$GITHUB_OUTPUT"
+
       - name: Test Rust workspace
         run: cargo test --workspace
 
@@ -56,8 +94,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          short_sha="${GITHUB_SHA::7}"
-          package_name="termpop-extension-${short_sha}.zip"
+          package_name="termpop-extension-${{ steps.version.outputs.version }}.zip"
           mkdir -p artifacts
           (cd extension/dist && zip -r "../../artifacts/${package_name}" .)
           echo "package_name=${package_name}" >> "$GITHUB_OUTPUT"
@@ -68,13 +105,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          short_sha="${GITHUB_SHA::7}"
-          timestamp="$(date -u +'%Y%m%d%H%M%S')"
-          tag="extension-${timestamp}-${short_sha}"
-          previous_tag="$(git describe --tags --abbrev=0 --match 'extension-*' 2>/dev/null || true)"
+          version="${{ steps.version.outputs.version }}"
+          previous_tag="$(git tag --sort=-creatordate --merged HEAD --list 'v*' | grep -vx "${version}" | head -n 1 || true)"
 
           {
-            echo "## TermPop browser extension"
+            echo "## TermPop ${version}"
             echo
             echo "- Commit: \`${GITHUB_SHA}\`"
             echo "- Artifact: \`${{ steps.package.outputs.package_name }}\`"
@@ -88,8 +123,8 @@ jobs:
             fi
           } > release-notes.md
 
-          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          echo "release_name=TermPop Extension ${short_sha}" >> "$GITHUB_OUTPUT"
+          echo "tag=${version}" >> "$GITHUB_OUTPUT"
+          echo "release_name=${version}" >> "$GITHUB_OUTPUT"
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
