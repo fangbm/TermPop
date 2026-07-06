@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
 
@@ -28,10 +28,17 @@ export default defineConfig({
       closeBundle() {
         mkdirSync(resolve(__dirname, "dist"), { recursive: true });
         mkdirSync(resolve(__dirname, "dist/assets"), { recursive: true });
+        mkdirSync(resolve(__dirname, "dist/assets/icons"), { recursive: true });
         copyFileSync(resolve(__dirname, "src/manifest.json"), resolve(__dirname, "dist/manifest.json"));
         copyFileSync(resolve(__dirname, "src/content/loader.js"), resolve(__dirname, "dist/content-loader.js"));
         copyFileSync(resolve(__dirname, "dist/src/popup/popup.html"), resolve(__dirname, "dist/assets/popup.html"));
         copyFileSync(resolve(__dirname, "dist/src/pdf-viewer/pdf-viewer.html"), resolve(__dirname, "dist/assets/pdf-viewer.html"));
+        for (const iconFile of readdirSync(resolve(__dirname, "src/assets/icons"))) {
+          copyFileSync(
+            resolve(__dirname, "src/assets/icons", iconFile),
+            resolve(__dirname, "dist/assets/icons", iconFile)
+          );
+        }
       }
     }
   ]

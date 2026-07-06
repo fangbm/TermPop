@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">TermPop icon</title>
+  <desc id="desc">A browser page with a highlighted term, popup explanation, and TermPop T badge.</desc>
+  <defs>
+    <linearGradient id="page" x1="50" y1="34" x2="206" y2="222" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#eef4ff"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="68" y1="42" x2="196" y2="208" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3b82f6"/>
+      <stop offset="1" stop-color="#1164ef"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#1d4ed8" flood-opacity="0.16"/>
+    </filter>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#0f172a" flood-opacity="0.13"/>
+    </filter>
+  </defs>
+
+  <rect width="256" height="256" rx="54" fill="#f8fbff"/>
+  <rect x="34" y="32" width="188" height="194" rx="30" fill="url(#page)" filter="url(#shadow)"/>
+  <path d="M34 62c0-16.6 13.4-30 30-30h128c16.6 0 30 13.4 30 30v30H34V62z" fill="url(#blue)"/>
+  <circle cx="64" cy="62" r="7" fill="#ff5f57"/>
+  <circle cx="86" cy="62" r="7" fill="#ffcc33"/>
+  <circle cx="108" cy="62" r="7" fill="#30d158"/>
+
+  <rect x="58" y="112" width="72" height="12" rx="6" fill="#e5eaf3"/>
+  <rect x="58" y="139" width="42" height="12" rx="6" fill="#e5eaf3"/>
+  <rect x="122" y="139" width="54" height="17" rx="8.5" fill="#b7dcff" stroke="#5ca8ff" stroke-width="2"/>
+  <rect x="136" y="144" width="30" height="7" rx="3.5" fill="#6b7280"/>
+  <rect x="92" y="171" width="102" height="12" rx="6" fill="#e5eaf3"/>
+  <rect x="92" y="197" width="78" height="10" rx="5" fill="#e5eaf3"/>
+
+  <g filter="url(#soft)">
+    <rect x="112" y="82" width="104" height="60" rx="17" fill="#ffffff"/>
+    <path d="M154 141h20l-10 19z" fill="#ffffff"/>
+    <circle cx="135" cy="111" r="10" fill="#1d75f0"/>
+    <rect x="153" y="101" width="43" height="8" rx="4" fill="#7c8798"/>
+    <rect x="153" y="119" width="32" height="7" rx="3.5" fill="#c4ccd9"/>
+  </g>
+
+  <g filter="url(#soft)">
+    <rect x="43" y="105" width="94" height="94" rx="26" fill="url(#blue)"/>
+    <rect x="56" y="118" width="68" height="22" rx="5" fill="#ffffff"/>
+    <rect x="80" y="134" width="22" height="50" rx="5" fill="#ffffff"/>
+  </g>
+</svg>

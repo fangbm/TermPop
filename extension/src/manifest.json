@@ -3,6 +3,12 @@
   "name": "TermPop",
   "description": "AI 词汇解释助手：检测网页术语并在悬浮卡片中解释。",
   "version": "0.1.0",
+  "icons": {
+    "16": "assets/icons/icon-16.png",
+    "32": "assets/icons/icon-32.png",
+    "48": "assets/icons/icon-48.png",
+    "128": "assets/icons/icon-128.png"
+  },
   "permissions": ["storage", "activeTab", "contextMenus"],
   "host_permissions": ["<all_urls>"],
   "content_security_policy": {
@@ -14,7 +20,13 @@
   },
   "action": {
     "default_title": "TermPop",
-    "default_popup": "assets/popup.html"
+    "default_popup": "assets/popup.html",
+    "default_icon": {
+      "16": "assets/icons/icon-16.png",
+      "32": "assets/icons/icon-32.png",
+      "48": "assets/icons/icon-48.png",
+      "128": "assets/icons/icon-128.png"
+    }
   },
   "content_scripts": [
     {
