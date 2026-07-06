@@ -29,6 +29,18 @@ body {
   overflow-x: hidden;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 a {
   color: inherit;
   text-decoration: none;
@@ -102,31 +114,44 @@ main {
 }
 
 .language-select {
-  gap: 8px;
-  border: 1px solid rgba(17, 24, 39, 0.1);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 10px 28px rgba(24, 39, 75, 0.06);
-  color: #475467;
-  font-size: 13px;
-  font-weight: 700;
-  padding: 7px 11px 7px 14px;
 }
 
 .language-select select {
+  min-height: 36px;
+  padding: 0 34px 0 14px;
   border: 0;
+  border-radius: 999px;
   color: var(--ink);
-  background: transparent;
+  background:
+    linear-gradient(45deg, transparent 50%, #667085 50%) calc(100% - 15px) 50% / 6px 6px no-repeat,
+    linear-gradient(135deg, #667085 50%, transparent 50%) calc(100% - 10px) 50% / 6px 6px no-repeat,
+    rgba(255, 255, 255, 0.64);
+  box-shadow:
+    inset 0 0 0 1px rgba(17, 24, 39, 0.08),
+    0 10px 28px rgba(24, 39, 75, 0.06);
+  appearance: none;
   font: inherit;
+  font-size: 13px;
   font-weight: 750;
   cursor: pointer;
+  transition:
+    background-color 180ms ease,
+    box-shadow 180ms ease,
+    color 180ms ease;
 }
 
-.language-select select:focus {
-  outline: 0;
+.language-select select:hover {
+  background:
+    linear-gradient(45deg, transparent 50%, var(--blue) 50%) calc(100% - 15px) 50% / 6px 6px no-repeat,
+    linear-gradient(135deg, var(--blue) 50%, transparent 50%) calc(100% - 10px) 50% / 6px 6px no-repeat,
+    rgba(255, 255, 255, 0.9);
+  box-shadow:
+    inset 0 0 0 1px rgba(37, 99, 235, 0.2),
+    0 12px 32px rgba(37, 99, 235, 0.1);
 }
 
-.language-select:focus-within {
+.language-select select:focus-visible {
   outline: 2px solid rgba(37, 99, 235, 0.38);
   outline-offset: 2px;
 }
@@ -541,9 +566,12 @@ main {
   }
 
   .language-select {
-    gap: 6px;
-    padding: 6px 8px 6px 10px;
     font-size: 12px;
+  }
+
+  .language-select select {
+    min-height: 34px;
+    padding-left: 12px;
   }
 
   .hero {
