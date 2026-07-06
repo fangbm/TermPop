@@ -153,8 +153,8 @@ const copy: Record<Language, Copy> = {
       homeLabel: "TermPop 首页"
     },
     hero: {
-      eyebrow: "Chrome 和 Edge 浏览器插件",
-      title: "不离开页面，也能看懂术语。",
+      eyebrow: "适用于Chrome和Edge的浏览器插件",
+      title: "不离开页面，\n也能看懂术语。",
       copy:
         "TermPop 会在阅读时标出技术词、缩写、框架名和产品名，并在你停留的位置打开简洁的上下文解释卡。",
       download: "下载插件",
@@ -165,7 +165,7 @@ const copy: Record<Language, Copy> = {
       label: "TermPop 产品预览",
       address: "termpop.dev/docs/attention",
       kicker: "技术阅读",
-      title: "让注意力模型更容易读懂。",
+      title: "让Tramsformer更容易读懂。",
       textStart: "一个",
       textMiddle: "会使用",
       textEnd: "来建模 token 之间的关系。TermPop 可以在阅读中解释",
@@ -174,7 +174,7 @@ const copy: Record<Language, Copy> = {
     },
     features: {
       eyebrow: "为阅读而生",
-      title: "轻量交互，刚好的上下文。",
+      title: "轻量交互，\n刚好的上下文。",
       copy: "TermPop 平时保持安静；当你需要时，它会把定义、上下文和相关标签放进一张紧凑的解释卡。",
       items: [
         {
@@ -194,7 +194,7 @@ const copy: Record<Language, Copy> = {
         },
         {
           title: "PDF 阅读器",
-          description: "使用 TermPop 自带 PDF viewer，获得高亮和解释支持。",
+          description: "使用 TermPop 自带的 PDF viewer，获得高亮和解释支持。",
           accent: "amber"
         },
         {
@@ -213,7 +213,7 @@ const copy: Record<Language, Copy> = {
       eyebrow: "获取 TermPop",
       title: "安装插件，从带上下文的阅读开始。",
       copy:
-        "当前公开版本通过 GitHub Releases 分发。Chrome Web Store 和 Edge Add-ons 上架后，可直接替换为插件商店链接。",
+        "当前公开版本通过 GitHub Releases 分发。",
       latest: "下载最新版",
       chromeStore: "Chrome 应用商店",
       edgeAddons: "Edge 加载项"
