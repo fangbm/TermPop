@@ -5,6 +5,9 @@ extension/node_modules/
 extension/dist/
 extension/termpop-edge-test.png
 
+apps/termpop-site/node_modules/
+apps/termpop-site/dist/
+
 apps/termpop-tauri/node_modules/
 apps/termpop-tauri/dist/
 apps/termpop-tauri/src-tauri/gen/

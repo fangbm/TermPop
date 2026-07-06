@@ -21,6 +21,8 @@ It combines a Rust detection core compiled to WebAssembly with a TypeScript brow
 TermPop/
 ├── crates/
 │   └── termpop-core/       # Rust detection core and WASM exports
+├── apps/
+│   └── termpop-site/       # React product website for Cloudflare Pages
 ├── extension/              # Browser extension source
 │   ├── src/background/     # MV3 service worker
 │   ├── src/content/        # Page scanning and highlights
@@ -114,6 +116,28 @@ The workflow:
 5. Builds the extension.
 6. Packages `extension/dist` as a zip.
 7. Creates a GitHub Release with commit-log release notes.
+
+## Product Website
+
+The product website lives in `apps/termpop-site` and is built with React 19 and Vite.
+
+```powershell
+cd apps/termpop-site
+npm install
+npm run typecheck
+npm run build
+```
+
+Cloudflare Pages settings:
+
+- Root directory: `apps/termpop-site`
+- Build command: `npm ci && npm run build`
+- Build output directory: `dist`
+
+Optional store-link environment variables:
+
+- `VITE_CHROME_STORE_URL`
+- `VITE_EDGE_ADDONS_URL`
 
 ## Current Limitations
 
