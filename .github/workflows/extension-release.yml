@@ -37,7 +37,7 @@ jobs:
         run: cargo test --workspace
 
       - name: Build WASM core
-        run: wasm-pack build crates/termpop-core --target web --out-dir ../../extension/src/wasm
+        run: wasm-pack build crates/termpop-core --target web --out-dir ../../extension/src/wasm -- --features wasm
 
       - name: Install extension dependencies
         working-directory: extension
