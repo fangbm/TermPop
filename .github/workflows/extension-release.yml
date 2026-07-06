@@ -1,0 +1,101 @@
+name: Build Extension Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-extension:
+    name: Build and publish browser extension
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --locked
+
+      - name: Test Rust workspace
+        run: cargo test --workspace
+
+      - name: Build WASM core
+        run: wasm-pack build crates/termpop-core --target web --out-dir ../../extension/src/wasm
+
+      - name: Install extension dependencies
+        working-directory: extension
+        run: npm ci
+
+      - name: Typecheck extension
+        working-directory: extension
+        run: npm run typecheck
+
+      - name: Build extension
+        working-directory: extension
+        run: npm run build
+
+      - name: Package extension
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          package_name="termpop-extension-${short_sha}.zip"
+          mkdir -p artifacts
+          (cd extension/dist && zip -r "../../artifacts/${package_name}" .)
+          echo "package_name=${package_name}" >> "$GITHUB_OUTPUT"
+          echo "package_path=artifacts/${package_name}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate release notes
+        id: release_meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          timestamp="$(date -u +'%Y%m%d%H%M%S')"
+          tag="extension-${timestamp}-${short_sha}"
+          previous_tag="$(git describe --tags --abbrev=0 --match 'extension-*' 2>/dev/null || true)"
+
+          {
+            echo "## TermPop browser extension"
+            echo
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Artifact: \`${{ steps.package.outputs.package_name }}\`"
+            echo
+            echo "## Changes"
+            echo
+            if [ -n "${previous_tag}" ]; then
+              git log --pretty='- %s (`%h`)' "${previous_tag}..HEAD"
+            else
+              git log --pretty='- %s (`%h`)' --max-count=30
+            fi
+          } > release-notes.md
+
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "release_name=TermPop Extension ${short_sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_meta.outputs.tag }}
+          name: ${{ steps.release_meta.outputs.release_name }}
+          body_path: release-notes.md
+          files: ${{ steps.package.outputs.package_path }}
+          make_latest: true
