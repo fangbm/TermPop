@@ -287,24 +287,17 @@ function Nav({
             <a href="#download">{t.nav.download}</a>
             <a href={GITHUB_URL}>{t.nav.github}</a>
           </div>
-          <div className="language-switch" aria-label={t.nav.languageLabel}>
-            <button
-              type="button"
-              className={language === "en" ? "active" : ""}
-              aria-pressed={language === "en"}
-              onClick={() => setLanguage("en")}
+          <label className="language-select">
+            <span>Language</span>
+            <select
+              aria-label={t.nav.languageLabel}
+              value={language}
+              onChange={(event) => setLanguage(event.target.value as Language)}
             >
-              EN
-            </button>
-            <button
-              type="button"
-              className={language === "zh" ? "active" : ""}
-              aria-pressed={language === "zh"}
-              onClick={() => setLanguage("zh")}
-            >
-              中文
-            </button>
-          </div>
+              <option value="en">English</option>
+              <option value="zh">中文</option>
+            </select>
+          </label>
         </div>
       </nav>
     </header>
