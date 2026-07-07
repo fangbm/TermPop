@@ -411,11 +411,6 @@ main {
   font-weight: 800;
 }
 
-:root[lang="zh-CN"] .section-heading h2,
-:root[lang="zh-CN"] .download-panel h2 {
-  transform: translateX(clamp(8px, 1vw, 14px));
-}
-
 .section-heading p,
 .download-panel p {
   color: var(--muted);

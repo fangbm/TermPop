@@ -315,7 +315,7 @@ function Hero({ t }: { t: Copy }): React.ReactElement {
   return (
     <section className="hero" id="top">
       <p className="eyebrow">{t.hero.eyebrow}</p>
-      <h1 style={{ whiteSpace: 'pre-line' }}>{t.hero.title}</h1>
+      <h1 style={{ whiteSpace: "pre-wrap" }}>{t.hero.title}</h1>
       <p className="hero-copy">{t.hero.copy}</p>
       <div className="hero-actions" aria-label={t.hero.actionsLabel}>
         <a className="button button-primary" href="#download">
@@ -342,7 +342,7 @@ function ProductShowcase({ t }: { t: Copy }): React.ReactElement {
         <div className="browser-page">
           <article className="article-card">
             <p className="article-kicker">{t.showcase.kicker}</p>
-            <h2 style={{ whiteSpace: 'pre-line' }}>{t.showcase.title}</h2>
+            <h2 style={{ whiteSpace: "pre-wrap" }}>{t.showcase.title}</h2>
             <p>
               {t.showcase.textStart} <Highlighted>Transformer</Highlighted> {t.showcase.textMiddle}{" "}
               <Highlighted>self-attention</Highlighted> {t.showcase.textEnd} <Highlighted>WASM</Highlighted>,{" "}
@@ -376,7 +376,7 @@ function FeatureGrid({ t }: { t: Copy }): React.ReactElement {
     <section className="section" id="features">
       <div className="section-heading">
         <p className="eyebrow">{t.features.eyebrow}</p>
-        <h2 style={{ whiteSpace: 'pre-line' }}>{t.features.title}</h2>
+        <h2 style={{ whiteSpace: "pre-wrap" }}>{t.features.title}</h2>
         <p>{t.features.copy}</p>
       </div>
       <div className="feature-grid">
@@ -405,7 +405,7 @@ function DownloadSection({
     <section className="download-section" id="download">
       <div className="download-panel">
         <p className="eyebrow">{t.download.eyebrow}</p>
-        <h2 style={{ whiteSpace: 'pre-line' }}>{t.download.title}</h2>
+        <h2 style={{ whiteSpace: "pre-wrap" }}>{t.download.title}</h2>
         <p>{t.download.copy}</p>
         <div className="download-actions">
           {hasStoreLinks ? (
