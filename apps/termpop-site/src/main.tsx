@@ -154,7 +154,7 @@ const copy: Record<Language, Copy> = {
     },
     hero: {
       eyebrow: "适用于Chrome和Edge的浏览器插件",
-      title: " 不离开页面，\n 也能看懂术语。",
+      title: "  不离开页面，\n  也能看懂术语。",
       copy:
         "TermPop 会在阅读时标出技术词、缩写、框架名和产品名，并在你停留的位置打开简洁的上下文解释卡。",
       download: "下载插件",
@@ -163,7 +163,7 @@ const copy: Record<Language, Copy> = {
     },
     showcase: {
       label: "TermPop 产品预览",
-      address: "termpop.dev/docs/attention",
+      address: "termpop.com/docs/attention",
       kicker: "技术阅读",
       title: "让Tramsformer\n更容易读懂。",
       textStart: "一个",
@@ -174,7 +174,7 @@ const copy: Record<Language, Copy> = {
     },
     features: {
       eyebrow: "为阅读而生",
-      title: " 轻量交互，\n 刚好的上下文。",
+      title: "  轻量交互，\n  刚好的上下文。",
       copy: "TermPop 平时保持安静；当你需要时，它会把定义、上下文和相关标签放进一张紧凑的解释卡。",
       items: [
         {
@@ -211,7 +211,7 @@ const copy: Record<Language, Copy> = {
     },
     download: {
       eyebrow: "获取 TermPop",
-      title: " 安装插件，\n 从带上下文的阅读开始。",
+      title: "  安装插件，\n  从带上下文的阅读开始。",
       copy:
         "当前公开版本通过 GitHub Releases 分发。",
       latest: "下载最新版",
