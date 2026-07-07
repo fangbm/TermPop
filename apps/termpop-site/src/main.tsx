@@ -165,7 +165,7 @@ const copy: Record<Language, Copy> = {
       label: "TermPop 产品预览",
       address: "termpop.dev/docs/attention",
       kicker: "技术阅读",
-      title: "让Tramsformer更容易读懂。",
+      title: "让Tramsformer\n更容易读懂。",
       textStart: "一个",
       textMiddle: "会使用",
       textEnd: "来建模 token 之间的关系。TermPop 可以在阅读中解释",
@@ -342,7 +342,7 @@ function ProductShowcase({ t }: { t: Copy }): React.ReactElement {
         <div className="browser-page">
           <article className="article-card">
             <p className="article-kicker">{t.showcase.kicker}</p>
-            <h2>{t.showcase.title}</h2>
+            <h2 style={{ whiteSpace: 'pre-line' }}>{t.showcase.title}</h2>
             <p>
               {t.showcase.textStart} <Highlighted>Transformer</Highlighted> {t.showcase.textMiddle}{" "}
               <Highlighted>self-attention</Highlighted> {t.showcase.textEnd} <Highlighted>WASM</Highlighted>,{" "}
