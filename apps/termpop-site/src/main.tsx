@@ -427,6 +427,7 @@ type Point = {
 type ShowcaseOverlayState = {
   termKey: ShowcaseTermKey;
   locked: boolean;
+  measuring: boolean;
   visible: boolean;
   left: number;
   top: number;
@@ -485,7 +486,7 @@ function ProductShowcase({ language, t }: { language: Language; t: Copy }): Reac
     const anchorRect = getBestShowcaseAnchorRect(anchor, anchorPointRef.current);
     if (!isRectInViewport(anchorRect)) {
       if (lockedRef.current) {
-        setOverlay((current) => (current ? { ...current, visible: false } : current));
+        setOverlay((current) => (current ? { ...current, measuring: false, visible: false } : current));
       } else {
         hideExplanation();
       }
@@ -504,7 +505,17 @@ function ProductShowcase({ language, t }: { language: Language; t: Copy }): Reac
     const placement = resolveShowcasePlacement(initialPlacementRef.current, canFitAbove, canFitBelow);
     const top = clamp(placement === "below" ? belowTop : aboveTop, 12, Math.max(12, window.innerHeight - cardRect.height - 12));
 
-    setOverlay((current) => (current ? { ...current, left, top, visible: true } : current));
+    setOverlay((current) => {
+      if (!current) {
+        return current;
+      }
+
+      if (current.left === left && current.top === top && current.visible && !current.measuring) {
+        return current;
+      }
+
+      return { ...current, left, top, measuring: false, visible: true };
+    });
   };
 
   const scheduleReposition = () => {
@@ -530,8 +541,7 @@ function ProductShowcase({ language, t }: { language: Language; t: Copy }): Reac
     anchorPointRef.current = pointer;
     lockedRef.current = locked;
     activeTermKeyRef.current = termKey;
-    setOverlay({ termKey, locked, visible: false, left: 12, top: 12 });
-    window.requestAnimationFrame(positionNearAnchor);
+    setOverlay({ termKey, locked, measuring: true, visible: false, left: -9999, top: -9999 });
   };
 
   const scheduleHide = () => {
@@ -568,7 +578,7 @@ function ProductShowcase({ language, t }: { language: Language; t: Copy }): Reac
     if (overlay) {
       positionNearAnchor();
     }
-  }, [overlay?.termKey, language]);
+  }, [overlay?.termKey, overlay?.measuring, language]);
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
@@ -659,7 +669,7 @@ function ProductShowcase({ language, t }: { language: Language; t: Copy }): Reac
           {activeTerm && overlay ? (
             <aside
               ref={cardRef}
-              className={`showcase-overlay-root${overlay.visible ? " is-visible" : ""}`}
+              className={`showcase-overlay-root${overlay.visible ? " is-visible" : ""}${overlay.measuring ? " is-measuring" : ""}`}
               role="tooltip"
               style={{ left: `${overlay.left}px`, top: `${overlay.top}px` }}
               onPointerEnter={() => {
