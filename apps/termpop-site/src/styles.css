@@ -308,7 +308,8 @@ main {
   min-height: 520px;
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 360px);
+  gap: 28px;
   padding: clamp(24px, 5vw, 64px);
   background:
     radial-gradient(circle at 85% 10%, rgba(59, 130, 246, 0.14), transparent 20rem),
@@ -339,6 +340,30 @@ main {
   color: #344054;
   font-size: clamp(18px, 2vw, 23px);
   line-height: 1.65;
+}
+
+.showcase-visual {
+  align-self: center;
+  justify-self: center;
+  display: grid;
+  place-items: center;
+  width: min(320px, 100%);
+  aspect-ratio: 1;
+  border-radius: 34px;
+  background:
+    radial-gradient(circle at 50% 38%, rgba(37, 99, 235, 0.2), transparent 56%),
+    linear-gradient(180deg, rgba(239, 246, 255, 0.72), rgba(255, 255, 255, 0.64));
+  box-shadow:
+    0 34px 90px rgba(37, 99, 235, 0.13),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.showcase-visual img {
+  display: block;
+  width: 78%;
+  height: auto;
+  opacity: 0.9;
+  filter: drop-shadow(0 18px 34px rgba(37, 99, 235, 0.16));
 }
 
 .highlight {
@@ -605,6 +630,10 @@ main {
     grid-template-columns: 1fr;
   }
 
+  .showcase-visual {
+    width: min(260px, 74vw);
+  }
+
   .feature-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -700,6 +729,10 @@ main {
   .browser-page {
     min-height: auto;
     padding: 24px;
+  }
+
+  .showcase-visual {
+    display: none;
   }
 
   .article-card h2 {

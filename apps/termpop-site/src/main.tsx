@@ -644,6 +644,9 @@ function ProductShowcase({ language, t }: { language: Language; t: Copy }): Reac
               {renderTerm("gpu")}.
             </p>
           </article>
+          <aside className="showcase-visual" aria-hidden="true">
+            <img src="/termpop-icon.png" alt="" />
+          </aside>
           {activeTerm && overlay ? (
             <aside
               ref={cardRef}
