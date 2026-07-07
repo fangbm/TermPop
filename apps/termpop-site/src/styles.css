@@ -144,13 +144,13 @@ main {
 .hero::after {
   content: "";
   position: absolute;
-  top: 78px;
-  right: -28px;
-  width: min(390px, 34vw);
+  top: 54px;
+  right: -36px;
+  width: min(460px, 39vw);
   aspect-ratio: 1;
   background: url("/termpop-icon.png") center / contain no-repeat;
-  opacity: 0.14;
-  filter: blur(0.2px) saturate(115%);
+  opacity: 0.22;
+  filter: blur(0.1px) saturate(118%);
   pointer-events: none;
 }
 
@@ -400,8 +400,8 @@ main {
 
 .section-heading {
   width: min(760px, 100%);
-  margin: 0 0 42px;
-  text-align: left;
+  margin: 0 auto 42px;
+  text-align: center;
 }
 
 .section-heading h2,
@@ -488,7 +488,7 @@ main {
   position: relative;
   padding: clamp(36px, 7vw, 82px);
   border-radius: 34px;
-  text-align: left;
+  text-align: center;
   background:
     radial-gradient(circle at 50% 0%, rgba(37, 99, 235, 0.18), transparent 24rem),
     linear-gradient(180deg, #ffffff, #f8fafc);
@@ -498,7 +498,11 @@ main {
 
 .download-panel p {
   width: min(680px, 100%);
-  margin: 22px 0 0;
+  margin: 22px auto 0;
+}
+
+.download-panel .download-actions {
+  justify-content: center;
 }
 
 .download-actions {
