@@ -183,8 +183,6 @@ main {
 .hero-actions {
   width: min(760px, 100%);
   max-width: 760px;
-  margin-left: auto;
-  margin-right: auto;
   text-align: center;
 }
 
@@ -195,7 +193,7 @@ main {
 }
 
 .hero-copy {
-  margin: 28px auto 0;
+  margin: 28px 0 0;
   color: var(--muted);
   font-size: clamp(18px, 2vw, 24px);
   line-height: 1.48;
