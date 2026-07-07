@@ -442,6 +442,7 @@ function ProductShowcase({ language, t }: { language: Language; t: Copy }): Reac
   const hideTimerRef = useRef<number | undefined>(undefined);
   const repositionFrameRef = useRef<number | undefined>(undefined);
   const pointerOverCardRef = useRef(false);
+  const pointerFocusRef = useRef(false);
   const lockedRef = useRef(false);
   const activeTermKeyRef = useRef<ShowcaseTermKey | null>(null);
   const [overlay, setOverlay] = useState<ShowcaseOverlayState | null>(null);
@@ -534,13 +535,21 @@ function ProductShowcase({ language, t }: { language: Language; t: Copy }): Reac
   const showExplanation = (termKey: ShowcaseTermKey, anchor: HTMLButtonElement, pointer: Point | undefined, locked: boolean) => {
     cancelHoverExplanation();
     cancelHide();
-    if (currentAnchorRef.current !== anchor) {
+    const sameAnchor = currentAnchorRef.current === anchor && activeTermKeyRef.current === termKey;
+
+    if (!sameAnchor) {
       initialPlacementRef.current = undefined;
     }
     currentAnchorRef.current = anchor;
     anchorPointRef.current = pointer;
-    lockedRef.current = locked;
+    lockedRef.current = locked || lockedRef.current;
     activeTermKeyRef.current = termKey;
+    if (sameAnchor) {
+      setOverlay((current) => (current ? { ...current, locked: locked || current.locked, measuring: false, visible: true } : current));
+      scheduleReposition();
+      return;
+    }
+
     setOverlay({ termKey, locked, measuring: true, visible: false, left: -9999, top: -9999 });
   };
 
@@ -623,10 +632,20 @@ function ProductShowcase({ language, t }: { language: Language; t: Copy }): Reac
       onClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
+        pointerFocusRef.current = false;
         showExplanation(termKey, event.currentTarget, { x: event.clientX, y: event.clientY }, true);
       }}
-      onFocus={(event) => showExplanation(termKey, event.currentTarget, undefined, false)}
+      onFocus={(event) => {
+        if (pointerFocusRef.current) {
+          pointerFocusRef.current = false;
+          return;
+        }
+        showExplanation(termKey, event.currentTarget, undefined, false);
+      }}
       onBlur={scheduleHide}
+      onPointerDown={() => {
+        pointerFocusRef.current = true;
+      }}
       onPointerEnter={(event) => scheduleHoverExplanation(termKey, event.currentTarget, { x: event.clientX, y: event.clientY })}
       onPointerLeave={() => {
         cancelHoverExplanation();
@@ -720,6 +739,7 @@ function Highlighted({
   onBlur,
   onClick,
   onFocus,
+  onPointerDown,
   onPointerEnter,
   onPointerLeave
 }: {
@@ -728,6 +748,7 @@ function Highlighted({
   onBlur: () => void;
   onClick: React.MouseEventHandler<HTMLButtonElement>;
   onFocus: React.FocusEventHandler<HTMLButtonElement>;
+  onPointerDown: React.PointerEventHandler<HTMLButtonElement>;
   onPointerEnter: React.PointerEventHandler<HTMLButtonElement>;
   onPointerLeave: React.PointerEventHandler<HTMLButtonElement>;
 }): React.ReactElement {
@@ -739,6 +760,7 @@ function Highlighted({
       onBlur={onBlur}
       onClick={onClick}
       onFocus={onFocus}
+      onPointerDown={onPointerDown}
       onPointerEnter={onPointerEnter}
       onPointerLeave={onPointerLeave}
     >
