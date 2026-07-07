@@ -406,11 +406,6 @@ main {
 
 .section-heading h2,
 .download-panel h2 {
-  width: fit-content;
-  max-width: 100%;
-  margin-right: auto;
-  margin-left: auto;
-  text-align: left;
   font-size: clamp(36px, 5vw, 64px);
   line-height: 1.04;
   font-weight: 800;
