@@ -134,10 +134,29 @@ main {
   outline-offset: 2px;
 }
 .hero {
+  position: relative;
   width: min(1120px, calc(100% - 32px));
   margin: 0 auto;
   padding: 116px 0 72px;
   text-align: left;
+}
+
+.hero::after {
+  content: "";
+  position: absolute;
+  top: 78px;
+  right: -28px;
+  width: min(390px, 34vw);
+  aspect-ratio: 1;
+  background: url("/termpop-icon.png") center / contain no-repeat;
+  opacity: 0.14;
+  filter: blur(0.2px) saturate(115%);
+  pointer-events: none;
+}
+
+.hero > * {
+  position: relative;
+  z-index: 1;
 }
 
 .eyebrow {
@@ -158,8 +177,9 @@ main {
 }
 
 .hero h1 {
+  max-width: 760px;
   font-size: clamp(48px, 8vw, 96px);
-  line-height: 0.96;
+  line-height: 1.08;
   font-weight: 800;
 }
 
@@ -556,6 +576,10 @@ main {
   .hero {
     width: min(100% - 24px, 980px);
     padding: 72px 0 44px;
+  }
+
+  .hero::after {
+    display: none;
   }
 
   .hero h1 {
