@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
@@ -15,6 +15,16 @@ type Feature = {
   title: string;
   description: string;
   accent: Accent;
+};
+
+type ShowcaseTermKey = "transformer" | "selfAttention" | "wasm" | "llm" | "gpu";
+
+type ShowcaseTerm = {
+  term: string;
+  termType: "Tech" | "Acronym";
+  category: string;
+  definition: string;
+  relatedTerms: string[];
 };
 
 type Copy = {
@@ -62,6 +72,86 @@ type Copy = {
     releases: string;
     license: string;
   };
+};
+
+const HOVER_SHOW_DELAY_MS = 420;
+const HIDE_DELAY_MS = 220;
+
+const showcaseTerms: Record<Language, Record<ShowcaseTermKey, ShowcaseTerm>> = {
+  en: {
+    transformer: {
+      term: "Transformer",
+      termType: "Tech",
+      category: "Neural network architecture",
+      definition: "A model architecture built around attention, widely used by modern language models.",
+      relatedTerms: ["attention", "LLM", "architecture"]
+    },
+    selfAttention: {
+      term: "self-attention",
+      termType: "Tech",
+      category: "Context modeling method",
+      definition: "A Transformer mechanism that lets each token attend to relevant positions in its context.",
+      relatedTerms: ["Transformer", "token", "attention"]
+    },
+    wasm: {
+      term: "WASM",
+      termType: "Tech",
+      category: "WebAssembly runtime",
+      definition: "WebAssembly is a portable binary format that lets Rust code run efficiently in the browser.",
+      relatedTerms: ["Rust", "Browser extension", "Runtime"]
+    },
+    llm: {
+      term: "LLM",
+      termType: "Acronym",
+      category: "Large language model",
+      definition: "A language model trained at large scale to understand, summarize, and generate text in context.",
+      relatedTerms: ["AI", "context", "generation"]
+    },
+    gpu: {
+      term: "GPU",
+      termType: "Acronym",
+      category: "Parallel processor",
+      definition: "A processor designed for parallel computation, commonly used for graphics and machine learning workloads.",
+      relatedTerms: ["parallel", "compute", "training"]
+    }
+  },
+  zh: {
+    transformer: {
+      term: "Transformer",
+      termType: "Tech",
+      category: "神经网络架构",
+      definition: "一种以注意力机制为核心的模型架构，广泛用于现代语言模型。",
+      relatedTerms: ["attention", "LLM", "架构"]
+    },
+    selfAttention: {
+      term: "self-attention",
+      termType: "Tech",
+      category: "上下文建模方法",
+      definition: "Transformer 中的机制，让每个 token 根据上下文关注相关位置。",
+      relatedTerms: ["Transformer", "token", "attention"]
+    },
+    wasm: {
+      term: "WASM",
+      termType: "Tech",
+      category: "WebAssembly 运行格式",
+      definition: "WebAssembly 是一种可移植的二进制格式，可以让 Rust 代码在浏览器中高效运行。",
+      relatedTerms: ["Rust", "浏览器插件", "运行时"]
+    },
+    llm: {
+      term: "LLM",
+      termType: "Acronym",
+      category: "大语言模型",
+      definition: "在大规模文本上训练、能够结合上下文理解、总结和生成语言的模型。",
+      relatedTerms: ["AI", "上下文", "生成"]
+    },
+    gpu: {
+      term: "GPU",
+      termType: "Acronym",
+      category: "并行处理器",
+      definition: "适合大量并行计算的处理器，常用于图形渲染和机器学习任务。",
+      relatedTerms: ["并行", "计算", "训练"]
+    }
+  }
 };
 
 const copy: Record<Language, Copy> = {
@@ -257,7 +347,7 @@ function App(): React.ReactElement {
     <main>
       <Nav language={language} setLanguage={setLanguage} t={t} />
       <Hero t={t} />
-      <ProductShowcase t={t} />
+      <ProductShowcase language={language} t={t} />
       <FeatureGrid t={t} />
       <DownloadSection storeLinks={storeLinks} t={t} />
       <Footer t={t} />
@@ -329,7 +419,212 @@ function Hero({ t }: { t: Copy }): React.ReactElement {
   );
 }
 
-function ProductShowcase({ t }: { t: Copy }): React.ReactElement {
+type Point = {
+  x: number;
+  y: number;
+};
+
+type ShowcaseOverlayState = {
+  termKey: ShowcaseTermKey;
+  locked: boolean;
+  visible: boolean;
+  left: number;
+  top: number;
+};
+
+function ProductShowcase({ language, t }: { language: Language; t: Copy }): React.ReactElement {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const currentAnchorRef = useRef<HTMLButtonElement | null>(null);
+  const anchorPointRef = useRef<Point | undefined>(undefined);
+  const initialPlacementRef = useRef<"above" | "below" | undefined>(undefined);
+  const hoverTimerRef = useRef<number | undefined>(undefined);
+  const hideTimerRef = useRef<number | undefined>(undefined);
+  const repositionFrameRef = useRef<number | undefined>(undefined);
+  const pointerOverCardRef = useRef(false);
+  const lockedRef = useRef(false);
+  const activeTermKeyRef = useRef<ShowcaseTermKey | null>(null);
+  const [overlay, setOverlay] = useState<ShowcaseOverlayState | null>(null);
+  const terms = showcaseTerms[language];
+  const activeTerm = overlay ? terms[overlay.termKey] : null;
+
+  const cancelHoverExplanation = () => {
+    if (hoverTimerRef.current !== undefined) {
+      window.clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = undefined;
+    }
+  };
+
+  const cancelHide = () => {
+    if (hideTimerRef.current !== undefined) {
+      window.clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = undefined;
+    }
+  };
+
+  const hideExplanation = () => {
+    lockedRef.current = false;
+    activeTermKeyRef.current = null;
+    currentAnchorRef.current = null;
+    anchorPointRef.current = undefined;
+    initialPlacementRef.current = undefined;
+    pointerOverCardRef.current = false;
+    cancelHoverExplanation();
+    cancelHide();
+    setOverlay(null);
+  };
+
+  const positionNearAnchor = () => {
+    const anchor = currentAnchorRef.current;
+    const card = cardRef.current;
+
+    if (!anchor?.isConnected || !card) {
+      hideExplanation();
+      return;
+    }
+
+    const anchorRect = getBestShowcaseAnchorRect(anchor, anchorPointRef.current);
+    if (!isRectInViewport(anchorRect)) {
+      if (lockedRef.current) {
+        setOverlay((current) => (current ? { ...current, visible: false } : current));
+      } else {
+        hideExplanation();
+      }
+      return;
+    }
+
+    const cardRect = card.getBoundingClientRect();
+    const left = clamp(anchorRect.left + anchorRect.width / 2 - cardRect.width / 2, 12, Math.max(12, window.innerWidth - cardRect.width - 12));
+    const anchorCenterY = anchorRect.top + anchorRect.height / 2;
+    initialPlacementRef.current ??= anchorCenterY < window.innerHeight / 2 ? "below" : "above";
+
+    const belowTop = anchorRect.bottom + 10;
+    const aboveTop = anchorRect.top - cardRect.height - 10;
+    const canFitBelow = belowTop + cardRect.height <= window.innerHeight - 12;
+    const canFitAbove = aboveTop >= 12;
+    const placement = resolveShowcasePlacement(initialPlacementRef.current, canFitAbove, canFitBelow);
+    const top = clamp(placement === "below" ? belowTop : aboveTop, 12, Math.max(12, window.innerHeight - cardRect.height - 12));
+
+    setOverlay((current) => (current ? { ...current, left, top, visible: true } : current));
+  };
+
+  const scheduleReposition = () => {
+    if (!activeTermKeyRef.current) {
+      return;
+    }
+    if (repositionFrameRef.current !== undefined) {
+      return;
+    }
+    repositionFrameRef.current = window.requestAnimationFrame(() => {
+      repositionFrameRef.current = undefined;
+      positionNearAnchor();
+    });
+  };
+
+  const showExplanation = (termKey: ShowcaseTermKey, anchor: HTMLButtonElement, pointer: Point | undefined, locked: boolean) => {
+    cancelHoverExplanation();
+    cancelHide();
+    if (currentAnchorRef.current !== anchor) {
+      initialPlacementRef.current = undefined;
+    }
+    currentAnchorRef.current = anchor;
+    anchorPointRef.current = pointer;
+    lockedRef.current = locked;
+    activeTermKeyRef.current = termKey;
+    setOverlay({ termKey, locked, visible: false, left: 12, top: 12 });
+    window.requestAnimationFrame(positionNearAnchor);
+  };
+
+  const scheduleHide = () => {
+    if (lockedRef.current) {
+      return;
+    }
+    cancelHide();
+    hideTimerRef.current = window.setTimeout(() => {
+      if (pointerOverCardRef.current || currentAnchorRef.current?.matches(":hover")) {
+        return;
+      }
+      hideExplanation();
+    }, HIDE_DELAY_MS);
+  };
+
+  const scheduleHoverExplanation = (termKey: ShowcaseTermKey, anchor: HTMLButtonElement, pointer: Point) => {
+    cancelHoverExplanation();
+    hoverTimerRef.current = window.setTimeout(() => {
+      hoverTimerRef.current = undefined;
+      if (!anchor.matches(":hover")) {
+        return;
+      }
+      showExplanation(termKey, anchor, pointer, false);
+    }, HOVER_SHOW_DELAY_MS);
+  };
+
+  const pinCurrentCard = () => {
+    lockedRef.current = true;
+    cancelHide();
+    setOverlay((current) => (current ? { ...current, locked: true } : current));
+  };
+
+  useLayoutEffect(() => {
+    if (overlay) {
+      positionNearAnchor();
+    }
+  }, [overlay?.termKey, language]);
+
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!activeTermKeyRef.current) {
+        return;
+      }
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+      if (cardRef.current?.contains(target)) {
+        return;
+      }
+      if (target instanceof Element && target.closest(".highlight")) {
+        return;
+      }
+      hideExplanation();
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    window.addEventListener("scroll", scheduleReposition, true);
+    document.addEventListener("scroll", scheduleReposition, true);
+    window.addEventListener("resize", scheduleReposition);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      window.removeEventListener("scroll", scheduleReposition, true);
+      document.removeEventListener("scroll", scheduleReposition, true);
+      window.removeEventListener("resize", scheduleReposition);
+      cancelHoverExplanation();
+      cancelHide();
+      if (repositionFrameRef.current !== undefined) {
+        window.cancelAnimationFrame(repositionFrameRef.current);
+      }
+    };
+  }, []);
+
+  const renderTerm = (termKey: ShowcaseTermKey) => (
+    <Highlighted
+      active={overlay?.termKey === termKey && overlay.visible}
+      term={terms[termKey]}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        showExplanation(termKey, event.currentTarget, { x: event.clientX, y: event.clientY }, true);
+      }}
+      onFocus={(event) => showExplanation(termKey, event.currentTarget, undefined, false)}
+      onBlur={scheduleHide}
+      onPointerEnter={(event) => scheduleHoverExplanation(termKey, event.currentTarget, { x: event.clientX, y: event.clientY })}
+      onPointerLeave={() => {
+        cancelHoverExplanation();
+        scheduleHide();
+      }}
+    />
+  );
+
   return (
     <section className="showcase" aria-label={t.showcase.label}>
       <div className="browser-frame">
@@ -344,31 +639,137 @@ function ProductShowcase({ t }: { t: Copy }): React.ReactElement {
             <p className="article-kicker">{t.showcase.kicker}</p>
             <h2 style={{ whiteSpace: "pre-wrap" }}>{t.showcase.title}</h2>
             <p>
-              {t.showcase.textStart} <Highlighted>Transformer</Highlighted> {t.showcase.textMiddle}{" "}
-              <Highlighted>self-attention</Highlighted> {t.showcase.textEnd} <Highlighted>WASM</Highlighted>,{" "}
-              <Highlighted>LLM</Highlighted>, <Highlighted>GPU</Highlighted>.
+              {t.showcase.textStart} {renderTerm("transformer")} {t.showcase.textMiddle}{" "}
+              {renderTerm("selfAttention")} {t.showcase.textEnd} {renderTerm("wasm")}, {renderTerm("llm")},{" "}
+              {renderTerm("gpu")}.
             </p>
           </article>
-          <aside className="explain-card" aria-label="Example explanation card">
-            <div className="card-topline">
-              <strong>WASM</strong>
-              <span>95%</span>
-            </div>
-            <p>{t.showcase.explanation}</p>
-            <div className="chips">
-              {t.showcase.chips.map((chip) => (
-                <span key={chip}>{chip}</span>
-              ))}
-            </div>
-          </aside>
+          {activeTerm && overlay ? (
+            <aside
+              ref={cardRef}
+              className={`showcase-overlay-root${overlay.visible ? " is-visible" : ""}`}
+              role="tooltip"
+              style={{ left: `${overlay.left}px`, top: `${overlay.top}px` }}
+              onPointerEnter={() => {
+                pointerOverCardRef.current = true;
+                cancelHide();
+              }}
+              onPointerLeave={() => {
+                pointerOverCardRef.current = false;
+                scheduleHide();
+              }}
+            >
+              <div className="termpop-card">
+                <div className="termpop-card-header">
+                  <div className="termpop-card-title">{activeTerm.term}</div>
+                  <button
+                    className="termpop-refresh-button"
+                    type="button"
+                    title={language === "zh" ? "重新生成解释" : "Regenerate explanation"}
+                    aria-label={language === "zh" ? "重新生成解释" : "Regenerate explanation"}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      pinCurrentCard();
+                    }}
+                  >
+                    ↻
+                  </button>
+                </div>
+                <div className="termpop-category">{activeTerm.category}</div>
+                <div className="termpop-definition">{activeTerm.definition}</div>
+                <div className="termpop-related">
+                  {activeTerm.relatedTerms.map((term) => (
+                    <span key={term}>{term}</span>
+                  ))}
+                </div>
+              </div>
+            </aside>
+          ) : null}
         </div>
       </div>
     </section>
   );
 }
 
-function Highlighted({ children }: { children: React.ReactNode }): React.ReactElement {
-  return <span className="highlight">{children}</span>;
+function Highlighted({
+  active,
+  term,
+  onBlur,
+  onClick,
+  onFocus,
+  onPointerEnter,
+  onPointerLeave
+}: {
+  active: boolean;
+  term: ShowcaseTerm;
+  onBlur: () => void;
+  onClick: React.MouseEventHandler<HTMLButtonElement>;
+  onFocus: React.FocusEventHandler<HTMLButtonElement>;
+  onPointerEnter: React.PointerEventHandler<HTMLButtonElement>;
+  onPointerLeave: React.PointerEventHandler<HTMLButtonElement>;
+}): React.ReactElement {
+  return (
+    <button
+      type="button"
+      className={`highlight termpop-highlight${active ? " is-active" : ""}`}
+      data-term-type={term.termType}
+      onBlur={onBlur}
+      onClick={onClick}
+      onFocus={onFocus}
+      onPointerEnter={onPointerEnter}
+      onPointerLeave={onPointerLeave}
+    >
+      {term.term}
+    </button>
+  );
+}
+
+function resolveShowcasePlacement(initialPlacement: "above" | "below" | undefined, canFitAbove: boolean, canFitBelow: boolean): "above" | "below" {
+  if (initialPlacement === "below") {
+    return canFitBelow || !canFitAbove ? "below" : "above";
+  }
+
+  return canFitAbove || !canFitBelow ? "above" : "below";
+}
+
+function isRectInViewport(rect: DOMRect): boolean {
+  return rect.bottom > 0 && rect.right > 0 && rect.top < window.innerHeight && rect.left < window.innerWidth;
+}
+
+function getBestShowcaseAnchorRect(anchor: HTMLElement, point: Point | undefined): DOMRect {
+  const rects = [...anchor.getClientRects()].filter((rect) => rect.width > 0 && rect.height > 0);
+  if (rects.length === 0) {
+    return anchor.getBoundingClientRect();
+  }
+
+  if (!point) {
+    return rects.find(isRectInViewport) ?? rects[0];
+  }
+
+  const containingRect = rects.find((rect) => point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom);
+  if (containingRect) {
+    return containingRect;
+  }
+
+  const visibleRects = rects.filter(isRectInViewport);
+  const candidates = visibleRects.length > 0 ? visibleRects : rects;
+  return candidates
+    .map((rect) => ({
+      rect,
+      distance: distanceToRect(point, rect)
+    }))
+    .sort((left, right) => left.distance - right.distance)[0].rect;
+}
+
+function distanceToRect(point: Point, rect: DOMRect): number {
+  const dx = point.x < rect.left ? rect.left - point.x : point.x > rect.right ? point.x - rect.right : 0;
+  const dy = point.y < rect.top ? rect.top - point.y : point.y > rect.bottom ? point.y - rect.bottom : 0;
+  return dx * dx + dy * dy;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
 }
 
 function FeatureGrid({ t }: { t: Copy }): React.ReactElement {
