@@ -376,7 +376,7 @@ function FeatureGrid({ t }: { t: Copy }): React.ReactElement {
     <section className="section" id="features">
       <div className="section-heading">
         <p className="eyebrow">{t.features.eyebrow}</p>
-        <h2 style={{ whiteSpace: 'pre-line' }}>{t.hero.title}</h2>
+        <h2 style={{ whiteSpace: 'pre-line' }}>{t.showcase.title}</h2>
         <p>{t.features.copy}</p>
       </div>
       <div className="feature-grid">
@@ -405,7 +405,7 @@ function DownloadSection({
     <section className="download-section" id="download">
       <div className="download-panel">
         <p className="eyebrow">{t.download.eyebrow}</p>
-        <h2 style={{ whiteSpace: 'pre-line' }}>{t.hero.title}</h2>
+        <h2 style={{ whiteSpace: 'pre-line' }}>{t.download.title}</h2>
         <p>{t.download.copy}</p>
         <div className="download-actions">
           {hasStoreLinks ? (
