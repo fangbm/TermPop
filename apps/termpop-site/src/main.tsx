@@ -154,7 +154,7 @@ const copy: Record<Language, Copy> = {
     },
     hero: {
       eyebrow: "适用于Chrome和Edge的浏览器插件",
-      title: ["不离开页面，", <br key="1" />, "也能看懂术语。"],
+      title: "不离开页面，\n也能看懂术语。",
       copy:
         "TermPop 会在阅读时标出技术词、缩写、框架名和产品名，并在你停留的位置打开简洁的上下文解释卡。",
       download: "下载插件",
@@ -174,7 +174,7 @@ const copy: Record<Language, Copy> = {
     },
     features: {
       eyebrow: "为阅读而生",
-      title: ["轻量交互，", <br key="1" />, "刚好的上下文。"],
+      title: "轻量交互，\n刚好的上下文。",
       copy: "TermPop 平时保持安静；当你需要时，它会把定义、上下文和相关标签放进一张紧凑的解释卡。",
       items: [
         {
