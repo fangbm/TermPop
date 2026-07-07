@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
@@ -15,6 +15,15 @@ type Feature = {
   title: string;
   description: string;
   accent: Accent;
+};
+
+type HeroTermKey = "transformer" | "selfAttention" | "wasm" | "llm" | "gpu";
+
+type HeroTerm = {
+  title: string;
+  category: string;
+  description: string;
+  tags: string[];
 };
 
 type Copy = {
@@ -62,6 +71,73 @@ type Copy = {
     releases: string;
     license: string;
   };
+};
+
+const heroTerms: Record<Language, Record<HeroTermKey, HeroTerm>> = {
+  en: {
+    transformer: {
+      title: "Transformer",
+      category: "Neural network architecture",
+      description: "A model architecture built around attention, widely used by modern language models.",
+      tags: ["attention", "LLM", "architecture"]
+    },
+    selfAttention: {
+      title: "self-attention",
+      category: "Context modeling method",
+      description: "A Transformer mechanism that lets each token attend to relevant positions in its context.",
+      tags: ["Transformer", "token", "attention"]
+    },
+    wasm: {
+      title: "WASM",
+      category: "WebAssembly runtime",
+      description: "A compact binary format that lets code such as Rust run efficiently inside browsers.",
+      tags: ["Rust", "browser", "runtime"]
+    },
+    llm: {
+      title: "LLM",
+      category: "Large language model",
+      description: "A model trained on large text corpora to understand and generate language in context.",
+      tags: ["AI", "generation", "context"]
+    },
+    gpu: {
+      title: "GPU",
+      category: "Parallel processor",
+      description: "A processor suited for highly parallel work, including graphics and machine learning workloads.",
+      tags: ["parallel", "AI", "compute"]
+    }
+  },
+  zh: {
+    transformer: {
+      title: "Transformer",
+      category: "神经网络架构",
+      description: "一种以注意力机制为核心的模型架构，广泛用于现代语言模型。",
+      tags: ["attention", "LLM", "架构"]
+    },
+    selfAttention: {
+      title: "self-attention",
+      category: "上下文建模方法",
+      description: "Transformer 中的机制，让每个 token 根据上下文关注相关位置。",
+      tags: ["Transformer", "token", "attention"]
+    },
+    wasm: {
+      title: "WASM",
+      category: "WebAssembly 运行格式",
+      description: "一种紧凑的二进制格式，让 Rust 等代码可以高效运行在浏览器里。",
+      tags: ["Rust", "浏览器", "运行时"]
+    },
+    llm: {
+      title: "LLM",
+      category: "大语言模型",
+      description: "在大规模文本上训练、能够结合上下文理解和生成语言的模型。",
+      tags: ["AI", "生成", "上下文"]
+    },
+    gpu: {
+      title: "GPU",
+      category: "并行处理器",
+      description: "适合大量并行计算的处理器，常用于图形渲染和机器学习任务。",
+      tags: ["并行", "AI", "计算"]
+    }
+  }
 };
 
 const copy: Record<Language, Copy> = {
@@ -256,7 +332,7 @@ function App(): React.ReactElement {
   return (
     <main>
       <Nav language={language} setLanguage={setLanguage} t={t} />
-      <Hero t={t} />
+      <Hero language={language} t={t} />
       <ProductShowcase t={t} />
       <FeatureGrid t={t} />
       <DownloadSection storeLinks={storeLinks} t={t} />
@@ -311,12 +387,93 @@ function Nav({
   );
 }
 
-function Hero({ t }: { t: Copy }): React.ReactElement {
+function Hero({ language, t }: { language: Language; t: Copy }): React.ReactElement {
+  const [activeTermKey, setActiveTermKey] = useState<HeroTermKey | null>(null);
+  const [cardPosition, setCardPosition] = useState({ left: 0, top: 0 });
+  const demoRef = useRef<HTMLDivElement>(null);
+  const activeTerm = activeTermKey ? heroTerms[language][activeTermKey] : null;
+  const cardId = "hero-term-card";
+  const showTerm = (key: HeroTermKey, target: HTMLElement) => {
+    const container = demoRef.current;
+
+    if (container) {
+      const termRect = target.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      const cardWidth = Math.min(360, window.innerWidth - 32, containerRect.width);
+      const minLeft = cardWidth / 2;
+      const maxLeft = Math.max(minLeft, containerRect.width - cardWidth / 2);
+      const centeredLeft = termRect.left - containerRect.left + termRect.width / 2;
+
+      setCardPosition({
+        left: Math.min(Math.max(centeredLeft, minLeft), maxLeft),
+        top: termRect.bottom - containerRect.top + 12
+      });
+    }
+
+    setActiveTermKey(key);
+  };
+  const renderTerm = (key: HeroTermKey, label: string) => (
+    <button
+      type="button"
+      className={`hero-highlight${activeTermKey === key ? " is-active" : ""}`}
+      aria-describedby={activeTermKey === key ? cardId : undefined}
+      onMouseEnter={(event) => showTerm(key, event.currentTarget)}
+      onFocus={(event) => showTerm(key, event.currentTarget)}
+    >
+      {label}
+    </button>
+  );
+
   return (
     <section className="hero" id="top">
       <p className="eyebrow">{t.hero.eyebrow}</p>
       <h1 style={{ whiteSpace: "pre-wrap" }}>{t.hero.title}</h1>
-      <p className="hero-copy">{t.hero.copy}</p>
+      <div
+        ref={demoRef}
+        className="hero-demo"
+        aria-label={language === "zh" ? "TermPop 高亮解释示例" : "TermPop highlight preview"}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+            setActiveTermKey(null);
+          }
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            setActiveTermKey(null);
+          }
+        }}
+        onMouseLeave={() => setActiveTermKey(null)}
+      >
+        {language === "zh" ? (
+          <p className="hero-demo-text">
+            一个 {renderTerm("transformer", "Transformer")} 会使用 {renderTerm("selfAttention", "self-attention")} 来建模 token
+            之间的关系。TermPop 可以在阅读中解释 {renderTerm("wasm", "WASM")}、{renderTerm("llm", "LLM")}、{renderTerm("gpu", "GPU")}。
+          </p>
+        ) : (
+          <p className="hero-demo-text">
+            A {renderTerm("transformer", "Transformer")} uses {renderTerm("selfAttention", "self-attention")} to model relationships
+            across tokens. TermPop explains {renderTerm("wasm", "WASM")}, {renderTerm("llm", "LLM")}, and{" "}
+            {renderTerm("gpu", "GPU")} in place.
+          </p>
+        )}
+        {activeTerm ? (
+          <aside
+            className="hero-explanation-card"
+            id={cardId}
+            role="tooltip"
+            style={{ left: `${cardPosition.left}px`, top: `${cardPosition.top}px` }}
+          >
+            <strong>{activeTerm.title}</strong>
+            <span>{activeTerm.category}</span>
+            <p>{activeTerm.description}</p>
+            <div>
+              {activeTerm.tags.map((tag) => (
+                <span key={tag}>{tag}</span>
+              ))}
+            </div>
+          </aside>
+        ) : null}
+      </div>
       <div className="hero-actions" aria-label={t.hero.actionsLabel}>
         <a className="button button-primary" href="#download">
           {t.hero.download}

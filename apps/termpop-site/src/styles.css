@@ -179,7 +179,7 @@ main {
 
 .hero > .eyebrow,
 .hero h1,
-.hero-copy,
+.hero-demo,
 .hero-actions {
   width: min(760px, 100%);
   max-width: 760px;
@@ -192,11 +192,104 @@ main {
   font-weight: 800;
 }
 
-.hero-copy {
+.hero-demo {
+  position: relative;
   margin: 28px 0 0;
   color: var(--muted);
   font-size: clamp(18px, 2vw, 24px);
   line-height: 1.48;
+}
+
+.hero-demo-text {
+  margin: 0;
+}
+
+.hero-highlight {
+  display: inline;
+  margin: 0;
+  padding: 0 0.12em 0.03em;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(37, 99, 235, 0.12);
+  box-shadow: inset 0 -2px 0 rgba(37, 99, 235, 0.68);
+  color: var(--blue);
+  cursor: default;
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: inherit;
+  text-align: inherit;
+  transition:
+    background 160ms ease,
+    box-shadow 160ms ease,
+    color 160ms ease;
+}
+
+.hero-highlight:hover,
+.hero-highlight:focus-visible,
+.hero-highlight.is-active {
+  background: rgba(37, 99, 235, 0.2);
+  box-shadow:
+    inset 0 -2px 0 rgba(37, 99, 235, 0.92),
+    0 8px 24px rgba(37, 99, 235, 0.16);
+  color: #1d4ed8;
+  outline: none;
+}
+
+.hero-explanation-card {
+  position: absolute;
+  top: calc(100% + 12px);
+  left: 50%;
+  z-index: 4;
+  width: min(360px, calc(100vw - 32px));
+  padding: 16px 18px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.18);
+  color: var(--ink);
+  text-align: left;
+  transform: translateX(-50%);
+  backdrop-filter: blur(18px);
+}
+
+.hero-explanation-card strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 17px;
+  line-height: 1.2;
+}
+
+.hero-explanation-card > span {
+  display: block;
+  color: var(--blue);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.hero-explanation-card p {
+  margin: 10px 0 12px;
+  color: #334155;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.hero-explanation-card div {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.hero-explanation-card div span {
+  display: inline-flex;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.09);
+  color: #3152d4;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.2;
 }
 
 .hero-actions,
@@ -599,7 +692,7 @@ main {
     font-size: clamp(42px, 14vw, 58px);
   }
 
-  .hero-copy {
+  .hero-demo {
     font-size: 17px;
   }
 
