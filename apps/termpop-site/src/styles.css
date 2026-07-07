@@ -70,15 +70,15 @@ main {
 }
 
 .brand {
-  gap: 10px;
+  gap: 12px;
   font-weight: 700;
   color: var(--ink);
 }
 
 .brand-mark {
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
   display: block;
   object-fit: cover;
   box-shadow: 0 10px 24px rgba(37, 99, 235, 0.28);
@@ -134,10 +134,10 @@ main {
   outline-offset: 2px;
 }
 .hero {
-  width: min(980px, calc(100% - 32px));
+  width: min(1120px, calc(100% - 32px));
   margin: 0 auto;
   padding: 116px 0 72px;
-  text-align: center;
+  text-align: left;
 }
 
 .eyebrow {
@@ -165,7 +165,7 @@ main {
 
 .hero-copy {
   width: min(760px, 100%);
-  margin: 28px auto 0;
+  margin: 28px 0 0;
   color: var(--muted);
   font-size: clamp(18px, 2vw, 24px);
   line-height: 1.48;
@@ -174,7 +174,7 @@ main {
 .hero-actions,
 .download-actions {
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
   gap: 14px;
   flex-wrap: wrap;
@@ -380,8 +380,8 @@ main {
 
 .section-heading {
   width: min(760px, 100%);
-  margin: 0 auto 42px;
-  text-align: center;
+  margin: 0 0 42px;
+  text-align: left;
 }
 
 .section-heading h2,
@@ -468,7 +468,7 @@ main {
   position: relative;
   padding: clamp(36px, 7vw, 82px);
   border-radius: 34px;
-  text-align: center;
+  text-align: left;
   background:
     radial-gradient(circle at 50% 0%, rgba(37, 99, 235, 0.18), transparent 24rem),
     linear-gradient(180deg, #ffffff, #f8fafc);
@@ -478,7 +478,7 @@ main {
 
 .download-panel p {
   width: min(680px, 100%);
-  margin: 22px auto 0;
+  margin: 22px 0 0;
 }
 
 .download-actions {
