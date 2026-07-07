@@ -148,4 +148,4 @@ Optional store-link environment variables:
 
 ## License
 
-
+MIT
