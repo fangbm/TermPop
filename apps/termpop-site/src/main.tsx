@@ -211,7 +211,7 @@ const copy: Record<Language, Copy> = {
     },
     download: {
       eyebrow: "获取 TermPop",
-      title: "安装插件，从带上下文的阅读开始。",
+      title: "安装插件，\n从带上下文的阅读开始。",
       copy:
         "当前公开版本通过 GitHub Releases 分发。",
       latest: "下载最新版",
