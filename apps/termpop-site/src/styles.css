@@ -78,11 +78,9 @@ main {
 .brand-mark {
   width: 32px;
   height: 32px;
-  display: grid;
-  place-items: center;
   border-radius: 9px;
-  color: #ffffff;
-  background: linear-gradient(145deg, #3b82f6, #155eef);
+  display: block;
+  object-fit: cover;
   box-shadow: 0 10px 24px rgba(37, 99, 235, 0.28);
 }
 

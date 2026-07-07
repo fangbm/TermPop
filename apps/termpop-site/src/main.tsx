@@ -278,7 +278,7 @@ function Nav({
     <header className="nav-shell">
       <nav className="nav" aria-label="Primary navigation">
         <a className="brand" href="#top" aria-label={t.nav.homeLabel}>
-          <span className="brand-mark">T</span>
+          <img className="brand-mark" src="/termpop-icon.png" alt="" aria-hidden="true" />
           <span>TermPop</span>
         </a>
         <div className="nav-right">
