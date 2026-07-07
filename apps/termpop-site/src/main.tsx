@@ -644,8 +644,17 @@ function ProductShowcase({ language, t }: { language: Language; t: Copy }): Reac
               {renderTerm("gpu")}.
             </p>
           </article>
-          <aside className="showcase-visual" aria-hidden="true">
-            <img src="/termpop-icon.png" alt="" />
+          <aside className="explain-card" aria-label="Example explanation card">
+            <div className="card-topline">
+              <strong>WASM</strong>
+              <span>95%</span>
+            </div>
+            <p>{t.showcase.explanation}</p>
+            <div className="chips">
+              {t.showcase.chips.map((chip) => (
+                <span key={chip}>{chip}</span>
+              ))}
+            </div>
           </aside>
           {activeTerm && overlay ? (
             <aside

@@ -342,28 +342,53 @@ main {
   line-height: 1.65;
 }
 
-.showcase-visual {
+.explain-card {
   align-self: center;
-  justify-self: center;
-  display: grid;
-  place-items: center;
-  width: min(320px, 100%);
-  aspect-ratio: 1;
-  border-radius: 34px;
-  background:
-    radial-gradient(circle at 50% 38%, rgba(37, 99, 235, 0.2), transparent 56%),
-    linear-gradient(180deg, rgba(239, 246, 255, 0.72), rgba(255, 255, 255, 0.64));
-  box-shadow:
-    0 34px 90px rgba(37, 99, 235, 0.13),
-    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  min-width: 0;
+  padding: 24px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 24px 80px rgba(37, 99, 235, 0.16);
+  backdrop-filter: blur(18px);
 }
 
-.showcase-visual img {
-  display: block;
-  width: 78%;
-  height: auto;
-  opacity: 0.9;
-  filter: drop-shadow(0 18px 34px rgba(37, 99, 235, 0.16));
+.card-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.card-topline strong {
+  font-size: 28px;
+}
+
+.card-topline span {
+  color: var(--blue);
+  font-weight: 800;
+}
+
+.explain-card p {
+  margin: 18px 0 0;
+  color: #475467;
+  line-height: 1.55;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.chips span {
+  padding: 7px 10px;
+  border-radius: 999px;
+  color: #344054;
+  background: #eef4ff;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .highlight {
@@ -630,8 +655,9 @@ main {
     grid-template-columns: 1fr;
   }
 
-  .showcase-visual {
-    width: min(260px, 74vw);
+  .explain-card {
+    width: min(420px, 100%);
+    justify-self: center;
   }
 
   .feature-grid {
@@ -731,10 +757,6 @@ main {
     padding: 24px;
   }
 
-  .showcase-visual {
-    display: none;
-  }
-
   .article-card h2 {
     font-size: 34px;
   }
@@ -742,6 +764,11 @@ main {
   .article-card p {
     font-size: 16px;
     line-height: 1.7;
+  }
+
+  .explain-card {
+    padding: 20px;
+    border-radius: 20px;
   }
 
   .feature-grid {
