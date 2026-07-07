@@ -154,7 +154,7 @@ const copy: Record<Language, Copy> = {
     },
     hero: {
       eyebrow: "适用于Chrome和Edge的浏览器插件",
-      title: "不离开页面，\n也能看懂术语。",
+      title: "  不离开页面，\n  也能看懂术语。",
       copy:
         "TermPop 会在阅读时标出技术词、缩写、框架名和产品名，并在你停留的位置打开简洁的上下文解释卡。",
       download: "下载插件",
