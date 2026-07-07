@@ -144,9 +144,9 @@ main {
 .hero::after {
   content: "";
   position: absolute;
-  top: 54px;
-  right: -36px;
-  width: min(460px, 39vw);
+  top: 78px;
+  right: -28px;
+  width: min(390px, 34vw);
   aspect-ratio: 1;
   background: url("/termpop-icon.png") center / contain no-repeat;
   opacity: 0.22;
