@@ -246,7 +246,7 @@ const copy: Record<Language, Copy> = {
       eyebrow: "适用于Chrome和Edge的浏览器插件",
       title: "  不离开页面，\n  也能看懂术语。",
       copy:
-        "TermPop 会在阅读时标出技术词、缩写、框架名和产品名，并在你停留的位置打开简洁的上下文解释卡。",
+        "  TermPop 会在阅读时标出技术词、缩写、框架名和产品名，\n  并在你停留的位置打开简洁的上下文解释卡。",
       download: "下载插件",
       github: "查看 GitHub",
       actionsLabel: "下载和源码链接"
@@ -406,7 +406,7 @@ function Hero({ t }: { t: Copy }): React.ReactElement {
     <section className="hero" id="top">
       <p className="eyebrow">{t.hero.eyebrow}</p>
       <h1 style={{ whiteSpace: "pre-wrap" }}>{t.hero.title}</h1>
-      <p className="hero-copy">{t.hero.copy}</p>
+      <p className="hero-copy" style={{ whiteSpace: "pre-wrap" }}>{t.hero.copy}</p>
       <div className="hero-actions" aria-label={t.hero.actionsLabel}>
         <a className="button button-primary" href="#download">
           {t.hero.download}
