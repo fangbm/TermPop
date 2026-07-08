@@ -150,10 +150,10 @@ export function buildExplanationCacheKey(term: string, context: string | undefin
     baseUrl,
     model,
     settings.language,
-    settings.includeUsageExample ? "usage" : "no-usage",
+    settings.includeUsageExample ? "example" : "no-example",
+    normalizedTerm,
     scopeFingerprint,
-    contextFingerprint,
-    normalizedTerm
+    contextFingerprint
   ].join("\n");
 }
 

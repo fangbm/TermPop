@@ -11,7 +11,7 @@ export function normalizeCacheTerm(term: string): string {
 }
 
 export function normalizeCacheContext(context: string | undefined): string {
-  return (context ?? "").replace(/\s+/g, " ").trim().slice(0, 800);
+  return (context ?? "").replace(/\s+/g, " ").trim().slice(0, 1200);
 }
 
 export function truncate(value: string, maxLength: number): string {

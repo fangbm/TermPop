@@ -1251,7 +1251,7 @@ function requestExplanation(term: string, context: string, cacheKey: string, ref
     type: "TERMPOP_EXPLAIN",
     term,
     context,
-    cacheScope: currentPageCacheScope(),
+    cacheScope: cacheKey,
     url: location.href,
     pageFingerprint: currentPageFingerprint(),
     refresh
@@ -1284,11 +1284,6 @@ function currentPageFingerprint(): string {
     at: now
   };
   return cachedPageFingerprint.value;
-}
-
-function currentPageCacheScope(): string {
-  const domain = domainFromUrl(location.href) ?? "local";
-  return `${domain}\n${currentPageFingerprint()}`;
 }
 
 function hashString(value: string): string {

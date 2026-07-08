@@ -43,6 +43,14 @@
           <input id="api-key" name="apiKey" type="password" autocomplete="off" placeholder="sk-..." />
         </label>
         <label>
+          模型
+          <input id="model" name="model" type="text" placeholder="gpt-4.1-mini" />
+        </label>
+        <label>
+          Base URL
+          <input id="base-url" name="baseUrl" type="url" placeholder="https://api.openai.com/v1" />
+        </label>
+        <label>
           解释语言
           <select id="language" name="language">
             <option value="auto">跟随上下文</option>
@@ -56,14 +64,6 @@
         </label>
         <button id="advanced-toggle" class="secondary-button" type="button">高级设置</button>
         <section id="advanced-settings" class="advanced-settings" hidden>
-          <label>
-            模型
-            <input id="model" name="model" type="text" placeholder="gpt-4.1-mini" />
-          </label>
-          <label>
-            Base URL
-            <input id="base-url" name="baseUrl" type="url" placeholder="https://api.openai.com/v1" />
-          </label>
           <div class="inline-fields">
             <label>
               温度

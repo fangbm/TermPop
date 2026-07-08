@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "TermPop",
-  "description": "AI 词汇解释助手：检测网页术语并在悬浮卡片中解释。",
-  "version": "0.1.1",
+  "name": "__MSG_extensionName__",
+  "description": "__MSG_extensionDescription__",
+  "default_locale": "en",
+  "version": "0.1.2",
   "icons": {
     "16": "assets/icons/icon-16.png",
     "32": "assets/icons/icon-32.png",

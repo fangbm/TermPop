@@ -1,5 +1,5 @@
-import { copyFileSync, mkdirSync, readdirSync } from "node:fs";
-import { resolve } from "node:path";
+import { copyFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { defineConfig } from "vite";
 
 export default defineConfig({
@@ -39,7 +39,22 @@ export default defineConfig({
             resolve(__dirname, "dist/assets/icons", iconFile)
           );
         }
+        copyDirectory(resolve(__dirname, "src/_locales"), resolve(__dirname, "dist/_locales"));
       }
     }
   ]
 });
+
+function copyDirectory(source: string, destination: string): void {
+  mkdirSync(destination, { recursive: true });
+  for (const entry of readdirSync(source)) {
+    const sourcePath = resolve(source, entry);
+    const destinationPath = resolve(destination, entry);
+    if (statSync(sourcePath).isDirectory()) {
+      copyDirectory(sourcePath, destinationPath);
+      continue;
+    }
+    mkdirSync(dirname(destinationPath), { recursive: true });
+    copyFileSync(sourcePath, destinationPath);
+  }
+}
