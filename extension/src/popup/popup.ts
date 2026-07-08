@@ -1,5 +1,16 @@
 import { getSettings, setLlmSettings, setMode } from "../shared/settings";
-import type { ExplanationLanguage, LlmProvider, LlmSettings, TermPopMode } from "../shared/types";
+import type {
+  ExplanationLanguage,
+  GetSiteAccessResponse,
+  InjectActiveTabResponse,
+  LlmProvider,
+  LlmSettings,
+  SetSiteAccessResponse,
+  SiteAccessState,
+  TermPopMode,
+  DisableSiteRequest,
+  DisableSiteResponse
+} from "../shared/types";
 import "./popup.css";
 
 const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-mode]"));
@@ -15,6 +26,11 @@ const includeUsageExampleInput = document.querySelector<HTMLInputElement>("#incl
 const temperatureInput = document.querySelector<HTMLInputElement>("#temperature");
 const maxTokensInput = document.querySelector<HTMLInputElement>("#max-tokens");
 const maxConcurrencyInput = document.querySelector<HTMLInputElement>("#max-concurrency");
+const advancedToggle = document.querySelector<HTMLButtonElement>("#advanced-toggle");
+const advancedSettings = document.querySelector<HTMLElement>("#advanced-settings");
+const siteAccess = document.querySelector<HTMLElement>(".site-access");
+const siteAccessStatus = document.querySelector<HTMLParagraphElement>("#site-access-status");
+const siteAccessToggle = document.querySelector<HTMLButtonElement>("#site-access-toggle");
 const pdfTools = document.querySelector<HTMLElement>(".pdf-tools");
 const openPdfViewerButton = document.querySelector<HTMLButtonElement>("#open-pdf-viewer");
 const AUTO_SAVE_DELAY_MS = 400;
@@ -28,6 +44,8 @@ async function init(): Promise<void> {
   renderLlmSettings(settings.llm);
   renderAppName(settings.llm.language);
   renderModeLabels(settings.llm.language);
+  renderAdvancedSettings(settings.llm);
+  await renderSiteAccess();
   await renderPdfToolsVisibility();
 
   for (const button of buttons) {
@@ -61,6 +79,18 @@ async function init(): Promise<void> {
 
   includeUsageExampleInput?.addEventListener("change", () => {
     void saveLlm();
+  });
+
+  advancedToggle?.addEventListener("click", () => {
+    const nextVisible = advancedSettings?.hidden ?? true;
+    if (advancedSettings) {
+      advancedSettings.hidden = !nextVisible;
+    }
+    void saveLlm();
+  });
+
+  siteAccessToggle?.addEventListener("click", () => {
+    void toggleSiteAccess();
   });
 
   openPdfViewerButton?.addEventListener("click", () => {
@@ -109,6 +139,91 @@ async function renderPdfToolsVisibility(): Promise<void> {
   pdfTools.hidden = !extractPdfUrl(tab?.url ?? "");
 }
 
+async function renderSiteAccess(): Promise<void> {
+  const response = await chrome.runtime.sendMessage({ type: "TERMPOP_GET_SITE_ACCESS" }) as GetSiteAccessResponse;
+  if (!response.ok || !response.access) {
+    renderSiteAccessState(undefined, response.error ?? "无法读取当前站点权限。");
+    return;
+  }
+  renderSiteAccessState(response.access);
+}
+
+function renderSiteAccessState(access: SiteAccessState | undefined, error?: string): void {
+  siteAccess?.classList.toggle("is-enabled", Boolean(access?.enabled && access.hasPermission));
+  siteAccess?.classList.toggle("is-unsupported", Boolean(access && !access.supported));
+  if (!access?.supported) {
+    if (siteAccessStatus) siteAccessStatus.textContent = error || "当前页面不支持注入。";
+    if (siteAccessToggle) {
+      siteAccessToggle.disabled = true;
+      siteAccessToggle.textContent = "不可用";
+    }
+    return;
+  }
+
+  const active = access.enabled && access.hasPermission;
+  if (siteAccessStatus) {
+    siteAccessStatus.textContent = active
+      ? "TermPop 已在当前站点启用。"
+      : "启用后才会在当前站点扫描和高亮术语。";
+  }
+  if (siteAccessToggle) {
+    siteAccessToggle.disabled = false;
+    siteAccessToggle.textContent = active ? "停用当前站点" : "启用当前站点";
+  }
+}
+
+async function toggleSiteAccess(): Promise<void> {
+  const current = await chrome.runtime.sendMessage({ type: "TERMPOP_GET_SITE_ACCESS" }) as GetSiteAccessResponse;
+  if (!current.ok || !current.access?.supported) {
+    renderSiteAccessState(undefined, current.error ?? "当前页面不支持注入。");
+    return;
+  }
+
+  const nextEnabled = !(current.access.enabled && current.access.hasPermission);
+  if (nextEnabled) {
+    const granted = await chrome.permissions.request({ origins: [current.access.originPattern] });
+    if (!granted) {
+      if (status) status.textContent = "未获得当前站点权限。";
+      return;
+    }
+  } else {
+    await disableActiveTabContent();
+    await chrome.permissions.remove({ origins: [current.access.originPattern] });
+  }
+
+  const saved = await chrome.runtime.sendMessage({
+    type: "TERMPOP_SET_SITE_ACCESS",
+    originPattern: current.access.originPattern,
+    enabled: nextEnabled
+  }) as SetSiteAccessResponse;
+
+  if (!saved.ok || !saved.access) {
+    renderSiteAccessState(undefined, saved.error ?? "保存站点权限失败。");
+    return;
+  }
+
+  renderSiteAccessState(saved.access);
+  if (nextEnabled) {
+    const injected = await chrome.runtime.sendMessage({ type: "TERMPOP_INJECT_ACTIVE_TAB" }) as InjectActiveTabResponse;
+    if (status) status.textContent = injected.ok && injected.injected ? "已启用并注入当前页面。" : "已启用，刷新页面后生效。";
+  } else if (status) {
+    status.textContent = "已停用当前站点，并清理当前页面高亮。";
+  }
+}
+
+async function disableActiveTabContent(): Promise<void> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (tab?.id === undefined) {
+    return;
+  }
+
+  try {
+    await chrome.tabs.sendMessage(tab.id, { type: "TERMPOP_DISABLE_SITE" } satisfies DisableSiteRequest) as DisableSiteResponse;
+  } catch {
+    // The page may not have a TermPop content script yet; disabling permissions should still continue.
+  }
+}
+
 async function saveLlm(): Promise<void> {
   if (autoSaveTimer !== undefined) {
     window.clearTimeout(autoSaveTimer);
@@ -147,7 +262,9 @@ function collectLlmSettings(): LlmSettings {
     includeUsageExample: includeUsageExampleInput?.checked ?? false,
     maxConcurrency: Math.round(clampNumber(Number(maxConcurrencyInput?.value), 1, Number.MAX_SAFE_INTEGER, 5)),
     temperature: clampNumber(Number(temperatureInput?.value), 0, 2, 0.2),
-    maxTokens: Math.round(clampNumber(Number(maxTokensInput?.value), 128, 4000, 450))
+    maxTokens: Math.round(clampNumber(Number(maxTokensInput?.value), 128, 4000, 450)),
+    advancedVisible: advancedSettings ? !advancedSettings.hidden : false,
+    debugLogging: false
   };
   return llm;
 }
@@ -168,6 +285,7 @@ function renderModeLabels(language: ExplanationLanguage): void {
 
 function renderLlmSettings(llm: LlmSettings): void {
   renderNormalizedLlmFields(llm);
+  renderAdvancedSettings(llm);
 }
 
 function renderNormalizedLlmFields(llm: LlmSettings): void {
@@ -180,6 +298,15 @@ function renderNormalizedLlmFields(llm: LlmSettings): void {
   if (maxConcurrencyInput) maxConcurrencyInput.value = String(llm.maxConcurrency);
   if (temperatureInput) temperatureInput.value = String(llm.temperature);
   if (maxTokensInput) maxTokensInput.value = String(llm.maxTokens);
+}
+
+function renderAdvancedSettings(llm: LlmSettings): void {
+  if (advancedSettings) {
+    advancedSettings.hidden = !llm.advancedVisible;
+  }
+  if (advancedToggle) {
+    advancedToggle.textContent = llm.advancedVisible ? "收起高级设置" : "高级设置";
+  }
 }
 
 function applyProviderDefaults(provider: LlmProvider): void {

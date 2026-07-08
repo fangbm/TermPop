@@ -3,6 +3,8 @@
 
 export function detect_terms_json(input: string): string;
 
+export function detect_terms_with_dictionary_json(input: string, dictionary_json: string): string;
+
 export function explain_term_json(term: string, context?: string | null): string;
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
@@ -10,6 +12,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly detect_terms_json: (a: number, b: number) => [number, number, number, number];
+    readonly detect_terms_with_dictionary_json: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly explain_term_json: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_malloc: (a: number, b: number) => number;

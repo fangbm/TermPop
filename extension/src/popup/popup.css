@@ -43,6 +43,37 @@ p {
   background: #eff6ff;
 }
 
+.site-access {
+  display: grid;
+  gap: 9px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #eff6ff;
+}
+
+.site-access strong {
+  display: block;
+  color: #172033;
+  font-size: 12px;
+}
+
+.site-access p {
+  margin-top: 3px;
+  line-height: 1.45;
+}
+
+.site-access.is-enabled {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.site-access.is-unsupported {
+  border-color: #e2e8f0;
+  background: #f8fafc;
+}
+
 .pdf-tools[hidden] {
   display: none;
 }
@@ -113,6 +144,15 @@ select:focus {
   gap: 8px;
 }
 
+.advanced-settings {
+  display: grid;
+  gap: 10px;
+}
+
+.advanced-settings[hidden] {
+  display: none;
+}
+
 button {
   min-height: 34px;
   border: 1px solid #cbd5e1;
@@ -133,6 +173,18 @@ button.is-active {
   border-color: #2563eb;
   background: #2563eb;
   color: #ffffff;
+}
+
+.secondary-button {
+  color: #2563eb;
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.security-note {
+  margin: 0;
+  color: #64748b;
+  line-height: 1.45;
 }
 
 .auto-save-hint {

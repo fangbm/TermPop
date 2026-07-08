@@ -52,6 +52,30 @@ pub struct DetectorConfig {
     pub min_confidence: f32,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DictionaryTerm {
+    pub term: String,
+    pub term_type: Option<TermType>,
+    pub confidence: Option<f32>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct TermDictionary {
+    #[serde(default)]
+    pub base: Vec<DictionaryTerm>,
+    #[serde(default)]
+    pub domain: Vec<DictionaryTerm>,
+    #[serde(default)]
+    pub user: Vec<DictionaryTerm>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+enum DictionaryInput {
+    Scoped(TermDictionary),
+    Entries(Vec<DictionaryTerm>),
+}
+
 impl Default for DetectorConfig {
     fn default() -> Self {
         Self {
@@ -92,6 +116,18 @@ impl TermDetector {
         }
 
         terms.extend(self.detect_user_terms(text));
+        deduplicate_and_sort(terms, self.config.min_confidence)
+    }
+
+    pub fn detect_with_dictionary(&self, text: &str, dictionary: &TermDictionary) -> Vec<DetectedTerm> {
+        if text.trim().is_empty() {
+            return Vec::new();
+        }
+
+        let mut terms = self.detect(text);
+        terms.extend(detect_dictionary_terms(text, &dictionary.base, DetectionSource::Dictionary));
+        terms.extend(detect_dictionary_terms(text, &dictionary.domain, DetectionSource::Dictionary));
+        terms.extend(detect_dictionary_terms(text, &dictionary.user, DetectionSource::User));
         deduplicate_and_sort(terms, self.config.min_confidence)
     }
 
@@ -183,8 +219,65 @@ static RULES: Lazy<Vec<Rule>> = Lazy::new(|| {
     ]
 });
 
+fn detect_dictionary_terms(
+    text: &str,
+    entries: &[DictionaryTerm],
+    source: DetectionSource,
+) -> Vec<DetectedTerm> {
+    let mut results = Vec::new();
+    let mut seen = HashSet::new();
+
+    for entry in entries {
+        let term = entry.term.trim();
+        if term.is_empty() || !seen.insert(term.to_lowercase()) {
+            continue;
+        }
+
+        let pattern = if is_ascii_word(term) {
+            format!(r"\b{}\b", regex::escape(term))
+        } else {
+            regex::escape(term)
+        };
+
+        if let Ok(regex) = Regex::new(&pattern) {
+            for mat in regex.find_iter(text) {
+                results.push(DetectedTerm {
+                    term: mat.as_str().to_string(),
+                    start: mat.start(),
+                    end: mat.end(),
+                    term_type: entry.term_type.clone().unwrap_or(TermType::Custom),
+                    confidence: entry.confidence.unwrap_or(0.94).clamp(0.0, 1.0),
+                    source: source.clone(),
+                });
+            }
+        }
+    }
+
+    results
+}
+
 pub fn detect_terms(text: &str) -> Vec<DetectedTerm> {
     TermDetector::new(DetectorConfig::default()).detect(text)
+}
+
+pub fn detect_terms_with_dictionary(text: &str, dictionary: &TermDictionary) -> Vec<DetectedTerm> {
+    TermDetector::new(DetectorConfig::default()).detect_with_dictionary(text, dictionary)
+}
+
+pub fn detect_terms_with_dictionary_json_result(
+    text: &str,
+    dictionary_json: &str,
+) -> Result<Vec<DetectedTerm>, serde_json::Error> {
+    let parsed = serde_json::from_str::<DictionaryInput>(dictionary_json)?;
+    let dictionary = match parsed {
+        DictionaryInput::Scoped(dictionary) => dictionary,
+        DictionaryInput::Entries(entries) => TermDictionary {
+            base: entries,
+            domain: Vec::new(),
+            user: Vec::new(),
+        },
+    };
+    Ok(detect_terms_with_dictionary(text, &dictionary))
 }
 
 pub fn explain_term(term: &str, context: Option<&str>) -> Explanation {
@@ -319,6 +412,17 @@ pub fn detect_terms_json(input: &str) -> Result<String, JsValue> {
 
 #[cfg(feature = "wasm")]
 #[wasm_bindgen]
+pub fn detect_terms_with_dictionary_json(
+    input: &str,
+    dictionary_json: &str,
+) -> Result<String, JsValue> {
+    let terms = detect_terms_with_dictionary_json_result(input, dictionary_json)
+        .map_err(|err| JsValue::from_str(&err.to_string()))?;
+    serde_json::to_string(&terms).map_err(|err| JsValue::from_str(&err.to_string()))
+}
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen]
 pub fn explain_term_json(term: &str, context: Option<String>) -> Result<String, JsValue> {
     serde_json::to_string(&explain_term(term, context.as_deref()))
         .map_err(|err| JsValue::from_str(&err.to_string()))
@@ -413,5 +517,21 @@ mod tests {
     #[test]
     fn empty_input_returns_no_terms() {
         assert!(detect_terms("").is_empty());
+    }
+
+    #[test]
+    fn detects_terms_from_dictionary_json() {
+        let terms = detect_terms_with_dictionary_json_result(
+            "TermPop can explain retrieval augmented generation.",
+            r#"{"base":[{"term":"retrieval augmented generation","term_type":"Tech","confidence":0.96}],"domain":[],"user":[]}"#,
+        )
+        .expect("valid dictionary");
+
+        let matched = terms
+            .iter()
+            .find(|term| term.term == "retrieval augmented generation")
+            .expect("dictionary term matched");
+        assert_eq!(matched.term_type, TermType::Tech);
+        assert_eq!(matched.source, DetectionSource::Dictionary);
     }
 }

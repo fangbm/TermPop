@@ -6,6 +6,8 @@ import type {
   DetectTermsRequest,
   DetectTermsResponse,
   DetectedTerm,
+  DisableSiteRequest,
+  DisableSiteResponse,
   ExplainRequest,
   ExplainResponse,
   ExplainSelectionRequest,
@@ -18,6 +20,7 @@ import type {
 } from "../shared/types";
 import { TermPopOverlayController } from "../shared/overlay";
 import { filterAllowedDetectedTerms, findAllowedOccurrences } from "../shared/term-matching";
+import { domainFromUrl, originPatternFromUrl, pageFingerprintFromUrlAndText, sanitizeForLog, SITE_ACCESS_STORAGE_KEY } from "../shared/browser-utils";
 import styles from "./styles.css?inline";
 import overlayStyles from "../shared/overlay.css?inline";
 
@@ -42,13 +45,17 @@ let scanGeneration = 0;
 let lastContextMenuPoint: { x: number; y: number; time: number } | undefined;
 let globalCachedTerms: CachedTermEntry[] = [];
 let highlightEventsBound = false;
+let siteDisabled = false;
 const pageExplanationCache = new Map<string, Explanation>();
 const pendingExplanationRequests = new Map<string, Promise<ExplainResponse>>();
 const pendingCachedTerms = new Map<string, DetectedTerm>();
 const hoverTimers = new WeakMap<HTMLElement, number>();
+const hoverTimerIds = new Set<number>();
 const explanationRequestIds = new WeakMap<HTMLElement, number>();
 let explanationRequestSeq = 0;
 const debugOptions = readDebugOptions();
+const runtimeState = globalThis as typeof globalThis & { __termpopBooted?: boolean };
+let cachedPageFingerprint: { value: string; at: number } | undefined;
 
 type DetectionModeOverride = "primary" | "llm" | "all";
 type TextNodeSpan = {
@@ -62,7 +69,10 @@ interface DebugOptions {
   disableCache: boolean;
 }
 
-void boot();
+if (!runtimeState.__termpopBooted) {
+  runtimeState.__termpopBooted = true;
+  void boot();
+}
 
 async function boot(): Promise<void> {
   await initWasm({ module_or_path: chrome.runtime.getURL("assets/termpop_core_bg.wasm") });
@@ -75,11 +85,12 @@ async function boot(): Promise<void> {
   const settings = await getSettings();
   globalCachedTerms = debugOptions.disableCache ? [] : await loadGlobalCachedTerms();
   activeMode = debugOptions.detectionMode ? "hover" : settings.mode;
-  console.info("TermPop content boot", {
+  debugLog("TermPop content boot", {
     mode: activeMode,
     debugOptions,
     url: location.href
   });
+  setupSiteAccessChangeListener();
   setupSelectionMessageListener();
   setupSelectionPointerTracking();
   setupHighlightEventDelegation();
@@ -103,6 +114,9 @@ function injectStyles(): void {
 }
 
 async function scanAndHighlight(mode: TermPopMode): Promise<void> {
+  if (siteDisabled) {
+    return;
+  }
   if (mode === "selection" && !debugOptions.detectionMode) {
     return;
   }
@@ -131,6 +145,7 @@ async function scanAndHighlight(mode: TermPopMode): Promise<void> {
   while (walker.nextNode()) {
     nodes.push(walker.currentNode as Text);
   }
+  nodes.sort((left, right) => Number(!isTextNodeNearViewport(left)) - Number(!isTextNodeNearViewport(right)));
 
   const llmCandidates: Text[] = [];
 
@@ -139,9 +154,12 @@ async function scanAndHighlight(mode: TermPopMode): Promise<void> {
     return;
   }
 
-  for (const node of nodes) {
+  for (const [nodeIndex, node] of nodes.entries()) {
     if (!isCurrentScan(currentScanGeneration)) {
       return;
+    }
+    if (nodeIndex > 0 && nodeIndex % 20 === 0) {
+      await yieldToMainThread();
     }
     if (highlighted >= limit) {
       break;
@@ -202,7 +220,7 @@ async function scanAndHighlight(mode: TermPopMode): Promise<void> {
 }
 
 function isCurrentScan(scanId: number): boolean {
-  return scanId === scanGeneration && (activeMode !== "selection" || Boolean(debugOptions.detectionMode));
+  return !siteDisabled && scanId === scanGeneration && (activeMode !== "selection" || Boolean(debugOptions.detectionMode));
 }
 
 async function scanLlmDebugBlocks(limit: number, termHighlightCounts: Map<string, number>): Promise<number> {
@@ -215,7 +233,7 @@ async function scanLlmDebugBlocks(limit: number, termHighlightCounts: Map<string
       break;
     }
 
-    console.info("TermPop LLM block batch request", {
+    debugLog("TermPop LLM block batch request", {
       textPreview: batch.text.slice(0, 260),
       nodeCount: batch.spans.length
     });
@@ -390,14 +408,72 @@ function setupModeChangeListener(): void {
   });
 }
 
+function setupSiteAccessChangeListener(): void {
+  if (debugOptions.detectionMode) {
+    return;
+  }
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== "local" || !changes[SITE_ACCESS_STORAGE_KEY]) {
+      return;
+    }
+
+    const originPattern = originPatternFromUrl(location.href);
+    if (!originPattern) {
+      return;
+    }
+
+    const nextOrigins = Array.isArray(changes[SITE_ACCESS_STORAGE_KEY].newValue)
+      ? changes[SITE_ACCESS_STORAGE_KEY].newValue as string[]
+      : [];
+    if (nextOrigins.includes(originPattern)) {
+      void enableSite();
+      return;
+    }
+    disableSite();
+  });
+}
+
+async function enableSite(): Promise<void> {
+  if (!siteDisabled) {
+    return;
+  }
+  siteDisabled = false;
+  const settings = await getSettings();
+  activeMode = settings.mode;
+  if (activeMode !== "selection") {
+    startAutomaticHighlighting();
+  }
+}
+
+function disableSite(): void {
+  siteDisabled = true;
+  stopAutomaticHighlighting();
+  if (cacheFlushTimer !== undefined) {
+    window.clearTimeout(cacheFlushTimer);
+    cacheFlushTimer = undefined;
+  }
+  pendingCachedTerms.clear();
+  for (const timer of hoverTimerIds) {
+    window.clearTimeout(timer);
+  }
+  hoverTimerIds.clear();
+  overlay?.hide();
+  removeAllHighlights();
+}
+
 function applyModeChange(nextMode: TermPopMode): void {
+  if (siteDisabled) {
+    activeMode = nextMode;
+    return;
+  }
   if (activeMode === nextMode) {
     return;
   }
 
   const previousMode = activeMode;
   activeMode = nextMode;
-  console.info("TermPop mode changed", { previousMode, mode: activeMode });
+  debugLog("TermPop mode changed", { previousMode, mode: activeMode });
   if (activeMode === "selection") {
     stopAutomaticHighlighting();
     removeAllHighlights();
@@ -412,6 +488,9 @@ function applyModeChange(nextMode: TermPopMode): void {
 }
 
 function startAutomaticHighlighting(): void {
+  if (siteDisabled) {
+    return;
+  }
   observeDynamicContent();
   void scanAndHighlight(activeMode);
 }
@@ -460,6 +539,9 @@ function observeDynamicContent(): void {
 }
 
 function scheduleScan(): void {
+  if (siteDisabled) {
+    return;
+  }
   if (activeMode === "selection" && !debugOptions.detectionMode) {
     return;
   }
@@ -475,8 +557,19 @@ function scheduleScan(): void {
 }
 
 function setupSelectionMessageListener(): void {
-  chrome.runtime.onMessage.addListener((message: ExplainSelectionRequest, _sender, sendResponse) => {
+  chrome.runtime.onMessage.addListener((message: ExplainSelectionRequest | DisableSiteRequest, _sender, sendResponse) => {
+    if (message.type === "TERMPOP_DISABLE_SITE") {
+      disableSite();
+      sendResponse({ ok: true } satisfies DisableSiteResponse);
+      return false;
+    }
+
     if (message.type !== "TERMPOP_EXPLAIN_SELECTION") {
+      return false;
+    }
+
+    if (siteDisabled) {
+      sendResponse({ ok: false, error: "TermPop is disabled on this site." } satisfies ExplainSelectionResponse);
       return false;
     }
 
@@ -513,6 +606,9 @@ function setupHighlightEventDelegation(): void {
   document.addEventListener(
     "pointerover",
     (event) => {
+      if (siteDisabled) {
+        return;
+      }
       const highlight = closestHighlight(event.target);
       if (!highlight || isMovingInsideHighlight(highlight, event.relatedTarget)) {
         return;
@@ -531,6 +627,9 @@ function setupHighlightEventDelegation(): void {
   document.addEventListener(
     "pointerout",
     (event) => {
+      if (siteDisabled) {
+        return;
+      }
       const highlight = closestHighlight(event.target);
       if (!highlight || isMovingInsideHighlight(highlight, event.relatedTarget)) {
         return;
@@ -545,6 +644,9 @@ function setupHighlightEventDelegation(): void {
   document.addEventListener(
     "click",
     (event) => {
+      if (siteDisabled) {
+        return;
+      }
       const highlight = closestHighlight(event.target);
       if (!highlight) {
         return;
@@ -719,20 +821,25 @@ function selectionContext(term: string): string {
 }
 
 async function detectTerms(text: string): Promise<DetectedTerm[]> {
+  if (siteDisabled) {
+    return [];
+  }
   try {
-    console.info("TermPop detect terms request", {
+    debugLog("TermPop detect terms request", {
       detectionMode: debugOptions.detectionMode,
       disableCache: debugOptions.disableCache,
-      textPreview: text.slice(0, 180)
+      textPreview: text
     });
     const response = await chrome.runtime.sendMessage({
       type: "TERMPOP_DETECT_TERMS",
       text,
-      detectionMode: debugOptions.detectionMode
+      detectionMode: debugOptions.detectionMode,
+      url: location.href,
+      pageFingerprint: currentPageFingerprint()
     } satisfies DetectTermsRequest) as DetectTermsResponse;
 
     if (response.ok && response.terms) {
-      console.info("TermPop detect terms response", {
+      debugLog("TermPop detect terms response", {
         count: response.terms.length,
         debug: response.debug,
         terms: response.terms.map((term) => term.term).slice(0, 20)
@@ -742,9 +849,9 @@ async function detectTerms(text: string): Promise<DetectedTerm[]> {
       }
       return response.terms;
     }
-    console.warn("TermPop detect terms failed response", response);
+    console.warn("TermPop detect terms failed response", sanitizeForLog(response, 300));
   } catch (error) {
-    console.warn("TermPop detect terms request failed", error);
+    console.warn("TermPop detect terms request failed", sanitizeForLog(error, 300));
     // Local WASM fallback below keeps highlighting usable if the service worker is unavailable.
   }
 
@@ -769,7 +876,9 @@ function detectTermsLocally(text: string): DetectedTerm[] {
 async function loadGlobalCachedTerms(): Promise<CachedTermEntry[]> {
   try {
     const response = await chrome.runtime.sendMessage({
-      type: "TERMPOP_GET_CACHED_TERMS"
+      type: "TERMPOP_GET_CACHED_TERMS",
+      url: location.href,
+      pageFingerprint: currentPageFingerprint()
     } satisfies GetCachedTermsRequest) as GetCachedTermsResponse;
 
     if (response.ok && response.terms) {
@@ -829,7 +938,9 @@ function rememberDetectedTerms(terms: DetectedTerm[]): void {
     mergeGlobalCachedTerms(termsToFlush);
     void chrome.runtime.sendMessage({
       type: "TERMPOP_ADD_CACHED_TERMS",
-      terms: termsToFlush
+      terms: termsToFlush,
+      url: location.href,
+      pageFingerprint: currentPageFingerprint()
     } satisfies AddCachedTermsRequest);
   }, 500);
 }
@@ -857,6 +968,9 @@ function mergeGlobalCachedTerms(terms: DetectedTerm[]): void {
         term_type: term.term_type,
         confidence: term.confidence,
         source: term.source,
+        scope: term.source === "Ner" ? "domain" : "global",
+        domain: term.source === "Ner" ? domainFromUrl(location.href) ?? null : null,
+        page_fingerprint: null,
         last_seen_at: Date.now()
       });
     }
@@ -874,6 +988,13 @@ function readDebugOptions(): DebugOptions {
       : undefined,
     disableCache: params.get("termpopCache") === "0" || params.get("termpopNoCache") === "1"
   };
+}
+
+function debugLog(message: string, payload?: unknown): void {
+  if (new URLSearchParams(window.location.search).get("termpopDebug") !== "1") {
+    return;
+  }
+  console.info(message, sanitizeForLog(payload, 700));
 }
 
 function shouldUseLocalDetection(): boolean {
@@ -930,13 +1051,57 @@ function isHighlightableTextNode(node: Node): boolean {
     return false;
   }
 
-  const blocked = parent.closest("a, script, style, noscript, input, textarea, select, option, [contenteditable='true'], [data-termpop-ignore]");
+  const blocked = parent.closest([
+    "a",
+    "script",
+    "style",
+    "noscript",
+    "code",
+    "pre",
+    "kbd",
+    "samp",
+    "var",
+    "input",
+    "textarea",
+    "select",
+    "option",
+    "[role='textbox']",
+    "[contenteditable='true']",
+    "[data-termpop-ignore]",
+    ".monaco-editor",
+    ".cm-editor",
+    ".ProseMirror"
+  ].join(", "));
   if (blocked) {
     return false;
   }
 
   const style = window.getComputedStyle(parent);
   return style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0";
+}
+
+function isTextNodeNearViewport(node: Text): boolean {
+  const range = document.createRange();
+  range.selectNodeContents(node);
+  const rect = range.getBoundingClientRect();
+  range.detach();
+  return rect.bottom >= -window.innerHeight * 0.2
+    && rect.top <= window.innerHeight * 1.2
+    && rect.right >= 0
+    && rect.left <= window.innerWidth;
+}
+
+function yieldToMainThread(): Promise<void> {
+  return new Promise((resolve) => {
+    const requestIdleCallback = (window as Window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+    }).requestIdleCallback;
+    if (requestIdleCallback) {
+      requestIdleCallback(() => resolve(), { timeout: 80 });
+      return;
+    }
+    window.setTimeout(resolve, 0);
+  });
 }
 
 function highlightTextNode(node: Text, terms: DetectedTerm[]): number {
@@ -991,12 +1156,17 @@ function scheduleHoverExplanation(anchor: HTMLElement, term: DetectedTerm, conte
   cancelHoverExplanation(anchor);
   const timer = window.setTimeout(() => {
     hoverTimers.delete(anchor);
+    hoverTimerIds.delete(timer);
+    if (siteDisabled) {
+      return;
+    }
     if (!anchor.matches(":hover")) {
       return;
     }
     void showExplanation(anchor, term, context, { refresh: false, pin: false, pointer });
   }, HOVER_SHOW_DELAY_MS);
   hoverTimers.set(anchor, timer);
+  hoverTimerIds.add(timer);
 }
 
 function cancelHoverExplanation(anchor: HTMLElement): void {
@@ -1006,9 +1176,14 @@ function cancelHoverExplanation(anchor: HTMLElement): void {
   }
   window.clearTimeout(timer);
   hoverTimers.delete(anchor);
+  hoverTimerIds.delete(timer);
 }
 
 async function showExplanation(anchor: HTMLElement, term: DetectedTerm, context: string, options: ShowExplanationOptions): Promise<void> {
+  if (siteDisabled) {
+    return;
+  }
+
   const requestId = ++explanationRequestSeq;
   explanationRequestIds.set(anchor, requestId);
   const cacheKey = explanationResultCacheKey(term.term, context);
@@ -1061,6 +1236,10 @@ function isLatestExplanationRequest(anchor: HTMLElement, requestId: number): boo
 }
 
 function requestExplanation(term: string, context: string, cacheKey: string, refresh: boolean): Promise<ExplainResponse> {
+  if (siteDisabled) {
+    return Promise.resolve({ ok: false, error: "TermPop is disabled on this site." });
+  }
+
   if (!refresh) {
     const pending = pendingExplanationRequests.get(cacheKey);
     if (pending) {
@@ -1072,7 +1251,9 @@ function requestExplanation(term: string, context: string, cacheKey: string, ref
     type: "TERMPOP_EXPLAIN",
     term,
     context,
-    cacheScope: cacheKey,
+    cacheScope: currentPageCacheScope(),
+    url: location.href,
+    pageFingerprint: currentPageFingerprint(),
     refresh
   } satisfies ExplainRequest) as Promise<ExplainResponse>;
 
@@ -1091,6 +1272,23 @@ function explanationCacheKey(term: string): string {
 
 function explanationResultCacheKey(term: string, context: string): string {
   return `${explanationCacheKey(term)}\n${hashString(context.replace(/\s+/g, " ").trim().slice(0, 1200))}`;
+}
+
+function currentPageFingerprint(): string {
+  const now = Date.now();
+  if (cachedPageFingerprint && now - cachedPageFingerprint.at < 10_000) {
+    return cachedPageFingerprint.value;
+  }
+  cachedPageFingerprint = {
+    value: pageFingerprintFromUrlAndText(location.href, document.body.innerText || document.body.textContent || ""),
+    at: now
+  };
+  return cachedPageFingerprint.value;
+}
+
+function currentPageCacheScope(): string {
+  const domain = domainFromUrl(location.href) ?? "local";
+  return `${domain}\n${currentPageFingerprint()}`;
 }
 
 function hashString(value: string): string {

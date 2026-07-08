@@ -16,6 +16,13 @@
         <button type="button" data-mode="selection" data-label-zh="划词" data-label-en="Selection">划词</button>
         <button type="button" data-mode="hybrid" data-label-zh="混合" data-label-en="Hybrid">混合</button>
       </section>
+      <section class="site-access">
+        <div>
+          <strong>当前站点</strong>
+          <p id="site-access-status">正在读取权限...</p>
+        </div>
+        <button id="site-access-toggle" type="button">启用当前站点</button>
+      </section>
       <section class="pdf-tools">
         <button id="open-pdf-viewer" type="button">用 TermPop 打开当前 PDF</button>
         <p>适用于网页 PDF 或本地 PDF 文件。浏览器可能需要为插件开启“允许访问文件网址”。</p>
@@ -36,14 +43,6 @@
           <input id="api-key" name="apiKey" type="password" autocomplete="off" placeholder="sk-..." />
         </label>
         <label>
-          模型
-          <input id="model" name="model" type="text" placeholder="gpt-4.1-mini" />
-        </label>
-        <label>
-          Base URL
-          <input id="base-url" name="baseUrl" type="url" placeholder="https://api.openai.com/v1" />
-        </label>
-        <label>
           解释语言
           <select id="language" name="language">
             <option value="auto">跟随上下文</option>
@@ -55,20 +54,32 @@
           <input id="include-usage-example" name="includeUsageExample" type="checkbox" />
           <span>生成例句</span>
         </label>
-        <div class="inline-fields">
+        <button id="advanced-toggle" class="secondary-button" type="button">高级设置</button>
+        <section id="advanced-settings" class="advanced-settings" hidden>
           <label>
-            温度
-            <input id="temperature" name="temperature" type="number" min="0" max="2" step="0.1" />
+            模型
+            <input id="model" name="model" type="text" placeholder="gpt-4.1-mini" />
           </label>
           <label>
-            Tokens
-            <input id="max-tokens" name="maxTokens" type="number" min="128" max="4000" step="1" />
+            Base URL
+            <input id="base-url" name="baseUrl" type="url" placeholder="https://api.openai.com/v1" />
           </label>
-        </div>
-        <label>
-          并发限制
-          <input id="max-concurrency" name="maxConcurrency" type="number" min="1" step="1" />
-        </label>
+          <div class="inline-fields">
+            <label>
+              温度
+              <input id="temperature" name="temperature" type="number" min="0" max="2" step="0.1" />
+            </label>
+            <label>
+              Tokens
+              <input id="max-tokens" name="maxTokens" type="number" min="128" max="4000" step="1" />
+            </label>
+          </div>
+          <label>
+            并发限制
+            <input id="max-concurrency" name="maxConcurrency" type="number" min="1" step="1" />
+          </label>
+        </section>
+        <p class="security-note">本地 API Key 仅适合个人使用，不是 hardened secret storage。</p>
         <p class="auto-save-hint">LLM 设置会自动保存。</p>
       </form>
       <p id="status" role="status"></p>

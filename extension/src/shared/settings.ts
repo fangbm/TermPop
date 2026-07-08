@@ -11,7 +11,14 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
     includeUsageExample: false,
     maxConcurrency: 5,
     temperature: 0.2,
-    maxTokens: 450
+    maxTokens: 450,
+    advancedVisible: false,
+    debugLogging: false
+  },
+  dictionary: {
+    base: [],
+    domain: [],
+    user: []
   }
 };
 
@@ -27,6 +34,10 @@ export async function getSettings(): Promise<ExtensionSettings> {
     llm: {
       ...DEFAULT_SETTINGS.llm,
       ...partial?.llm
+    },
+    dictionary: {
+      ...DEFAULT_SETTINGS.dictionary,
+      ...partial?.dictionary
     }
   };
 }

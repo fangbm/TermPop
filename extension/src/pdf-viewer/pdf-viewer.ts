@@ -11,6 +11,7 @@ import type {
 } from "../shared/types";
 import { TermPopOverlayController } from "../shared/overlay";
 import { filterAllowedDetectedTerms } from "../shared/term-matching";
+import { pageFingerprintFromUrlAndText, sanitizeForLog } from "../shared/browser-utils";
 import "../shared/overlay.css";
 import "./pdf-viewer.css";
 
@@ -36,17 +37,20 @@ type HighlightRect = {
   height: number;
 };
 
-type RenderedPageResult = {
+type PdfPageState = {
   pageNumber: number;
+  page: pdfjsLib.PDFPageProxy;
   pageEl: HTMLElement;
+  renderState: "placeholder" | "rendering" | "rendered" | "failed";
+  primaryState: "pending" | "running" | "done" | "failed";
   primaryCount: number;
-  runLlmTask: () => Promise<LlmPageResult>;
-};
-
-type PdfPageState = RenderedPageResult & {
   llmState: "pending" | "running" | "done" | "failed";
   llmAdded: number;
   llmError?: string;
+  pageText?: string;
+  textItems?: TextLayerItem[];
+  highlightLayer?: HTMLElement;
+  primaryTerms?: DetectedTerm[];
 };
 
 type LlmPageResult = {
@@ -70,8 +74,12 @@ const pageExplanationCache = new Map<string, Explanation>();
 let lastDetectionDebug: DetectTermsDebug | undefined;
 let activePdfPageStates: PdfPageState[] = [];
 let activePrimaryCount = 0;
+let renderedPageCount = 0;
+let renderSchedulerTimer: number | undefined;
 let llmSchedulerTimer: number | undefined;
 let llmQueueRunning = false;
+let pageObserver: IntersectionObserver | undefined;
+const pageStateByElement = new WeakMap<Element, PdfPageState>();
 const overlay = new TermPopOverlayController({
   rootId: ROOT_ID,
   anchorSelector: `.${HIGHLIGHT_CLASS}`
@@ -83,8 +91,14 @@ reloadButton?.addEventListener("click", () => {
   void renderPdf();
 });
 
-window.addEventListener("scroll", scheduleViewportLlmDetection, { passive: true });
-window.addEventListener("resize", scheduleViewportLlmDetection);
+window.addEventListener("scroll", () => {
+  scheduleViewportPageRendering();
+  scheduleViewportLlmDetection();
+}, { passive: true });
+window.addEventListener("resize", () => {
+  scheduleViewportPageRendering();
+  scheduleViewportLlmDetection();
+});
 
 void renderPdf();
 
@@ -92,9 +106,16 @@ async function renderPdf(): Promise<void> {
   if (!root) return;
   root.innerHTML = "";
   overlay.hide();
+  pageObserver?.disconnect();
+  pageObserver = undefined;
   activePdfPageStates = [];
   activePrimaryCount = 0;
+  renderedPageCount = 0;
   llmQueueRunning = false;
+  if (renderSchedulerTimer !== undefined) {
+    window.clearTimeout(renderSchedulerTimer);
+    renderSchedulerTimer = undefined;
+  }
   if (llmSchedulerTimer !== undefined) {
     window.clearTimeout(llmSchedulerTimer);
     llmSchedulerTimer = undefined;
@@ -109,83 +130,166 @@ async function renderPdf(): Promise<void> {
     setStatus("正在加载 PDF...");
     const documentTask = pdfjsLib.getDocument({ url: sourceUrl });
     const pdf = await documentTask.promise;
-    setStatus(`已加载 ${pdf.numPages} 页，正在识别术语...`);
+    setStatus(`已加载 ${pdf.numPages} 页，正在创建页面占位...`);
+    pageObserver = new IntersectionObserver(handlePageIntersections, {
+      root: null,
+      rootMargin: "900px 0px",
+      threshold: 0.01
+    });
 
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
       const page = await pdf.getPage(pageNumber);
-      const result = await renderPage(page, pageNumber);
-      activePrimaryCount += result.primaryCount;
-      activePdfPageStates.push({
-        ...result,
-        llmState: "pending",
-        llmAdded: 0
-      });
-      setStatus(`基础识别 ${pageNumber}/${pdf.numPages} 页，词表高亮 ${activePrimaryCount} 处；LLM 将随滚动异步补词。`);
+      activePdfPageStates.push(createPagePlaceholder(page, pageNumber));
+      setStatus(`已加载 ${pdf.numPages} 页，已创建占位 ${pageNumber}/${pdf.numPages} 页。`);
     }
 
-    setStatus(`完成：${pdf.numPages} 页，词表高亮 ${activePrimaryCount} 处；LLM 将只处理当前视口附近页面。`);
-    scheduleViewportLlmDetection();
+    setStatus(buildPdfStatus("当前视口附近页面会优先渲染和识别。"));
+    scheduleViewportPageRendering();
   } catch (error) {
     setStatus(`PDF 加载失败：${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
-async function renderPage(page: pdfjsLib.PDFPageProxy, pageNumber: number): Promise<RenderedPageResult> {
-  if (!root) {
-    return { pageNumber, pageEl: document.createElement("section"), primaryCount: 0, runLlmTask: () => Promise.resolve({ renderedCount: 0 }) };
-  }
-
+function createPagePlaceholder(page: pdfjsLib.PDFPageProxy, pageNumber: number): PdfPageState {
   const viewport = page.getViewport({ scale: renderScale });
   const pageEl = document.createElement("section");
   pageEl.className = "pdf-page";
+  pageEl.dataset.pageNumber = String(pageNumber);
   pageEl.style.width = `${viewport.width}px`;
   pageEl.style.height = `${viewport.height}px`;
   pageEl.style.setProperty("--total-scale-factor", String(renderScale));
+  root?.append(pageEl);
 
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.ceil(viewport.width);
-  canvas.height = Math.ceil(viewport.height);
-  canvas.style.width = `${viewport.width}px`;
-  canvas.style.height = `${viewport.height}px`;
-  pageEl.append(canvas);
+  const state: PdfPageState = {
+    pageNumber,
+    page,
+    pageEl,
+    renderState: "placeholder",
+    primaryState: "pending",
+    primaryCount: 0,
+    llmState: "pending",
+    llmAdded: 0
+  };
+  pageStateByElement.set(pageEl, state);
+  pageObserver?.observe(pageEl);
+  return state;
+}
 
-  const highlightLayer = document.createElement("div");
-  highlightLayer.className = "pdf-highlight-layer";
-  pageEl.append(highlightLayer);
-
-  const textLayerEl = document.createElement("div");
-  textLayerEl.className = "textLayer pdf-text-layer";
-  pageEl.append(textLayerEl);
-  root.append(pageEl);
-
-  const context = canvas.getContext("2d");
-  if (!context) {
-    return { pageNumber, pageEl, primaryCount: 0, runLlmTask: () => Promise.resolve({ renderedCount: 0 }) };
+async function renderPageState(state: PdfPageState): Promise<void> {
+  if (state.renderState !== "placeholder") {
+    return;
   }
 
-  await page.render({ canvas, canvasContext: context, viewport }).promise;
-  const textContent = await page.getTextContent();
-  const textLayer = new pdfjsLib.TextLayer({
-    textContentSource: textContent,
-    container: textLayerEl,
-    viewport
-  });
-  await textLayer.render();
-  const textItems = buildTextLayerItems(textContent.items as TextItem[], textLayer.textDivs);
-  const pageText = textItems.map((item) => item.text).join(" ");
-  const primaryTerms = filterAllowedDetectedTerms(pageText, await detectTerms(pageText, "primary"));
-  const primaryCount = drawHighlights(pageEl, highlightLayer, textItems, primaryTerms, pageText, pageNumber);
+  state.renderState = "rendering";
+  state.primaryState = "running";
+  setStatus(buildPdfStatus(`正在渲染第 ${state.pageNumber} 页...`));
 
-  const runLlmTask = () =>
-    detectTerms(pageText, "llm").then((terms) => {
-      const llmTerms = filterNonOverlappingTerms(filterAllowedDetectedTerms(pageText, terms), primaryTerms);
-      return {
-        renderedCount: drawHighlights(pageEl, highlightLayer, textItems, llmTerms, pageText, pageNumber),
-        debug: lastDetectionDebug
-      };
+  try {
+    const viewport = state.page.getViewport({ scale: renderScale });
+    state.pageEl.replaceChildren();
+
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+    canvas.style.width = `${viewport.width}px`;
+    canvas.style.height = `${viewport.height}px`;
+    state.pageEl.append(canvas);
+
+    const highlightLayer = document.createElement("div");
+    highlightLayer.className = "pdf-highlight-layer";
+    state.pageEl.append(highlightLayer);
+
+    const textLayerEl = document.createElement("div");
+    textLayerEl.className = "textLayer pdf-text-layer";
+    state.pageEl.append(textLayerEl);
+
+    const context = canvas.getContext("2d");
+    if (!context) {
+      throw new Error("无法创建 PDF Canvas。");
+    }
+
+    await state.page.render({ canvas, canvasContext: context, viewport }).promise;
+    const textContent = await state.page.getTextContent();
+    const textLayer = new pdfjsLib.TextLayer({
+      textContentSource: textContent,
+      container: textLayerEl,
+      viewport
     });
+    await textLayer.render();
+    const textItems = buildTextLayerItems(textContent.items as TextItem[], textLayer.textDivs);
+    const pageText = textItems.map((item) => item.text).join(" ");
+    const primaryTerms = filterAllowedDetectedTerms(pageText, await detectTerms(pageText, "primary"));
+    const primaryCount = drawHighlights(state.pageEl, highlightLayer, textItems, primaryTerms, pageText, state.pageNumber);
 
-  return { pageNumber, pageEl, primaryCount, runLlmTask };
+    state.renderState = "rendered";
+    state.primaryState = "done";
+    state.highlightLayer = highlightLayer;
+    state.textItems = textItems;
+    state.pageText = pageText;
+    state.primaryTerms = primaryTerms;
+    state.primaryCount = primaryCount;
+    renderedPageCount += 1;
+    activePrimaryCount += primaryCount;
+    setStatus(buildPdfStatus(`第 ${state.pageNumber} 页词表高亮 ${primaryCount} 处。`));
+    scheduleViewportLlmDetection();
+  } catch (error) {
+    state.renderState = "failed";
+    state.primaryState = "failed";
+    console.warn("TermPop PDF page render failed", sanitizeForLog(error, 300));
+    setStatus(buildPdfStatus(`第 ${state.pageNumber} 页渲染失败：${truncateStatus(error instanceof Error ? error.message : String(error))}`));
+  }
+}
+
+function handlePageIntersections(entries: IntersectionObserverEntry[]): void {
+  for (const entry of entries) {
+    if (!entry.isIntersecting) {
+      continue;
+    }
+    const state = pageStateByElement.get(entry.target);
+    if (state) {
+      void renderPageState(state);
+    }
+  }
+}
+
+function scheduleViewportPageRendering(): void {
+  if (renderSchedulerTimer !== undefined) {
+    window.clearTimeout(renderSchedulerTimer);
+  }
+  renderSchedulerTimer = window.setTimeout(() => {
+    renderSchedulerTimer = undefined;
+    for (const state of getViewportNearbyPages()) {
+      void renderPageState(state);
+    }
+  }, 80);
+}
+
+function getViewportNearbyPages(): PdfPageState[] {
+  const viewportTop = -window.innerHeight;
+  const viewportBottom = window.innerHeight * 2;
+  return activePdfPageStates.filter((state) => {
+    const rect = state.pageEl.getBoundingClientRect();
+    return rect.bottom >= viewportTop && rect.top <= viewportBottom;
+  });
+}
+
+async function runLlmForPage(pageState: PdfPageState): Promise<LlmPageResult> {
+  if (
+    pageState.renderState !== "rendered"
+    || !pageState.pageText
+    || !pageState.textItems
+    || !pageState.highlightLayer
+    || !pageState.primaryTerms
+  ) {
+    return { renderedCount: 0 };
+  }
+
+  const terms = await detectTerms(pageState.pageText, "llm");
+  const llmTerms = filterNonOverlappingTerms(filterAllowedDetectedTerms(pageState.pageText, terms), pageState.primaryTerms);
+  return {
+    renderedCount: drawHighlights(pageState.pageEl, pageState.highlightLayer, pageState.textItems, llmTerms, pageState.pageText, pageState.pageNumber),
+    debug: lastDetectionDebug
+  };
 }
 
 function scheduleViewportLlmDetection(): void {
@@ -220,18 +324,18 @@ async function runViewportLlmQueue(): Promise<void> {
         continue;
       }
       pageState.llmState = "running";
-      setStatus(buildLlmStatus(`LLM 正在补充第 ${pageState.pageNumber} 页...`));
+      setStatus(buildPdfStatus(`LLM 正在补充第 ${pageState.pageNumber} 页...`));
       try {
-        const result = await pageState.runLlmTask();
+        const result = await runLlmForPage(pageState);
         pageState.llmState = "done";
         pageState.llmAdded = result.renderedCount;
         mergeDetectionDebug(lastDetectionDebug ?? {}, result.debug);
-        setStatus(buildLlmStatus(`LLM 已补充第 ${pageState.pageNumber} 页，新增 ${result.renderedCount} 处。`));
+        setStatus(buildPdfStatus(`LLM 已补充第 ${pageState.pageNumber} 页，新增 ${result.renderedCount} 处。`));
       } catch (error) {
         pageState.llmState = "failed";
         pageState.llmError = error instanceof Error ? error.message : String(error);
-        console.warn("TermPop PDF LLM detection failed", error);
-        setStatus(buildLlmStatus(`LLM 第 ${pageState.pageNumber} 页失败：${truncateStatus(pageState.llmError)}`));
+        console.warn("TermPop PDF LLM detection failed", sanitizeForLog(error, 300));
+        setStatus(buildPdfStatus(`LLM 第 ${pageState.pageNumber} 页失败：${truncateStatus(pageState.llmError)}`));
       }
       await sleep(LLM_PAGE_DELAY_MS);
     }
@@ -253,7 +357,7 @@ function getViewportNearbyPendingPages(): PdfPageState[] {
 
   const viewportCenter = window.innerHeight / 2;
   return activePdfPageStates
-    .filter((page) => page.llmState === "pending" && wantedNumbers.has(page.pageNumber))
+    .filter((page) => page.renderState === "rendered" && page.llmState === "pending" && wantedNumbers.has(page.pageNumber))
     .sort((left, right) => distanceToViewportCenter(left.pageEl, viewportCenter) - distanceToViewportCenter(right.pageEl, viewportCenter));
 }
 
@@ -274,12 +378,13 @@ function distanceToViewportCenter(element: HTMLElement, viewportCenter: number):
   return Math.abs((rect.top + rect.bottom) / 2 - viewportCenter);
 }
 
-function buildLlmStatus(detail: string): string {
+function buildPdfStatus(detail: string): string {
   const total = activePdfPageStates.length;
+  const rendered = activePdfPageStates.filter((page) => page.renderState === "rendered").length;
   const done = activePdfPageStates.filter((page) => page.llmState === "done").length;
   const failed = activePdfPageStates.filter((page) => page.llmState === "failed").length;
   const added = activePdfPageStates.reduce((sum, page) => sum + page.llmAdded, 0);
-  return `完成：${total} 页，词表高亮 ${activePrimaryCount} 处；LLM 就近补词 ${done}/${total} 页，新增 ${added} 处${failed ? `，失败 ${failed} 页` : ""}。${detail}`;
+  return `已加载 ${total} 页，已渲染 ${renderedPageCount || rendered}/${total} 页，词表高亮 ${activePrimaryCount} 处；LLM 补词 ${done}/${Math.max(rendered, 1)} 页，新增 ${added} 处${failed ? `，失败 ${failed} 页` : ""}。${detail}`;
 }
 
 function buildTextLayerItems(items: TextItem[], textDivs: HTMLElement[]): TextLayerItem[] {
@@ -335,10 +440,15 @@ function isRotatedTextElement(element: HTMLElement): boolean {
 }
 
 async function detectTerms(text: string, detectionMode: DetectTermsRequest["detectionMode"] = "all"): Promise<DetectedTerm[]> {
+  if (!text.trim()) {
+    return [];
+  }
   const response = await chrome.runtime.sendMessage({
     type: "TERMPOP_DETECT_TERMS",
     text,
-    detectionMode
+    detectionMode,
+    url: sourceUrl,
+    pageFingerprint: pageFingerprintFromUrlAndText(sourceUrl, text)
   } satisfies DetectTermsRequest) as DetectTermsResponse;
 
   if (!response.ok) {
@@ -489,7 +599,9 @@ async function showExplanation(anchor: HTMLElement, term: DetectedTerm, context:
       type: "TERMPOP_EXPLAIN",
       term: term.term,
       context: context.slice(0, 1600),
-      cacheScope: `${sourceUrl}#page=${pageNumber}#term=${term.term.trim().toLocaleLowerCase()}`,
+      cacheScope: `${sourceUrl}\npage=${pageNumber}\n${pageFingerprintFromUrlAndText(sourceUrl, context)}`,
+      url: sourceUrl,
+      pageFingerprint: pageFingerprintFromUrlAndText(sourceUrl, context),
       refresh
     } satisfies ExplainRequest) as ExplainResponse;
 

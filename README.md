@@ -12,6 +12,7 @@ It combines a Rust detection core compiled to WebAssembly with a TypeScript brow
 - Selection mode: select text and use the context menu to request an explanation.
 - Hybrid mode: automatic highlights plus selection-based explanations.
 - Local explanation and term caches to reduce repeated requests.
+- Optional host permissions: page scanning is only injected after the user enables a site.
 - Built-in PDF viewer for TermPop-managed PDF reading and highlighting.
 - Chrome/Edge Manifest V3 extension build.
 
@@ -80,13 +81,15 @@ extension/dist
 
 ## Usage
 
+TermPop no longer asks for broad page access at install time. Open the extension popup on a page and click "Enable current site" before using hover or hybrid highlighting there. You can disable the current site from the same popup later.
+
 Open the extension popup to choose a mode:
 
 - Hover: automatically scan the page, highlight detected terms, and show explanations on hover.
 - Selection: select text, then use the browser context menu explanation action.
 - Hybrid: enable both hover highlights and selection explanations.
 
-The public build still stores local LLM settings in browser extension storage. For private testing this is convenient, but it is not a final security model for hosted or commercial use.
+The public build still stores local LLM settings in browser extension storage. For private testing this is convenient, but it is not hardened secret storage and is not a final security model for hosted or commercial use.
 
 ## LLM Providers
 

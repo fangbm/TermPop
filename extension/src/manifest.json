@@ -2,15 +2,15 @@
   "manifest_version": 3,
   "name": "TermPop",
   "description": "AI 词汇解释助手：检测网页术语并在悬浮卡片中解释。",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "icons": {
     "16": "assets/icons/icon-16.png",
     "32": "assets/icons/icon-32.png",
     "48": "assets/icons/icon-48.png",
     "128": "assets/icons/icon-128.png"
   },
-  "permissions": ["storage", "activeTab", "contextMenus"],
-  "host_permissions": ["<all_urls>"],
+  "permissions": ["storage", "activeTab", "contextMenus", "scripting"],
+  "optional_host_permissions": ["http://*/*", "https://*/*", "file:///*"],
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
   },
@@ -28,16 +28,17 @@
       "128": "assets/icons/icon-128.png"
     }
   },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["content-loader.js"],
-      "run_at": "document_idle"
-    }
-  ],
   "web_accessible_resources": [
     {
-      "resources": ["assets/*"],
+      "resources": [
+        "assets/content.js",
+        "assets/browser-utils.js",
+        "assets/overlay.js",
+        "assets/settings.js",
+        "assets/term-matching.js",
+        "assets/termpop_core.js",
+        "assets/termpop_core_bg.wasm"
+      ],
       "matches": ["<all_urls>"]
     }
   ]
