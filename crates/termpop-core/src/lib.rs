@@ -104,6 +104,9 @@ impl TermDetector {
 
         for rule in RULES.iter() {
             for mat in rule.regex.find_iter(text) {
+                if !has_allowed_boundaries(text, mat.start(), mat.end()) {
+                    continue;
+                }
                 terms.push(DetectedTerm {
                     term: mat.as_str().to_string(),
                     start: mat.start(),
@@ -141,14 +144,13 @@ impl TermDetector {
                 continue;
             }
 
-            let pattern = if is_ascii_word(term) {
-                format!(r"\b{}\b", regex::escape(term))
-            } else {
-                regex::escape(term)
-            };
+            let pattern = format!("(?i){}", regex::escape(term));
 
             if let Ok(regex) = Regex::new(&pattern) {
                 for mat in regex.find_iter(text) {
+                    if !has_allowed_boundaries(text, mat.start(), mat.end()) {
+                        continue;
+                    }
                     results.push(DetectedTerm {
                         term: mat.as_str().to_string(),
                         start: mat.start(),
@@ -173,10 +175,13 @@ struct Rule {
 }
 
 static RULES: Lazy<Vec<Rule>> = Lazy::new(|| {
+    // Boundary checks are applied post-match by `has_allowed_boundaries` instead of
+    // regex `\b`, because `\b` is Unicode-aware and treats CJK characters as word
+    // characters, which would suppress matches like "使用Rust开发".
     vec![
         Rule {
             regex: Regex::new(
-                r"\b(React|Vue\.js|Angular|Svelte|Next\.js|Nuxt|Django|Flask|Spring|TensorFlow|PyTorch|WASM|WebAssembly|Fabric|Paper|Minecraft|Bukkit|Spigot)\b",
+                r"(React|Vue\.js|Angular|Svelte|Next\.js|Nuxt|Django|Flask|Spring|TensorFlow|PyTorch|WASM|WebAssembly|Fabric|Paper|Minecraft|Bukkit|Spigot)",
             )
             .expect("valid framework regex"),
             term_type: TermType::Tech,
@@ -184,34 +189,34 @@ static RULES: Lazy<Vec<Rule>> = Lazy::new(|| {
         },
         Rule {
             regex: Regex::new(
-                r"\b(Rust|Go|Python|TypeScript|JavaScript|Kotlin|Swift|Dart|Elixir|Haskell)\b",
+                r"(Rust|Go|Python|TypeScript|JavaScript|Kotlin|Swift|Dart|Elixir|Haskell)",
             )
             .expect("valid language regex"),
             term_type: TermType::Tech,
             confidence: 0.95,
         },
         Rule {
-            regex: Regex::new(r"\b(AWS|Azure|GCP|Vercel|Cloudflare)\b|阿里云|腾讯云")
+            regex: Regex::new(r"(AWS|Azure|GCP|Vercel|Cloudflare)|阿里云|腾讯云")
                 .expect("valid cloud regex"),
             term_type: TermType::Brand,
             confidence: 0.9,
         },
         Rule {
             regex: Regex::new(
-                r"\b(API|SDK|CLI|GUI|SQL|NoSQL|CI/CD|GPU|TPU|LLM|NLP|CRUD|REST|GraphQL)\b|JAR|JVM|TPS|MSPT",
+                r"(API|SDK|CLI|GUI|SQL|NoSQL|CI/CD|GPU|TPU|LLM|NLP|CRUD|REST|GraphQL)|JAR|JVM|TPS|MSPT",
             )
                 .expect("valid acronym regex"),
             term_type: TermType::Acronym,
             confidence: 0.88,
         },
         Rule {
-            regex: Regex::new(r"\b(level\.dat(?:_old)?|region|save-all|server\.jar|paper\.jar|fabric-server-launch\.jar|bash|PowerShell)\b|\.mca")
+            regex: Regex::new(r"(level\.dat(?:_old)?|region|save-all|server\.jar|paper\.jar|fabric-server-launch\.jar|bash|PowerShell)|\.mca")
                 .expect("valid file and command regex"),
             term_type: TermType::Tech,
             confidence: 0.86,
         },
         Rule {
-            regex: Regex::new(r"\b(Kimi|ChatGPT|Claude|Copilot|Notion|Figma|Linear|Raycast)\b")
+            regex: Regex::new(r"(Kimi|ChatGPT|Claude|Copilot|Notion|Figma|Linear|Raycast)")
                 .expect("valid product regex"),
             term_type: TermType::Brand,
             confidence: 0.9,
@@ -233,14 +238,13 @@ fn detect_dictionary_terms(
             continue;
         }
 
-        let pattern = if is_ascii_word(term) {
-            format!(r"\b{}\b", regex::escape(term))
-        } else {
-            regex::escape(term)
-        };
+        let pattern = format!("(?i){}", regex::escape(term));
 
         if let Ok(regex) = Regex::new(&pattern) {
             for mat in regex.find_iter(text) {
+                if !has_allowed_boundaries(text, mat.start(), mat.end()) {
+                    continue;
+                }
                 results.push(DetectedTerm {
                     term: mat.as_str().to_string(),
                     start: mat.start(),
@@ -356,10 +360,33 @@ fn ranges_overlap(
     left_start < right_end && right_start < left_end
 }
 
-fn is_ascii_word(value: &str) -> bool {
-    value
+fn is_ascii_word_char(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || ch == '_'
+}
+
+fn is_ascii_word_term(value: &str) -> bool {
+    !value.is_empty() && value.chars().all(is_ascii_word_char)
+}
+
+/// Mirrors `isAllowedTermOccurrence` in `extension/src/shared/term-matching.ts`:
+/// only pure ASCII word terms require ASCII word boundaries, so terms stay
+/// detectable when adjacent to CJK text while partial-word matches inside
+/// longer ASCII identifiers (e.g. "Rust" in "RustLang") are still rejected.
+fn has_allowed_boundaries(text: &str, start: usize, end: usize) -> bool {
+    if !is_ascii_word_term(&text[start..end]) {
+        return true;
+    }
+
+    let before_ok = text[..start]
         .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+        .next_back()
+        .map_or(true, |ch| !is_ascii_word_char(ch));
+    let after_ok = text[end..]
+        .chars()
+        .next()
+        .map_or(true, |ch| !is_ascii_word_char(ch));
+
+    before_ok && after_ok
 }
 
 fn infer_category(term: &str) -> String {
@@ -533,5 +560,99 @@ mod tests {
             .expect("dictionary term matched");
         assert_eq!(matched.term_type, TermType::Tech);
         assert_eq!(matched.source, DetectionSource::Dictionary);
+    }
+
+    #[test]
+    fn detects_ascii_terms_adjacent_to_cjk_text() {
+        let terms = detect_terms("使用Rust开发很方便");
+        let labels: Vec<_> = terms.iter().map(|term| term.term.as_str()).collect();
+        assert_eq!(labels, vec!["Rust"]);
+
+        let terms = detect_terms("用Python写脚本。");
+        let labels: Vec<_> = terms.iter().map(|term| term.term.as_str()).collect();
+        assert_eq!(labels, vec!["Python"]);
+
+        let terms = detect_terms("在AWS上部署Kubernetes风格的React应用");
+        let labels: Vec<_> = terms.iter().map(|term| term.term.as_str()).collect();
+        assert_eq!(labels, vec!["AWS", "React"]);
+    }
+
+    #[test]
+    fn detects_terms_at_string_edges_and_before_cjk() {
+        let terms = detect_terms("Rust语言值得学习");
+        let labels: Vec<_> = terms.iter().map(|term| term.term.as_str()).collect();
+        assert_eq!(labels, vec!["Rust"]);
+    }
+
+    #[test]
+    fn rejects_ascii_terms_embedded_in_longer_words() {
+        let terms = detect_terms("RustLang 和 xReact 都不是术语");
+        assert!(terms.is_empty());
+
+        let terms = detect_terms("JARVIS 不是 JAR");
+        let labels: Vec<_> = terms.iter().map(|term| term.term.as_str()).collect();
+        assert_eq!(labels, vec!["JAR"]);
+    }
+
+    #[test]
+    fn detects_user_terms_adjacent_to_cjk_text() {
+        let detector = TermDetector::new(DetectorConfig {
+            user_terms: vec!["TermPop".to_string()],
+            min_confidence: 0.5,
+        });
+        let terms = detector.detect("我喜欢TermPop这个工具");
+
+        assert_eq!(terms.len(), 1);
+        assert_eq!(terms[0].term, "TermPop");
+        assert_eq!(terms[0].source, DetectionSource::User);
+    }
+
+    #[test]
+    fn detects_dictionary_terms_adjacent_to_cjk_text() {
+        let terms = detect_terms_with_dictionary_json_result(
+            "学习RustFerris进行中",
+            r#"[{"term":"RustFerris","term_type":"Custom","confidence":0.9}]"#,
+        )
+        .expect("valid dictionary");
+
+        assert_eq!(terms.len(), 1);
+        assert_eq!(terms[0].term, "RustFerris");
+        assert_eq!(terms[0].source, DetectionSource::Dictionary);
+    }
+
+    #[test]
+    fn rejects_user_and_dictionary_terms_embedded_in_longer_words() {
+        let detector = TermDetector::new(DetectorConfig {
+            user_terms: vec!["TermPop".to_string()],
+            min_confidence: 0.5,
+        });
+        assert!(detector.detect("xTermPop 和 TermPopX").is_empty());
+
+        let terms = detect_terms_with_dictionary_json_result(
+            "xTermPop 和 TermPopX",
+            r#"[{"term":"TermPop"}]"#,
+        )
+        .expect("valid dictionary");
+        assert!(terms.is_empty());
+    }
+
+    #[test]
+    fn user_and_dictionary_terms_match_case_insensitively() {
+        let detector = TermDetector::new(DetectorConfig {
+            user_terms: vec!["termpop".to_string()],
+            min_confidence: 0.5,
+        });
+        let terms = detector.detect("TermPop 和 TERMPOP 都命中");
+        let labels: Vec<_> = terms.iter().map(|term| term.term.as_str()).collect();
+        assert_eq!(labels, vec!["TermPop", "TERMPOP"]);
+
+        let terms = detect_terms_with_dictionary_json_result(
+            "Kubernetes 集群很稳定",
+            r#"[{"term":"kubernetes"}]"#,
+        )
+        .expect("valid dictionary");
+        assert_eq!(terms.len(), 1);
+        assert_eq!(terms[0].term, "Kubernetes");
+        assert_eq!(terms[0].source, DetectionSource::Dictionary);
     }
 }

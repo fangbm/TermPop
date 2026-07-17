@@ -191,3 +191,10 @@ export interface DisableSiteResponse {
   ok: boolean;
   error?: string;
 }
+
+export function normalizeTermType(value: unknown): TermType {
+  if (value === "Tech" || value === "Brand" || value === "Person" || value === "Place" || value === "Acronym" || value === "Custom") {
+    return value;
+  }
+  return "Custom";
+}

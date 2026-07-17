@@ -1,4 +1,5 @@
 import { getSettings, setLlmSettings, setMode } from "../shared/settings";
+import { defaultBaseUrl, defaultModel, normalizeBaseUrl } from "../shared/llm-defaults";
 import type {
   ExplanationLanguage,
   GetSiteAccessResponse,
@@ -316,33 +317,6 @@ function applyProviderDefaults(provider: LlmProvider): void {
   if (baseUrlInput) {
     baseUrlInput.value = defaultBaseUrl(provider);
   }
-}
-
-function defaultBaseUrl(provider: LlmProvider): string {
-  if (provider === "kimi") {
-    return "https://api.moonshot.cn/v1";
-  }
-  if (provider === "anthropic") {
-    return "https://api.anthropic.com/v1";
-  }
-  return "https://api.openai.com/v1";
-}
-
-function defaultModel(provider: LlmProvider): string {
-  if (provider === "kimi") {
-    return "moonshot-v1-8k";
-  }
-  if (provider === "anthropic") {
-    return "claude-3-5-haiku-latest";
-  }
-  if (provider === "mock") {
-    return "mock";
-  }
-  return "gpt-4.1-mini";
-}
-
-function normalizeBaseUrl(value: string): string {
-  return value.replace(/\/+$/, "");
 }
 
 function extractPdfUrl(value: string): string | undefined {

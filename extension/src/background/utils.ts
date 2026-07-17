@@ -1,10 +1,7 @@
-import type { Explanation, ExplanationLanguage, LlmProvider } from "../shared/types";
+import type { Explanation, ExplanationLanguage } from "../shared/types";
 import { sanitizeForLog as sanitizeValueForLog } from "../shared/browser-utils";
 export { hashString, sanitizeForLog } from "../shared/browser-utils";
-
-export function normalizeBaseUrl(baseUrl: string): string {
-  return baseUrl.replace(/\/+$/, "");
-}
+export { defaultBaseUrl, defaultModel, normalizeBaseUrl } from "../shared/llm-defaults";
 
 export function normalizeCacheTerm(term: string): string {
   return term.trim().toLocaleLowerCase();
@@ -44,29 +41,6 @@ export function languageInstruction(language: ExplanationLanguage): string {
     return "Respond in English.";
   }
   return "Respond in the same language as the surrounding context when possible.";
-}
-
-export function defaultBaseUrl(provider: LlmProvider): string {
-  if (provider === "kimi") {
-    return "https://api.moonshot.cn/v1";
-  }
-  if (provider === "anthropic") {
-    return "https://api.anthropic.com/v1";
-  }
-  return "https://api.openai.com/v1";
-}
-
-export function defaultModel(provider: LlmProvider): string {
-  if (provider === "kimi") {
-    return "moonshot-v1-8k";
-  }
-  if (provider === "anthropic") {
-    return "claude-3-5-haiku-latest";
-  }
-  if (provider === "mock") {
-    return "mock";
-  }
-  return "gpt-4.1-mini";
 }
 
 export function isExplanation(value: unknown): value is Explanation {

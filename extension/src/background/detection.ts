@@ -1,5 +1,7 @@
+import { byteOffsetToJsIndex } from "../shared/byte-offset";
 import { filterAllowedDetectedTerms, findAllowedOccurrences, findAllowedOccurrencesIgnoreCase } from "../shared/term-matching";
-import type { DetectTermsDebug, DetectedTerm, LlmSettings, TermType } from "../shared/types";
+import { normalizeTermType } from "../shared/types";
+import type { DetectTermsDebug, DetectedTerm, LlmSettings } from "../shared/types";
 import { addCachedTerms, detectCachedTerms } from "./cache";
 import { extractJsonPayload } from "./json";
 import { createLlmProvider } from "./llm-provider";
@@ -433,13 +435,6 @@ function dedupeDetectedTerms(terms: DetectedTerm[]): DetectedTerm[] {
     }, []);
 }
 
-function normalizeTermType(value: unknown): TermType {
-  if (value === "Tech" || value === "Brand" || value === "Person" || value === "Place" || value === "Acronym" || value === "Custom") {
-    return value;
-  }
-  return "Custom";
-}
-
 function normalizeDetectionSource(value: unknown): "Rule" | "Dictionary" | "Ner" | "User" {
   if (value === "Rule" || value === "Dictionary" || value === "Ner" || value === "User") {
     return value;
@@ -452,23 +447,4 @@ function normalizeConfidence(value: unknown): number {
     return Math.min(1, Math.max(0, value));
   }
   return 0.75;
-}
-
-function byteOffsetToJsIndex(text: string, byteOffset: number): number {
-  let bytes = 0;
-  for (let index = 0; index < text.length; index += 1) {
-    if (bytes >= byteOffset) {
-      return index;
-    }
-    bytes += utf8ByteLength(text[index]);
-  }
-  return text.length;
-}
-
-function utf8ByteLength(char: string): number {
-  const code = char.codePointAt(0) ?? 0;
-  if (code <= 0x7f) return 1;
-  if (code <= 0x7ff) return 2;
-  if (code <= 0xffff) return 3;
-  return 4;
 }

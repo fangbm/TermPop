@@ -1,5 +1,5 @@
 import initWasm, { detect_terms_json } from "../wasm/termpop_core.js";
-import { getSettings } from "../shared/settings";
+import { getContentSettings } from "../shared/settings";
 import type {
   AddCachedTermsRequest,
   CachedTermEntry,
@@ -15,10 +15,11 @@ import type {
   Explanation,
   GetCachedTermsRequest,
   GetCachedTermsResponse,
-  TermType,
   TermPopMode
 } from "../shared/types";
 import { TermPopOverlayController } from "../shared/overlay";
+import { byteOffsetToJsIndex } from "../shared/byte-offset";
+import { normalizeTermType } from "../shared/types";
 import { filterAllowedDetectedTerms, findAllowedOccurrences } from "../shared/term-matching";
 import { domainFromUrl, originPatternFromUrl, pageFingerprintFromUrlAndText, sanitizeForLog, SITE_ACCESS_STORAGE_KEY } from "../shared/browser-utils";
 import styles from "./styles.css?inline";
@@ -82,9 +83,9 @@ async function boot(): Promise<void> {
     anchorSelector: `.${HIGHLIGHT_CLASS}`
   });
 
-  const settings = await getSettings();
+  const { mode } = await getContentSettings();
   globalCachedTerms = debugOptions.disableCache ? [] : await loadGlobalCachedTerms();
-  activeMode = debugOptions.detectionMode ? "hover" : settings.mode;
+  activeMode = debugOptions.detectionMode ? "hover" : mode;
   debugLog("TermPop content boot", {
     mode: activeMode,
     debugOptions,
@@ -402,8 +403,8 @@ function setupModeChangeListener(): void {
     if (areaName !== "local" || !changes[SETTINGS_KEY]) {
       return;
     }
-    void getSettings().then((settings) => {
-      applyModeChange(settings.mode);
+    void getContentSettings().then(({ mode }) => {
+      applyModeChange(mode);
     });
   });
 }
@@ -439,8 +440,8 @@ async function enableSite(): Promise<void> {
     return;
   }
   siteDisabled = false;
-  const settings = await getSettings();
-  activeMode = settings.mode;
+  const { mode } = await getContentSettings();
+  activeMode = mode;
   if (activeMode !== "selection") {
     startAutomaticHighlighting();
   }
@@ -696,21 +697,6 @@ function detectedTermFromHighlight(anchor: HTMLElement): DetectedTerm | undefine
     confidence: Number(anchor.dataset.confidence) || 1,
     source: "Dictionary"
   };
-}
-
-function normalizeTermType(value: string | undefined): TermType {
-  if (
-    value === "Tech" ||
-    value === "Brand" ||
-    value === "Person" ||
-    value === "Place" ||
-    value === "Acronym" ||
-    value === "Custom"
-  ) {
-    return value;
-  }
-
-  return "Custom";
 }
 
 function contextForHighlight(anchor: HTMLElement): string {
@@ -1009,36 +995,6 @@ function dedupeDetectedTerms(terms: DetectedTerm[]): DetectedTerm[] {
       const previous = sorted[index - 1];
       return !previous || !(previous.start < term.end && term.start < previous.end);
     });
-}
-
-function byteOffsetToJsIndex(text: string, byteOffset: number): number {
-  let bytes = 0;
-  let jsIndex = 0;
-
-  for (const char of text) {
-    if (bytes >= byteOffset) {
-      return jsIndex;
-    }
-
-    bytes += utf8ByteLength(char);
-    jsIndex += char.length;
-  }
-
-  return text.length;
-}
-
-function utf8ByteLength(char: string): number {
-  const codePoint = char.codePointAt(0) ?? 0;
-  if (codePoint <= 0x7f) {
-    return 1;
-  }
-  if (codePoint <= 0x7ff) {
-    return 2;
-  }
-  if (codePoint <= 0xffff) {
-    return 3;
-  }
-  return 4;
 }
 
 function isHighlightableTextNode(node: Node): boolean {
