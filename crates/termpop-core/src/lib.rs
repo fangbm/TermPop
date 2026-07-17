@@ -122,15 +122,31 @@ impl TermDetector {
         deduplicate_and_sort(terms, self.config.min_confidence)
     }
 
-    pub fn detect_with_dictionary(&self, text: &str, dictionary: &TermDictionary) -> Vec<DetectedTerm> {
+    pub fn detect_with_dictionary(
+        &self,
+        text: &str,
+        dictionary: &TermDictionary,
+    ) -> Vec<DetectedTerm> {
         if text.trim().is_empty() {
             return Vec::new();
         }
 
         let mut terms = self.detect(text);
-        terms.extend(detect_dictionary_terms(text, &dictionary.base, DetectionSource::Dictionary));
-        terms.extend(detect_dictionary_terms(text, &dictionary.domain, DetectionSource::Dictionary));
-        terms.extend(detect_dictionary_terms(text, &dictionary.user, DetectionSource::User));
+        terms.extend(detect_dictionary_terms(
+            text,
+            &dictionary.base,
+            DetectionSource::Dictionary,
+        ));
+        terms.extend(detect_dictionary_terms(
+            text,
+            &dictionary.domain,
+            DetectionSource::Dictionary,
+        ));
+        terms.extend(detect_dictionary_terms(
+            text,
+            &dictionary.user,
+            DetectionSource::User,
+        ));
         deduplicate_and_sort(terms, self.config.min_confidence)
     }
 
@@ -380,11 +396,11 @@ fn has_allowed_boundaries(text: &str, start: usize, end: usize) -> bool {
     let before_ok = text[..start]
         .chars()
         .next_back()
-        .map_or(true, |ch| !is_ascii_word_char(ch));
+        .is_none_or(|ch| !is_ascii_word_char(ch));
     let after_ok = text[end..]
         .chars()
         .next()
-        .map_or(true, |ch| !is_ascii_word_char(ch));
+        .is_none_or(|ch| !is_ascii_word_char(ch));
 
     before_ok && after_ok
 }

@@ -59,11 +59,44 @@ jobs:
         with:
           tool: wasm-pack
 
-      - name: Rebuild WASM core
-        run: wasm-pack build crates/termpop-core --target web --out-dir ../../extension/src/wasm -- --features wasm
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
-      - name: Verify committed WASM matches the Rust sources
-        run: git diff --exit-code extension/src/wasm
+      - name: Smoke test committed WASM behavior
+        working-directory: extension/src/wasm
+        run: |
+          cat > /tmp/wasm-smoke.mjs <<'EOF'
+          import { readFileSync } from "node:fs";
+          import init, { detect_terms_json } from "./termpop_core.js";
+
+          await init(readFileSync("./termpop_core_bg.wasm"));
+          const labels = (text) => JSON.parse(detect_terms_json(text)).map((t) => t.term);
+          const assert = (name, actual, expected) => {
+            if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+              console.error(`FAIL ${name}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+              process.exit(1);
+            }
+          };
+          assert("seed terms", labels("Rust React AWS LLM ChatGPT"), ["Rust", "React", "AWS", "LLM", "ChatGPT"]);
+          assert("CJK adjacency", labels("使用Rust开发很方便"), ["Rust"]);
+          assert("embedded rejected", labels("RustLang 和 xReact 都不是术语"), []);
+          console.log("wasm smoke test passed");
+          EOF
+          node /tmp/wasm-smoke.mjs
+
+      - name: Rebuild WASM core
+        run: |
+          wasm-pack build crates/termpop-core --target web --out-dir ../../extension/src/wasm -- --features wasm
+          # wasm-pack rewrites .gitignore on every build; keep the repo's version.
+          git checkout -- extension/src/wasm/.gitignore
+
+      - name: Verify JS glue matches the Rust sources
+        # The .wasm binary is not byte-reproducible across toolchains, so the
+        # build must not change the text bindings, and the committed binary
+        # must pass the behavioral smoke test above.
+        run: git diff --exit-code -- extension/src/wasm/termpop_core.js extension/src/wasm/termpop_core.d.ts extension/src/wasm/termpop_core_bg.wasm.d.ts extension/src/wasm/package.json
 
   extension:
     name: Extension typecheck and build
