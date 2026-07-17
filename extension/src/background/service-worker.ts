@@ -80,12 +80,19 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
   if (message.type === "TERMPOP_DETECT_TERMS") {
     ensureSenderCanUsePageServices(sender)
       .then(getSettings)
-      .then((settings) =>
-        detectTerms(message.text, message.detectionMode ?? "all", {
+      .then((settings) => {
+        const requestedMode = message.detectionMode ?? "all";
+        // LLM-backed detection sends page text to the configured provider and
+        // can be triggered automatically on DOM changes, so cap it per tab.
+        // When the limit is hit, silently fall back to local Rust detection.
+        const mode = requestedMode === "primary" || consumeRateAllowance(sender, "detect")
+          ? requestedMode
+          : "primary";
+        return detectTerms(message.text, mode, {
           llm: settings.llm,
           dictionaryJson: buildDictionaryJson(settings.dictionary)
-        }, cacheContextFromMessage(message, sender))
-      )
+        }, cacheContextFromMessage(message, sender));
+      })
       .then((result) => sendResponse({ ok: true, terms: result.terms, debug: result.debug } satisfies DetectTermsResponse))
       .catch((error: unknown) => sendResponse({ ok: false, error: errorMessage(error) } satisfies DetectTermsResponse));
     return true;
@@ -93,6 +100,13 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
 
   if (message.type === "TERMPOP_EXPLAIN") {
     ensureSenderCanUsePageServices(sender)
+      .then(() => {
+        // Hover cards are user-facing, but pages can synthesize mouse events,
+        // so cap explanation requests per tab as well.
+        if (!consumeRateAllowance(sender, "explain")) {
+          throw new Error("TermPop rate limit reached; try again shortly.");
+        }
+      })
       .then(getSettings)
       .then((settings) => explain(message.term, message.context, message.cacheScope, message.refresh ?? false, settings.llm))
       .then((explanation) => sendResponse({ ok: true, explanation } satisfies ExplainResponse))
@@ -102,6 +116,32 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
 
   return false;
 });
+
+type RateLimitKind = "detect" | "explain";
+
+const RATE_LIMITS: Record<RateLimitKind, { maxRequests: number; windowMs: number }> = {
+  detect: { maxRequests: 12, windowMs: 60_000 },
+  explain: { maxRequests: 60, windowMs: 60_000 }
+};
+
+const rateLimitBuckets = new Map<string, number[]>();
+
+// Best-effort sliding-window limiter. Counters live in service-worker memory
+// and reset when the worker suspends, which is acceptable for cost control.
+function consumeRateAllowance(sender: chrome.runtime.MessageSender, kind: RateLimitKind): boolean {
+  const { maxRequests, windowMs } = RATE_LIMITS[kind];
+  const key = `${kind}:${sender.tab?.id ?? sender.url ?? "extension"}`;
+  const now = Date.now();
+  const windowStart = now - windowMs;
+  const bucket = (rateLimitBuckets.get(key) ?? []).filter((timestamp) => timestamp > windowStart);
+  if (bucket.length >= maxRequests) {
+    rateLimitBuckets.set(key, bucket);
+    return false;
+  }
+  bucket.push(now);
+  rateLimitBuckets.set(key, bucket);
+  return true;
+}
 
 function setupDynamicInjection(): void {
   chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {

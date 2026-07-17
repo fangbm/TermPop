@@ -11,7 +11,7 @@ interface LlmQueueEntry {
   start: () => void;
   signal: AbortSignal;
   priority: LlmPriority;
-  maxActiveRequests: number;
+  limit: number;
 }
 
 let activeExplanationRequests = 0;
@@ -44,8 +44,7 @@ export async function runWithLlmConcurrency<T>(
 
 async function acquireLlmSlot(settings: LlmSettings, priority: LlmPriority, signal: AbortSignal): Promise<void> {
   const limit = normalizeConcurrency(settings.maxConcurrency);
-  const maxActiveRequests = maxActiveRequestsForPriority(priority, limit);
-  if (activeRequestsForPriority(priority) < maxActiveRequests) {
+  if (activeRequestsForPriority(priority) < maxActiveRequestsForPriority(priority, limit)) {
     incrementActiveRequests(priority);
     return;
   }
@@ -64,7 +63,7 @@ async function acquireLlmSlot(settings: LlmSettings, priority: LlmPriority, sign
     entry = {
       signal,
       priority,
-      maxActiveRequests,
+      limit,
       start: () => {
         cleanup();
         incrementActiveRequests(priority);
@@ -88,7 +87,11 @@ function scheduleNextLlmRequest(): void {
 }
 
 function takeStartableEntry(queue: LlmQueueEntry[]): LlmQueueEntry | undefined {
-  const index = queue.findIndex((entry) => !entry.signal.aborted && activeRequestsForPriority(entry.priority) < entry.maxActiveRequests);
+  // Compute the concurrency budget at dispatch time: it depends on how many
+  // explanation requests are active right now, not on the state observed when
+  // the entry was queued.
+  const index = queue.findIndex((entry) => !entry.signal.aborted
+    && activeRequestsForPriority(entry.priority) < maxActiveRequestsForPriority(entry.priority, entry.limit));
   if (index < 0) {
     return undefined;
   }

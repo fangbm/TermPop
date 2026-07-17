@@ -1,6 +1,6 @@
 #termpop-overlay-root {
   position: fixed;
-  z-index: 900;
+  z-index: 999;
   display: none;
   width: min(340px, calc(100vw - 24px));
   color: #172033;

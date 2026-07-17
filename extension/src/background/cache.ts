@@ -1,7 +1,8 @@
 import { findAllowedOccurrences } from "../shared/term-matching";
-import type { CachedTermEntry, CacheScope, DetectedTerm, Explanation, LlmSettings, TermType } from "../shared/types";
+import type { CachedTermEntry, CacheScope, DetectedTerm, Explanation, LlmSettings } from "../shared/types";
+import { normalizeTermType } from "../shared/types";
 import { domainFromUrl } from "../shared/browser-utils";
-import { defaultBaseUrl, defaultModel, hashString, isExplanation, normalizeBaseUrl, normalizeCacheContext, normalizeCacheTerm } from "./utils";
+import { debugLog, defaultBaseUrl, defaultModel, hashString, isExplanation, normalizeBaseUrl, normalizeCacheContext, normalizeCacheTerm } from "./utils";
 
 const TERM_CACHE_KEY = "termpop.termCache";
 const LEGACY_GLOBAL_TERM_CACHE_KEY = "termpop.globalTermCache";
@@ -9,6 +10,9 @@ const EXPLANATION_CACHE_KEY = "termpop.explanationCache";
 const MAX_CACHED_TERMS = 5000;
 const MAX_EXPLANATION_CACHE_ENTRIES = 5000;
 const EXPLANATION_CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+// Read hits only bump last_used_at in memory; the on-disk cache is flushed at
+// most this often to avoid rewriting thousands of entries per lookup.
+const EXPLANATION_CACHE_FLUSH_INTERVAL_MS = 30_000;
 
 let termCache: Map<string, CachedTermEntry> | undefined;
 let persistentExplanationCache: Map<string, CachedExplanationEntry> | undefined;
@@ -101,9 +105,13 @@ export async function addCachedTerms(terms: DetectedTerm[], context: TermCacheCo
   }
 
   pruneTermCache(cache);
-  await chrome.storage.local.set({
-    [TERM_CACHE_KEY]: [...cache.values()]
-  });
+  try {
+    await chrome.storage.local.set({
+      [TERM_CACHE_KEY]: [...cache.values()]
+    });
+  } catch (error) {
+    debugLog("TermPop term cache write failed", error);
+  }
 }
 
 export async function getPersistentExplanation(cacheKey: string): Promise<Explanation | undefined> {
@@ -121,7 +129,7 @@ export async function getPersistentExplanation(cacheKey: string): Promise<Explan
   }
 
   cached.last_used_at = now;
-  void savePersistentExplanationCache(cache);
+  scheduleExplanationCacheFlush(cache);
   return cached.explanation;
 }
 
@@ -136,6 +144,24 @@ export async function setPersistentExplanation(cacheKey: string, explanation: Ex
   });
   prunePersistentExplanationCache(cache);
   await savePersistentExplanationCache(cache);
+}
+
+let explanationCacheFlushTimer: number | undefined;
+let lastExplanationCacheFlushAt = 0;
+
+function scheduleExplanationCacheFlush(cache: Map<string, CachedExplanationEntry>): void {
+  const elapsed = Date.now() - lastExplanationCacheFlushAt;
+  if (elapsed >= EXPLANATION_CACHE_FLUSH_INTERVAL_MS) {
+    void savePersistentExplanationCache(cache);
+    return;
+  }
+  if (explanationCacheFlushTimer !== undefined) {
+    return;
+  }
+  explanationCacheFlushTimer = setTimeout(() => {
+    explanationCacheFlushTimer = undefined;
+    void savePersistentExplanationCache(cache);
+  }, EXPLANATION_CACHE_FLUSH_INTERVAL_MS - elapsed);
 }
 
 export function buildExplanationCacheKey(term: string, context: string | undefined, cacheScope: string | undefined, settings: LlmSettings): string {
@@ -289,9 +315,27 @@ async function loadPersistentExplanationCache(): Promise<Map<string, CachedExpla
 }
 
 async function savePersistentExplanationCache(cache: Map<string, CachedExplanationEntry>): Promise<void> {
-  await chrome.storage.local.set({
-    [EXPLANATION_CACHE_KEY]: [...cache.values()]
-  });
+  lastExplanationCacheFlushAt = Date.now();
+  try {
+    await chrome.storage.local.set({
+      [EXPLANATION_CACHE_KEY]: [...cache.values()]
+    });
+  } catch (error) {
+    // Most likely the storage.local quota is exhausted: evict the least
+    // recently used 10% and retry once before giving up.
+    debugLog("TermPop explanation cache write failed; evicting entries", error);
+    const oldestFirst = [...cache.values()].sort((left, right) => left.last_used_at - right.last_used_at);
+    for (const entry of oldestFirst.slice(0, Math.max(1, Math.ceil(oldestFirst.length * 0.1)))) {
+      cache.delete(entry.key);
+    }
+    try {
+      await chrome.storage.local.set({
+        [EXPLANATION_CACHE_KEY]: [...cache.values()]
+      });
+    } catch (retryError) {
+      debugLog("TermPop explanation cache write failed after eviction", retryError);
+    }
+  }
 }
 
 function prunePersistentExplanationCache(cache: Map<string, CachedExplanationEntry>): void {
@@ -305,11 +349,4 @@ function prunePersistentExplanationCache(cache: Map<string, CachedExplanationEnt
   for (const entry of keep) {
     cache.set(entry.key, entry);
   }
-}
-
-function normalizeTermType(value: unknown): TermType {
-  if (value === "Tech" || value === "Brand" || value === "Person" || value === "Place" || value === "Acronym" || value === "Custom") {
-    return value;
-  }
-  return "Custom";
 }

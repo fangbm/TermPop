@@ -11,6 +11,11 @@
     "128": "assets/icons/icon-128.png"
   },
   "permissions": ["storage", "activeTab", "contextMenus", "scripting"],
+  "host_permissions": [
+    "https://api.openai.com/*",
+    "https://api.moonshot.cn/*",
+    "https://api.anthropic.com/*"
+  ],
   "optional_host_permissions": ["http://*/*", "https://*/*", "file:///*"],
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
