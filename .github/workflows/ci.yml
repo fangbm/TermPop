@@ -64,28 +64,8 @@ jobs:
         with:
           node-version: 22
 
-      - name: Smoke test committed WASM behavior
-        working-directory: extension/src/wasm
-        run: |
-          trap 'rm -f ./wasm-smoke.mjs' EXIT
-          cat > ./wasm-smoke.mjs <<'EOF'
-          import { readFileSync } from "node:fs";
-          import init, { detect_terms_json } from "./termpop_core.js";
-
-          await init(readFileSync("./termpop_core_bg.wasm"));
-          const labels = (text) => JSON.parse(detect_terms_json(text)).map((t) => t.term);
-          const assert = (name, actual, expected) => {
-            if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-              console.error(`FAIL ${name}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
-              process.exit(1);
-            }
-          };
-          assert("seed terms", labels("Rust React AWS LLM ChatGPT"), ["Rust", "React", "AWS", "LLM", "ChatGPT"]);
-          assert("CJK adjacency", labels("使用Rust开发很方便"), ["Rust"]);
-          assert("embedded rejected", labels("RustLang 和 xReact 都不是术语"), []);
-          console.log("wasm smoke test passed");
-          EOF
-          node ./wasm-smoke.mjs
+      - name: Test committed WASM behavior
+        run: node extension/test/wasm.test.mjs
 
       - name: Rebuild WASM core
         run: |
