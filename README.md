@@ -102,15 +102,25 @@ TermPop can use:
 
 If no usable provider key is configured, TermPop falls back to the Rust mock explanation flow.
 
-## Release Automation
+The extension declares host permissions for the built-in provider endpoints (`api.openai.com`, `api.moonshot.cn`, `api.anthropic.com`) so requests to them do not depend on the provider's CORS policy. Custom base URLs are still fetched directly and therefore rely on the endpoint allowing cross-origin requests from the extension.
 
-Every push to `main` runs the GitHub Actions workflow:
+## CI and Release Automation
+
+Every push to `main` and every pull request runs the CI workflow:
+
+```text
+.github/workflows/ci.yml
+```
+
+It runs Rust tests and lints, rebuilds the WASM core and fails if the committed artifact drifts from the Rust sources, and typechecks/builds both the extension and the website.
+
+Tag pushes matching `v*` (or a manual dispatch) run the release workflow:
 
 ```text
 .github/workflows/extension-release.yml
 ```
 
-The workflow:
+The release workflow:
 
 1. Runs Rust tests.
 2. Builds the WASM core.
