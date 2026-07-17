@@ -67,7 +67,8 @@ jobs:
       - name: Smoke test committed WASM behavior
         working-directory: extension/src/wasm
         run: |
-          cat > /tmp/wasm-smoke.mjs <<'EOF'
+          trap 'rm -f ./wasm-smoke.mjs' EXIT
+          cat > ./wasm-smoke.mjs <<'EOF'
           import { readFileSync } from "node:fs";
           import init, { detect_terms_json } from "./termpop_core.js";
 
@@ -84,7 +85,7 @@ jobs:
           assert("embedded rejected", labels("RustLang 和 xReact 都不是术语"), []);
           console.log("wasm smoke test passed");
           EOF
-          node /tmp/wasm-smoke.mjs
+          node ./wasm-smoke.mjs
 
       - name: Rebuild WASM core
         run: |
