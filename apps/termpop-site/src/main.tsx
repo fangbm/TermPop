@@ -62,7 +62,6 @@ type Copy = {
   download: {
     eyebrow: string;
     title: string;
-    copy: string;
     latest: string;
     edgeAddons: string;
   };
@@ -221,8 +220,6 @@ const copy: Record<Language, Copy> = {
     download: {
       eyebrow: "Get TermPop",
       title: "Install the extension and start reading with context.",
-      copy:
-        "Install directly from Edge Add-ons in Microsoft Edge. Other browsers can download the latest public package from GitHub Releases.",
       latest: "Download latest release",
       edgeAddons: "Edge Add-ons"
     },
@@ -299,8 +296,6 @@ const copy: Record<Language, Copy> = {
     download: {
       eyebrow: "获取 TermPop",
       title: "  安装插件，\n  从带上下文的阅读开始。",
-      copy:
-        "使用 Microsoft Edge 时可直接从 Edge 加载项安装，其他浏览器暂时通过 GitHub Releases 下载。",
       latest: "下载最新版",
       edgeAddons: "Edge 加载项"
     },
@@ -837,7 +832,6 @@ function DownloadSection({
       <div className="download-panel">
         <p className="eyebrow">{t.download.eyebrow}</p>
         <h2 style={{ whiteSpace: "pre-wrap" }}>{t.download.title}</h2>
-        <p>{t.download.copy}</p>
         <div className="download-actions">
           <a
             className="button button-primary"
