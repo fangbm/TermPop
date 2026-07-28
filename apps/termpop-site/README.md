@@ -24,9 +24,7 @@ Recommended Pages settings:
 - Build command: `npm ci && npm run build`
 - Build output directory: `dist`
 
-Optional environment variables:
+Download links are selected from the browser user agent:
 
-- `VITE_CHROME_STORE_URL`
-- `VITE_EDGE_ADDONS_URL`
-
-When store URLs are not configured, the site shows the GitHub Releases download link.
+- Microsoft Edge opens the official [TermPop Edge Add-ons listing](https://microsoftedge.microsoft.com/addons/detail/termpop/blphbffphknkkblackimhnjbckegnchn).
+- Other browsers open the latest [GitHub Release](https://github.com/fangbm/TermPop/releases/latest).
