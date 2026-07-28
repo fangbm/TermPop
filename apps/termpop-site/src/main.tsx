@@ -1,12 +1,11 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { getDownloadTarget, type DownloadTarget } from "./download-target";
 import "./styles.css";
 
-const RELEASES_URL = "https://github.com/fangbm/TermPop/releases/latest";
 const GITHUB_URL = "https://github.com/fangbm/TermPop";
-const chromeStoreUrl = import.meta.env.VITE_CHROME_STORE_URL as string | undefined;
-const edgeAddonsUrl = import.meta.env.VITE_EDGE_ADDONS_URL as string | undefined;
 const LANGUAGE_STORAGE_KEY = "termpop-site-language";
+const DOWNLOAD_TARGET = getDownloadTarget(typeof navigator === "undefined" ? "" : navigator.userAgent);
 
 type Language = "en" | "zh";
 type Accent = "blue" | "violet" | "green" | "amber" | "cyan" | "rose";
@@ -65,7 +64,6 @@ type Copy = {
     title: string;
     copy: string;
     latest: string;
-    chromeStore: string;
     edgeAddons: string;
   };
   footer: {
@@ -224,9 +222,8 @@ const copy: Record<Language, Copy> = {
       eyebrow: "Get TermPop",
       title: "Install the extension and start reading with context.",
       copy:
-        "The current public build is distributed through GitHub Releases. Store links are ready to replace this button when Chrome Web Store or Edge Add-ons listings are available.",
+        "Install directly from Edge Add-ons in Microsoft Edge. Other browsers can download the latest public package from GitHub Releases.",
       latest: "Download latest release",
-      chromeStore: "Chrome Web Store",
       edgeAddons: "Edge Add-ons"
     },
     footer: {
@@ -303,9 +300,8 @@ const copy: Record<Language, Copy> = {
       eyebrow: "获取 TermPop",
       title: "  安装插件，\n  从带上下文的阅读开始。",
       copy:
-        "当前公开版本通过 GitHub Releases 分发。",
+        "使用 Microsoft Edge 时可直接从 Edge 加载项安装，其他浏览器暂时通过 GitHub Releases 下载。",
       latest: "下载最新版",
-      chromeStore: "Chrome 应用商店",
       edgeAddons: "Edge 加载项"
     },
     footer: {
@@ -335,22 +331,14 @@ function App(): React.ReactElement {
       language === "zh" ? "TermPop - 不离开页面，也能看懂术语" : "TermPop - Explain terms without leaving the page";
   }, [language]);
 
-  const storeLinks = useMemo(
-    () => ({
-      chromeStoreUrl,
-      edgeAddonsUrl
-    }),
-    []
-  );
-
   return (
     <main>
       <Nav language={language} setLanguage={setLanguage} t={t} />
       <Hero t={t} />
       <ProductShowcase language={language} t={t} />
       <FeatureGrid t={t} />
-      <DownloadSection storeLinks={storeLinks} t={t} />
-      <Footer t={t} />
+      <DownloadSection downloadTarget={DOWNLOAD_TARGET} t={t} />
+      <Footer downloadTarget={DOWNLOAD_TARGET} t={t} />
     </main>
   );
 }
@@ -838,14 +826,12 @@ function FeatureGrid({ t }: { t: Copy }): React.ReactElement {
 }
 
 function DownloadSection({
-  storeLinks,
+  downloadTarget,
   t
 }: {
-  storeLinks: { chromeStoreUrl?: string; edgeAddonsUrl?: string };
+  downloadTarget: DownloadTarget;
   t: Copy;
 }): React.ReactElement {
-  const hasStoreLinks = Boolean(storeLinks.chromeStoreUrl || storeLinks.edgeAddonsUrl);
-
   return (
     <section className="download-section" id="download">
       <div className="download-panel">
@@ -853,36 +839,27 @@ function DownloadSection({
         <h2 style={{ whiteSpace: "pre-wrap" }}>{t.download.title}</h2>
         <p>{t.download.copy}</p>
         <div className="download-actions">
-          {hasStoreLinks ? (
-            <>
-              {storeLinks.chromeStoreUrl ? (
-                <a className="button button-primary" href={storeLinks.chromeStoreUrl}>
-                  {t.download.chromeStore}
-                </a>
-              ) : null}
-              {storeLinks.edgeAddonsUrl ? (
-                <a className="button button-secondary" href={storeLinks.edgeAddonsUrl}>
-                  {t.download.edgeAddons}
-                </a>
-              ) : null}
-            </>
-          ) : (
-            <a className="button button-primary" href={RELEASES_URL}>
-              {t.download.latest}
-            </a>
-          )}
+          <a
+            className="button button-primary"
+            data-download-kind={downloadTarget.kind}
+            href={downloadTarget.url}
+          >
+            {downloadTarget.kind === "edge" ? t.download.edgeAddons : t.download.latest}
+          </a>
         </div>
       </div>
     </section>
   );
 }
 
-function Footer({ t }: { t: Copy }): React.ReactElement {
+function Footer({ downloadTarget, t }: { downloadTarget: DownloadTarget; t: Copy }): React.ReactElement {
   return (
     <footer className="footer">
       <span>TermPop</span>
       <a href={GITHUB_URL}>GitHub</a>
-      <a href={RELEASES_URL}>{t.footer.releases}</a>
+      <a data-download-kind={downloadTarget.kind} href={downloadTarget.url}>
+        {downloadTarget.kind === "edge" ? t.download.edgeAddons : t.footer.releases}
+      </a>
       <a href={`${GITHUB_URL}#license`}>{t.footer.license}</a>
     </footer>
   );
