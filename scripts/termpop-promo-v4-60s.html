@@ -670,6 +670,7 @@
         return 1 + c3 * Math.pow(clamp(x) - 1, 3) + c1 * Math.pow(clamp(x) - 1, 2);
       };
       const mix = (a, b, x) => a + (b - a) * x;
+      const clickPulse = (t, center, halfDuration = .10) => 1 - clamp(Math.abs(t - center) / halfDuration);
       const pose = (el, opacity, x = 0, y = 0, scale = 1, rotate = 0) => {
         el.style.opacity = opacity;
         el.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale}) rotate(${rotate}deg)`;
@@ -754,9 +755,13 @@
             x: hover.x + hover.width * .52,
             y: hover.y + hover.height * .58,
           },
-          selectionCursor: {
-            x: selection.x + selection.width - 5,
-            y: selection.y + selection.height * .66,
+          selectionStartCursor: {
+            x: selection.x - 4,
+            y: selection.y + selection.height * .56,
+          },
+          selectionEndCursor: {
+            x: selection.x + selection.width + 4,
+            y: selection.y + selection.height * .56,
           },
           menuCursor: {
             x: menuLeft + active.offsetLeft + active.offsetWidth * .58,
@@ -813,20 +818,22 @@
         pose($('s3Browser'), p, mix(150, 0, p), 0, mix(.95, 1, p));
         p = easeOutQuint(phase(t, 17.34, 18.08));
         pose($('s3Guide'), p, mix(38, 0, p), 0, 1);
-        $('s3Selection').style.transform = `scaleX(${easeInOutCubic(phase(t, 18.74, 19.72))})`;
-        const cp3 = easeInOutCubic(phase(t, 18.48, 20.02));
-        const cpMenu = easeInOutCubic(phase(t, 20.94, 21.60));
-        const selectionCursorX = mix(1330, anchors.selectionCursor.x, cp3);
-        const selectionCursorY = mix(690, anchors.selectionCursor.y, cp3);
+        const selectionProgress = easeInOutCubic(phase(t, 18.72, 19.72));
+        $('s3Selection').style.transform = `scaleX(${selectionProgress})`;
+        const cpMenu = easeInOutCubic(phase(t, 20.76, 21.54));
+        const selectionCursorX = mix(anchors.selectionStartCursor.x, anchors.selectionEndCursor.x, selectionProgress);
+        const selectionCursorY = mix(anchors.selectionStartCursor.y, anchors.selectionEndCursor.y, selectionProgress);
+        const selectionClick = clickPulse(t, 20.22);
+        const menuClick = clickPulse(t, 22.10);
         pose(
           $('s3Cursor'),
-          phase(t, 18.34, 18.62) * (1 - phase(t, 22.08, 22.42)),
+          phase(t, 18.34, 18.62) * (1 - phase(t, 22.24, 22.52)),
           mix(selectionCursorX, anchors.menuCursor.x, cpMenu),
           mix(selectionCursorY, anchors.menuCursor.y, cpMenu),
-          1
+          1 - .12 * Math.max(selectionClick, menuClick)
         );
         p = easeOutBack(phase(t, 20.22, 20.92));
-        pose($('s3Menu'), phase(t, 20.22, 20.58) * (1 - phase(t, 22.08, 22.42)), 0, mix(-12, 0, p), mix(.92, 1, p));
+        pose($('s3Menu'), phase(t, 20.22, 20.58) * (1 - phase(t, 22.24, 22.52)), 0, mix(-12, 0, p), mix(.92, 1, p));
         const active = phase(t, 21.58, 22.00);
         $('s3MenuActive').style.boxShadow = `0 0 0 ${mix(0, 5, active)}px rgba(33,103,232,${mix(0, .12, active)})`;
         p = easeOutBack(phase(t, 22.48, 23.28));
