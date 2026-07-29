@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TermPop promotional video cover</title>
+    <style>
+      :root {
+        font-family: "Segoe UI Variable Display", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+        color: #f8fafc;
+        font-synthesis: none;
+      }
+
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; }
+      body { background: #050608; }
+
+      .cover {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #050608;
+      }
+
+      .brand {
+        position: absolute;
+        top: 82px;
+        left: 118px;
+        display: flex;
+        align-items: center;
+        gap: 19px;
+        z-index: 4;
+      }
+
+      .brand img {
+        width: 68px;
+        height: 68px;
+        border-radius: 17px;
+        object-fit: contain;
+        filter: drop-shadow(0 14px 26px rgba(37, 119, 246, .2));
+      }
+
+      .brand span {
+        font-size: 31px;
+        font-weight: 700;
+      }
+
+      .copy {
+        position: absolute;
+        left: 120px;
+        top: 284px;
+        width: 790px;
+        z-index: 4;
+      }
+
+      .eyebrow {
+        color: #5b9cff;
+        font-size: 23px;
+        font-weight: 720;
+      }
+
+      h1 {
+        margin: 28px 0 0;
+        font-size: 102px;
+        font-weight: 770;
+        line-height: .98;
+        letter-spacing: 0;
+      }
+
+      h1 span { display: block; }
+      h1 em { color: #5b9cff; font-style: normal; }
+
+      .subtitle {
+        width: 690px;
+        margin: 40px 0 0;
+        color: #939cab;
+        font-size: 28px;
+        line-height: 1.55;
+      }
+
+      .feature-line {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        margin-top: 44px;
+        color: #cbd2dc;
+        font-size: 19px;
+        font-weight: 620;
+      }
+
+      .feature-line i {
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: #3b82f6;
+      }
+
+      .product-stage {
+        position: absolute;
+        top: 132px;
+        right: 82px;
+        width: 900px;
+        height: 816px;
+        z-index: 2;
+      }
+
+      .blue-edge {
+        position: absolute;
+        top: 41px;
+        right: 20px;
+        width: 763px;
+        height: 708px;
+        border: 2px solid rgba(72, 139, 255, .28);
+        border-radius: 42px;
+        transform: translate(30px, 30px);
+      }
+
+      .browser {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        border: 1px solid rgba(148, 163, 184, .3);
+        border-radius: 36px;
+        background: #fff;
+        box-shadow: 0 42px 120px rgba(0, 0, 0, .48);
+      }
+
+      .browser-bar {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        height: 74px;
+        padding: 0 27px;
+        border-bottom: 1px solid #e7ebf1;
+        background: #fafbfc;
+      }
+
+      .dot { width: 14px; height: 14px; border-radius: 50%; }
+      .red { background: #ff5f57; }
+      .yellow { background: #febc2e; }
+      .green { background: #28c840; }
+
+      .address {
+        height: 42px;
+        margin-left: 12px;
+        flex: 1;
+        border-radius: 999px;
+        background: #edf2f8;
+        color: #8290a2;
+        font-size: 17px;
+        line-height: 42px;
+        padding: 0 20px;
+      }
+
+      .page {
+        position: absolute;
+        inset: 74px 0 0;
+        padding: 82px 70px;
+        color: #111827;
+        background: linear-gradient(118deg, #fff 0%, #fff 53%, #edf4ff 100%);
+      }
+
+      .kicker { color: #2563eb; font-size: 18px; font-weight: 730; }
+
+      .article-title {
+        width: 620px;
+        margin: 17px 0 28px;
+        font-size: 56px;
+        font-weight: 770;
+        line-height: 1.04;
+      }
+
+      .article-copy {
+        width: 650px;
+        margin: 0;
+        color: #536174;
+        font-size: 25px;
+        line-height: 1.75;
+      }
+
+      .term {
+        position: relative;
+        display: inline-block;
+        color: #25364c;
+        white-space: nowrap;
+      }
+
+      .term::before {
+        position: absolute;
+        left: -4px;
+        right: -4px;
+        bottom: 0;
+        height: 15px;
+        border-radius: 4px;
+        background: rgba(56, 132, 255, .25);
+        box-shadow: inset 0 -3px 0 #2775f5;
+        content: "";
+      }
+
+      .term span { position: relative; z-index: 1; }
+
+      .popover {
+        position: absolute;
+        right: 58px;
+        bottom: 63px;
+        width: 480px;
+        min-height: 306px;
+        padding: 29px 31px 27px;
+        border: 1px solid #dce3ed;
+        border-radius: 23px;
+        background: rgba(255, 255, 255, .99);
+        box-shadow: 0 30px 75px rgba(15, 23, 42, .22);
+      }
+
+      .popover::after {
+        position: absolute;
+        left: 86px;
+        top: -12px;
+        width: 23px;
+        height: 23px;
+        border-top: 1px solid #dce3ed;
+        border-left: 1px solid #dce3ed;
+        background: #fff;
+        content: "";
+        transform: rotate(45deg);
+      }
+
+      .popover-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+      }
+
+      .popover-title { font-size: 35px; font-weight: 770; }
+      .refresh { color: #2167e8; font-size: 23px; }
+      .popover-type { margin-top: 6px; color: #2167e8; font-size: 18px; font-weight: 690; }
+      .popover-copy { margin: 18px 0 22px; color: #4b5563; font-size: 21px; line-height: 1.52; }
+      .popover-tags { display: flex; gap: 8px; }
+      .popover-tags span { padding: 7px 11px; border-radius: 999px; background: #edf4ff; color: #31537f; font-size: 14px; font-weight: 650; }
+
+      .product-label {
+        position: absolute;
+        right: 39px;
+        top: 105px;
+        color: rgba(37, 99, 235, .14);
+        font-size: 134px;
+        font-weight: 780;
+        line-height: 1;
+      }
+
+      .footer-mark {
+        position: absolute;
+        left: 121px;
+        bottom: 77px;
+        color: #5b9cff;
+        font-size: 17px;
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="cover">
+      <div class="brand">
+        <img src="../extension/src/assets/icons/icon-1024.png" alt="" />
+        <span>TermPop</span>
+      </div>
+
+      <section class="copy">
+        <div class="eyebrow">AI 阅读解释助手</div>
+        <h1><span>不离开页面，</span><span>也能看懂<em>术语</em>。</span></h1>
+        <p class="subtitle">轻量、原位、贴合上下文。让解释回到阅读发生的位置。</p>
+        <div class="feature-line"><span>悬停解释</span><i></i><span>划词解释</span><i></i><span>PDF 阅读</span></div>
+      </section>
+
+      <section class="product-stage">
+        <div class="blue-edge"></div>
+        <div class="browser">
+          <div class="browser-bar">
+            <i class="dot red"></i><i class="dot yellow"></i><i class="dot green"></i>
+            <div class="address">termpop.com/read/attention</div>
+          </div>
+          <div class="page">
+            <div class="product-label">01</div>
+            <div class="kicker">技术阅读</div>
+            <h2 class="article-title">理解复杂概念，<br />不必离开页面。</h2>
+            <p class="article-copy">一个 <span class="term"><span>Transformer</span></span> 会使用 self-attention 来建模 token 之间的关系。</p>
+            <div class="popover">
+              <div class="popover-head"><div class="popover-title">Transformer</div><div class="refresh">↻</div></div>
+              <div class="popover-type">深度学习架构</div>
+              <p class="popover-copy">一种基于注意力机制的神经网络架构，擅长理解文本中不同词语之间的关系。</p>
+              <div class="popover-tags"><span>注意力机制</span><span>神经网络</span><span>NLP</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="footer-mark">CHROME · EDGE</div>
+    </main>
+  </body>
+</html>
