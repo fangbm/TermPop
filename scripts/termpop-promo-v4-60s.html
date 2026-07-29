@@ -1,0 +1,889 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TermPop 60-second product film</title>
+    <style>
+      :root {
+        color: #111827;
+        font-family: "Segoe UI Variable Display", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+        font-synthesis: none;
+      }
+
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; }
+      body { background: #050608; }
+
+      .film {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #050608;
+      }
+
+      .scene {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        opacity: 0;
+        will-change: transform, opacity;
+      }
+
+      .dark { color: #f7f8fa; background: #050608; }
+      .light { color: #111827; background: #f5f7fb; }
+
+      .blue { color: #fff; background: #1266e9; }
+
+      .logo {
+        width: 84px;
+        height: 84px;
+        flex: 0 0 auto;
+        display: block;
+        border-radius: 22%;
+        object-fit: contain;
+        filter: drop-shadow(0 18px 30px rgba(19, 101, 232, .18));
+      }
+
+      .eyebrow {
+        color: #4f91ff;
+        font-size: 24px;
+        font-weight: 720;
+        line-height: 1.2;
+        letter-spacing: 0;
+      }
+
+      .s1-content {
+        position: absolute;
+        left: 165px;
+        top: 132px;
+        width: 1590px;
+      }
+
+      .s1-brand {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        color: #9aa3b2;
+        font-size: 29px;
+        font-weight: 660;
+      }
+
+      .s1-brand .logo { width: 58px; height: 58px; }
+
+      .s1-title {
+        margin-top: 124px;
+        max-width: 1510px;
+        font-size: 116px;
+        font-weight: 760;
+        line-height: .98;
+        letter-spacing: 0;
+      }
+
+      .s1-title > span { display: block; transform-origin: 0 50%; }
+      .s1-title .accent { color: #5b9bff; }
+
+      .s1-rule {
+        width: 0;
+        height: 7px;
+        margin-top: 62px;
+        border-radius: 999px;
+        background: #3b82f6;
+      }
+
+      .s1-subtitle {
+        margin-top: 28px;
+        color: #8b95a5;
+        font-size: 29px;
+        font-weight: 460;
+      }
+
+      .browser {
+        position: absolute;
+        left: 92px;
+        top: 66px;
+        width: 1736px;
+        height: 948px;
+        border: 1px solid rgba(148, 163, 184, .32);
+        border-radius: 38px;
+        overflow: hidden;
+        background: white;
+        box-shadow: 0 40px 115px rgba(15, 23, 42, .16);
+      }
+
+      .browser-bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        height: 78px;
+        padding: 0 30px;
+        border-bottom: 1px solid #e5e9f1;
+        background: #fafbfc;
+      }
+
+      .dot { width: 15px; height: 15px; border-radius: 50%; }
+      .red { background: #ff5f57; }
+      .yellow { background: #febc2e; }
+      .green { background: #28c840; }
+      .address {
+        height: 44px;
+        margin-left: 17px;
+        flex: 1;
+        border-radius: 999px;
+        background: #eef2f7;
+        color: #7b8797;
+        font-size: 18px;
+        line-height: 44px;
+        padding: 0 22px;
+      }
+
+      .article-page {
+        position: absolute;
+        inset: 78px 0 0;
+        padding: 88px 105px;
+        background: linear-gradient(116deg, #fff 0%, #fff 57%, #edf4ff 100%);
+      }
+
+      .article-kicker { color: #2563eb; font-size: 21px; font-weight: 720; }
+      .article-title {
+        margin: 18px 0 34px;
+        width: 780px;
+        font-size: 70px;
+        font-weight: 760;
+        line-height: 1.05;
+      }
+
+      .article-copy {
+        width: 995px;
+        color: #475569;
+        font-size: 31px;
+        line-height: 1.82;
+      }
+
+      .term {
+        position: relative;
+        display: inline-block;
+        color: inherit;
+        white-space: nowrap;
+      }
+
+      .term-highlight {
+        position: absolute;
+        left: -5px;
+        right: -5px;
+        bottom: 1px;
+        height: 17px;
+        border-radius: 5px;
+        background: rgba(56, 132, 255, .24);
+        box-shadow: inset 0 -3px 0 #2775f5;
+        transform: scaleX(0);
+        transform-origin: 0 50%;
+        z-index: 0;
+      }
+
+      .term-text { position: relative; z-index: 1; }
+
+      .cursor {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 30px;
+        height: 42px;
+        filter: drop-shadow(0 4px 5px rgba(0,0,0,.2));
+        z-index: 20;
+      }
+
+      .cursor::before,
+      .cursor::after {
+        position: absolute;
+        left: 0;
+        top: 0;
+        display: block;
+        content: "";
+        clip-path: polygon(0 0, 0 33px, 8px 25px, 15px 42px, 22px 39px, 15px 23px, 30px 23px);
+      }
+
+      .cursor::before {
+        width: 30px;
+        height: 42px;
+        background: #fff;
+      }
+
+      .cursor::after {
+        left: 2px;
+        top: 3px;
+        width: 26px;
+        height: 36px;
+        background: #111827;
+        clip-path: polygon(0 0, 0 27px, 7px 20px, 13px 35px, 18px 32px, 12px 18px, 26px 18px);
+      }
+
+      .popover {
+        position: absolute;
+        width: 520px;
+        min-height: 332px;
+        padding: 31px 34px 28px;
+        border: 1px solid #dce3ed;
+        border-radius: 24px;
+        background: rgba(255,255,255,.98);
+        color: #111827;
+        box-shadow: 0 30px 74px rgba(15,23,42,.2);
+        transform-origin: 18% 100%;
+        z-index: 15;
+      }
+
+      .popover::after {
+        position: absolute;
+        left: 78px;
+        bottom: -12px;
+        width: 23px;
+        height: 23px;
+        border-right: 1px solid #dce3ed;
+        border-bottom: 1px solid #dce3ed;
+        background: #fff;
+        content: "";
+        transform: rotate(45deg);
+      }
+
+      .popover-head { display: flex; align-items: baseline; justify-content: space-between; }
+      .popover-title { font-size: 36px; font-weight: 760; }
+      .popover-type { margin-top: 7px; color: #2167e8; font-size: 18px; font-weight: 690; }
+      .popover-copy { margin: 19px 0 23px; color: #4b5563; font-size: 23px; line-height: 1.55; }
+      .popover-tags { display: flex; gap: 9px; flex-wrap: wrap; }
+      .popover-tag { padding: 7px 12px; border-radius: 999px; background: #edf4ff; color: #31537f; font-size: 15px; font-weight: 650; }
+      .refresh { color: #2167e8; font-size: 24px; }
+
+      .s2-browser { will-change: transform, opacity; }
+      .s2-popover { transform-origin: var(--anchor-origin, 50%) var(--anchor-edge, 100%); }
+      .s2-popover[data-placement="below"]::after {
+        top: -12px;
+        bottom: auto;
+        border-right: 0;
+        border-bottom: 0;
+        border-top: 1px solid #dce3ed;
+        border-left: 1px solid #dce3ed;
+      }
+      .s2-callout {
+        position: absolute;
+        right: 104px;
+        bottom: 76px;
+        width: 660px;
+        color: #111827;
+        font-size: 76px;
+        font-weight: 780;
+        line-height: 1.02;
+        text-align: right;
+      }
+      .s2-callout small { display: block; margin-top: 20px; color: #64748b; font-size: 27px; font-weight: 520; line-height: 1.35; }
+
+      .scene-guide {
+        position: absolute;
+        right: 105px;
+        top: 92px;
+        width: 410px;
+        display: grid;
+        grid-template-columns: 150px 1fr;
+        align-items: center;
+        color: #111827;
+      }
+
+      .guide-index {
+        color: rgba(37, 99, 235, .13);
+        font-size: 132px;
+        font-weight: 790;
+        line-height: .82;
+      }
+
+      .guide-copy {
+        padding-left: 24px;
+        border-left: 3px solid #2f74ef;
+      }
+
+      .guide-copy strong {
+        display: block;
+        font-size: 27px;
+        font-weight: 750;
+        line-height: 1.2;
+      }
+
+      .guide-copy span {
+        display: block;
+        margin-top: 12px;
+        color: #64748b;
+        font-size: 18px;
+        font-weight: 560;
+        line-height: 1.45;
+      }
+
+      .guide-flow {
+        grid-column: 1 / -1;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 12px;
+        margin-top: 25px;
+        color: #2563eb;
+        font-size: 16px;
+        font-weight: 690;
+      }
+
+      .guide-flow i {
+        width: 34px;
+        height: 1px;
+        background: rgba(37, 99, 235, .42);
+      }
+
+      .s3-page {
+        position: absolute;
+        inset: 78px 0 0;
+        padding: 100px 145px;
+        background: #fff;
+      }
+      .s3-title { margin: 0 0 38px; font-size: 58px; font-weight: 760; }
+      .s3-paragraph { width: 1250px; color: #3f4a5b; font-size: 30px; line-height: 1.85; }
+      .selection-wrap { position: relative; display: inline-block; white-space: nowrap; }
+      .selection-fill {
+        position: absolute;
+        inset: 1px -4px 2px;
+        border-radius: 4px;
+        background: #a9caff;
+        transform: scaleX(0);
+        transform-origin: 0 50%;
+      }
+      .selection-text { position: relative; z-index: 1; }
+      .context-menu {
+        position: absolute;
+        left: 876px;
+        top: 461px;
+        width: 330px;
+        padding: 11px;
+        border: 1px solid #dce3ed;
+        border-radius: 16px;
+        background: rgba(255,255,255,.98);
+        box-shadow: 0 22px 56px rgba(15,23,42,.19);
+        color: #202938;
+        font-size: 19px;
+        z-index: 18;
+        transform-origin: 0 0;
+      }
+      .menu-item { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 13px; border-radius: 10px; }
+      .menu-item.active { color: #0e5ede; background: #eaf2ff; font-weight: 700; }
+      .menu-icon { width: 25px; color: #2167e8; text-align: center; }
+      .s3-popover { width: 555px; transform-origin: 50% 0; }
+      .s3-popover::after {
+        top: -12px;
+        bottom: auto;
+        border-right: 0;
+        border-bottom: 0;
+        border-top: 1px solid #dce3ed;
+        border-left: 1px solid #dce3ed;
+      }
+      .s3-callout {
+        position: absolute;
+        right: 104px;
+        bottom: 76px;
+        width: 620px;
+        color: #111827;
+        font-size: 74px;
+        font-weight: 780;
+        line-height: 1.02;
+        text-align: right;
+      }
+      .s3-callout small { display: block; margin-top: 20px; color: #64748b; font-size: 27px; font-weight: 520; line-height: 1.35; }
+      .s3-guide { top: 92px; }
+
+      .s4-title {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        color: #f8fafc;
+        background: #050608;
+      }
+      .s4-title h2 { margin: 0; font-size: 105px; line-height: 1.02; font-weight: 760; }
+      .s4-title span { color: #5191ff; }
+      .s4-title p { margin: 30px 0 0; color: #8f99a8; font-size: 27px; }
+
+      .pdf-stage { position: absolute; inset: 0; background: #edf1f7; }
+      .pdf-window {
+        position: absolute;
+        left: 178px;
+        top: 80px;
+        width: 1564px;
+        height: 915px;
+        border: 1px solid #d8dee8;
+        border-radius: 30px;
+        overflow: hidden;
+        background: white;
+        box-shadow: 0 38px 100px rgba(15,23,42,.16);
+      }
+      .pdf-toolbar { display: flex; align-items: center; justify-content: space-between; height: 72px; padding: 0 28px; border-bottom: 1px solid #dde3eb; background: #f9fafb; }
+      .pdf-brand { font-size: 22px; font-weight: 740; }
+      .pdf-page-count { color: #64748b; font-size: 17px; }
+      .pdf-canvas { position: absolute; inset: 72px 0 0; padding: 73px 160px; background: #edf1f7; }
+      .paper { position: relative; width: 100%; height: 100%; padding: 62px 86px; background: #fff; box-shadow: 0 18px 45px rgba(15,23,42,.1); }
+      .paper h3 { margin: 0 0 34px; color: #111827; font-family: Georgia, serif; font-size: 38px; text-align: center; }
+      .paper-columns { columns: 2; column-gap: 76px; color: #374151; font-family: Georgia, serif; font-size: 21px; line-height: 1.55; }
+      .paper-columns p { margin: 0 0 19px; }
+      .pdf-term { position: relative; display: inline-block; color: #111827; }
+      .pdf-mark { position: absolute; left: -2px; right: -2px; bottom: 1px; height: 12px; border-radius: 3px; background: rgba(63,130,246,.25); box-shadow: inset 0 -2px 0 #2877f5; transform: scaleX(0); transform-origin: 0 50%; }
+      .pdf-term span { position: relative; z-index: 1; }
+      .pdf-popover { width: 475px; min-height: 285px; transform-origin: var(--pdf-anchor-origin, 50%) var(--pdf-anchor-edge, 100%); }
+      .pdf-popover::after { left: var(--pdf-arrow-left, 50%); right: auto; }
+      .pdf-popover[data-placement="below"]::after {
+        top: -12px;
+        bottom: auto;
+        border-right: 0;
+        border-bottom: 0;
+        border-top: 1px solid #dce3ed;
+        border-left: 1px solid #dce3ed;
+      }
+
+      .cache-stage {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        grid-template-columns: 640px 1fr;
+        align-items: center;
+        gap: 92px;
+        padding: 110px 150px;
+        background: linear-gradient(112deg, #f8fafc 0%, #f8fafc 54%, #edf4ff 100%);
+      }
+      .cache-copy .eyebrow { font-size: 22px; }
+      .cache-title { margin: 24px 0 28px; font-size: 90px; font-weight: 780; line-height: 1.02; }
+      .cache-description { max-width: 610px; margin: 0; color: #64748b; font-size: 28px; line-height: 1.55; }
+      .cache-proof { display: flex; gap: 14px; margin-top: 42px; }
+      .cache-proof span { padding: 12px 18px; border-radius: 999px; background: #e8f1ff; color: #175fc9; font-size: 18px; font-weight: 700; }
+      .cache-window {
+        position: relative;
+        height: 700px;
+        overflow: hidden;
+        border: 1px solid #dbe3ef;
+        border-radius: 30px;
+        background: #fff;
+        box-shadow: 0 38px 100px rgba(15, 23, 42, .14);
+      }
+      .cache-toolbar { display: flex; align-items: center; justify-content: space-between; height: 78px; padding: 0 28px; border-bottom: 1px solid #e5e9f1; color: #64748b; font-size: 18px; }
+      .cache-toolbar strong { color: #111827; font-size: 22px; }
+      .cache-list { padding: 38px 44px; }
+      .cache-row { position: relative; display: grid; grid-template-columns: 1fr 145px; align-items: center; min-height: 92px; border-bottom: 1px solid #eef2f7; color: #475569; font-size: 25px; }
+      .cache-row strong { color: #111827; font-weight: 730; }
+      .cache-status { justify-self: end; padding: 9px 13px; border-radius: 999px; background: #edf4ff; color: #2467cf; font-size: 16px; font-weight: 720; opacity: 0; }
+      .cache-line { position: absolute; left: 44px; right: 44px; top: 128px; height: 3px; border-radius: 999px; background: #2f76ee; transform: scaleX(0); transform-origin: 0 50%; }
+      .cache-result { position: absolute; right: 44px; bottom: 42px; width: 430px; padding: 27px 29px; border: 1px solid #dce3ed; border-radius: 21px; background: #fff; box-shadow: 0 24px 65px rgba(15, 23, 42, .16); transform-origin: 84% 100%; }
+      .cache-result-head { display: flex; align-items: center; justify-content: space-between; }
+      .cache-result-head strong { font-size: 28px; }
+      .cache-result-head span { color: #16a34a; font-size: 16px; font-weight: 760; }
+      .cache-result p { margin: 16px 0 0; color: #566173; font-size: 21px; line-height: 1.5; }
+
+      .s5-grid {
+        position: absolute;
+        inset: 0;
+        opacity: .14;
+        background-image: linear-gradient(rgba(255,255,255,.45) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.45) 1px, transparent 1px);
+        background-size: 76px 76px;
+        -webkit-mask-image: radial-gradient(circle at center, #000, transparent 72%);
+      }
+      .s5-content { position: absolute; left: 170px; top: 178px; right: 170px; }
+      .s5-brand { display: flex; align-items: center; gap: 23px; font-size: 29px; font-weight: 720; }
+      .s5-brand .logo { filter: drop-shadow(0 20px 28px rgba(0,0,0,.18)); }
+      .s5-title { margin-top: 118px; max-width: 1320px; font-size: 104px; font-weight: 770; line-height: 1.02; }
+      .s5-title span { display: block; }
+      .s5-pipeline { display: flex; align-items: center; gap: 20px; margin-top: 68px; }
+      .pipe-pill { padding: 17px 25px; border: 1px solid rgba(255,255,255,.46); border-radius: 999px; background: rgba(255,255,255,.12); font-size: 21px; font-weight: 670; backdrop-filter: blur(8px); }
+      .pipe-line { width: 0; height: 2px; background: rgba(255,255,255,.72); }
+
+      .s6-content {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+      }
+      .s6-logo { width: 128px; height: 128px; }
+      .s6-wordmark { margin-top: 35px; color: #fff; font-size: 45px; font-weight: 760; }
+      .s6-title { margin-top: 58px; color: #f8fafc; font-size: 72px; font-weight: 760; line-height: 1.08; }
+      .s6-subtitle { margin-top: 24px; color: #8d97a7; font-size: 25px; }
+      .s6-platforms { margin-top: 43px; color: #5b9cff; font-size: 20px; font-weight: 680; }
+    </style>
+  </head>
+  <body>
+    <main class="film" id="film">
+      <section class="scene dark" id="s1">
+        <div class="s1-content">
+          <div class="s1-brand" id="s1Brand"><img class="logo" src="../extension/src/assets/icons/icon-1024.png" alt="" /><span>TermPop</span></div>
+          <div class="s1-title">
+            <span id="s1Line1">阅读，</span>
+            <span id="s1Line2">不该被<span class="accent">术语</span>打断。</span>
+          </div>
+          <div class="s1-rule" id="s1Rule"></div>
+          <div class="s1-subtitle" id="s1Subtitle">让解释回到上下文里。</div>
+        </div>
+      </section>
+
+      <section class="scene light" id="s2">
+        <div class="browser s2-browser" id="s2Browser">
+          <div class="browser-bar"><i class="dot red"></i><i class="dot yellow"></i><i class="dot green"></i><div class="address">termpop.com/read/attention</div></div>
+          <div class="article-page">
+            <div class="article-kicker">技术阅读</div>
+            <h1 class="article-title">理解复杂概念，<br />不必离开页面。</h1>
+            <div class="article-copy">
+              <p>一个 <span class="term"><span class="term-highlight" id="s2Mark"></span><span class="term-text">Transformer</span></span> 会使用 self-attention 来建模 token 之间的关系。</p>
+              <p>阅读继续，解释就在需要它的位置出现。</p>
+            </div>
+            <div class="scene-guide" id="s2Guide">
+              <div class="guide-index">01</div>
+              <div class="guide-copy"><strong>停在术语上</strong><span>保留当前阅读位置，解释自动贴近原词。</span></div>
+              <div class="guide-flow"><span>识别</span><i></i><span>上下文</span><i></i><span>解释</span></div>
+            </div>
+            <div class="cursor" id="s2Cursor"></div>
+            <div class="popover s2-popover" id="s2Popover">
+              <div class="popover-head"><div class="popover-title">Transformer</div><div class="refresh">↻</div></div>
+              <div class="popover-type">深度学习架构</div>
+              <p class="popover-copy">一种基于注意力机制的神经网络架构，擅长理解文本中不同词语之间的关系。</p>
+              <div class="popover-tags"><span class="popover-tag">注意力机制</span><span class="popover-tag">神经网络</span><span class="popover-tag">NLP</span></div>
+            </div>
+            <div class="s2-callout" id="s2Callout">悬停，即懂。<small>解释紧贴原词，不打断阅读节奏。</small></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="scene light" id="s3">
+        <div class="browser" id="s3Browser">
+          <div class="browser-bar"><i class="dot red"></i><i class="dot yellow"></i><i class="dot green"></i><div class="address">termpop.com/research/transformers</div></div>
+          <div class="s3-page">
+            <h2 class="s3-title">在任何页面，解释你真正想知道的内容。</h2>
+            <div class="s3-paragraph">
+              <p>Modern language systems use <span class="selection-wrap"><span class="selection-fill" id="s3Selection"></span><span class="selection-text">multi-head attention</span></span> to learn several relationships at once.</p>
+              <p>选中短语，然后让 TermPop 结合这一段上下文解释。</p>
+            </div>
+            <div class="scene-guide s3-guide" id="s3Guide">
+              <div class="guide-index">02</div>
+              <div class="guide-copy"><strong>选中任意短语</strong><span>调用右键菜单，只解释你真正关心的内容。</span></div>
+              <div class="guide-flow"><span>划词</span><i></i><span>右键</span><i></i><span>解释</span></div>
+            </div>
+            <div class="cursor" id="s3Cursor"></div>
+            <div class="context-menu" id="s3Menu">
+              <div class="menu-item"><span class="menu-icon">⌘</span><span>复制</span></div>
+              <div class="menu-item active" id="s3MenuActive"><span class="menu-icon">T</span><span>用 TermPop 解释选中文本</span></div>
+              <div class="menu-item"><span class="menu-icon">↗</span><span>搜索网页</span></div>
+            </div>
+            <div class="popover s3-popover" id="s3Popover">
+              <div class="popover-head"><div class="popover-title">multi-head attention</div><div class="refresh">↻</div></div>
+              <div class="popover-type">多头注意力</div>
+              <p class="popover-copy">并行关注输入中的多组关系，让模型同时理解不同位置、语义和依赖。</p>
+              <div class="popover-tags"><span class="popover-tag">Transformer</span><span class="popover-tag">并行计算</span><span class="popover-tag">上下文</span></div>
+            </div>
+            <div class="s3-callout" id="s3Callout">划词，也能解释。<small>只处理你选中的内容。</small></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="scene dark" id="s4">
+        <div class="s4-title" id="s4Title">
+          <div><h2>网页。PDF。<br /><span>都在原位。</span></h2><p>阅读场景改变，交互方式不变。</p></div>
+        </div>
+        <div class="pdf-stage" id="s4Pdf">
+          <div class="pdf-window" id="s4PdfWindow">
+            <div class="pdf-toolbar"><div class="pdf-brand">TermPop PDF</div><div class="pdf-page-count">4 / 15</div></div>
+            <div class="pdf-canvas">
+              <div class="paper">
+                <h3>Attention Is All You Need</h3>
+                <div class="paper-columns">
+                  <p>The dominant sequence transduction models are based on recurrent or convolutional neural networks.</p>
+                  <p>The Transformer relies entirely on attention mechanisms and can reach a new state of the art in translation quality.</p>
+                  <p>Training is substantially more parallelizable on modern <span class="pdf-term"><i class="pdf-mark" id="s4Mark"></i><span>GPUs</span></span>.</p>
+                  <p>Multi-head attention allows the model to jointly attend to information from different representation subspaces.</p>
+                  <p>Positional encoding provides order information without recurrence or convolution.</p>
+                </div>
+                <div class="popover pdf-popover" id="s4Popover">
+                  <div class="popover-head"><div class="popover-title">GPU</div><div class="refresh">↻</div></div>
+                  <div class="popover-type">图形处理器</div>
+                  <p class="popover-copy">适合大规模并行计算的处理器，常用于加速深度学习模型训练。</p>
+                  <div class="popover-tags"><span class="popover-tag">并行计算</span><span class="popover-tag">模型训练</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="scene light" id="s5">
+        <div class="cache-stage">
+          <div class="cache-copy" id="s5Copy">
+            <div class="eyebrow">本地缓存</div>
+            <h2 class="cache-title">解释一次，<br />之后即取。</h2>
+            <p class="cache-description">术语和释义会在本地按语境复用。再次遇见，不必重复等待。</p>
+            <div class="cache-proof" id="s5Proof"><span>按语境隔离</span><span>自动过期</span><span>本地复用</span></div>
+          </div>
+          <div class="cache-window" id="s5Window">
+            <div class="cache-toolbar"><strong>近期术语</strong><span>只保存在本机</span></div>
+            <i class="cache-line" id="s5Line"></i>
+            <div class="cache-list">
+              <div class="cache-row"><span><strong>Transformer</strong><br />深度学习架构</span><span class="cache-status" id="s5Hit1">已缓存</span></div>
+              <div class="cache-row"><span><strong>self-attention</strong><br />自注意力机制</span><span class="cache-status" id="s5Hit2">已缓存</span></div>
+              <div class="cache-row"><span><strong>GPU</strong><br />图形处理器</span><span class="cache-status" id="s5Hit3">已缓存</span></div>
+            </div>
+            <div class="cache-result" id="s5Result">
+              <div class="cache-result-head"><strong>Transformer</strong><span>来自缓存</span></div>
+              <p>一种基于注意力机制的神经网络架构。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="scene blue" id="s6">
+        <div class="s5-grid"></div>
+        <div class="s5-content">
+          <div class="s5-brand" id="s5Brand"><img class="logo" src="../extension/src/assets/icons/icon-1024.png" alt="" /><span>TermPop</span></div>
+          <div class="s5-title"><span id="s5Line1">Rust + WASM，</span><span id="s5Line2">先在本地识别。</span></div>
+          <div class="s5-pipeline" id="s5Pipeline"><span class="pipe-pill">本地词库</span><i class="pipe-line" id="pipe1"></i><span class="pipe-pill">上下文检测</span><i class="pipe-line" id="pipe2"></i><span class="pipe-pill">AI 解释</span></div>
+        </div>
+      </section>
+
+      <section class="scene dark" id="s7">
+        <div class="s6-content">
+          <img class="logo s6-logo" id="s6Logo" src="../extension/src/assets/icons/icon-1024.png" alt="" />
+          <div class="s6-wordmark" id="s6Wordmark">TermPop</div>
+          <div class="s6-title" id="s6Title">&emsp;不离开页面，<br />&emsp;也能看懂术语。</div>
+          <div class="s6-subtitle" id="s6Subtitle">&emsp;轻量、原位、贴合上下文的阅读解释。</div>
+          <div class="s6-platforms" id="s6Platforms">CHROME · EDGE</div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const clamp = (v, min = 0, max = 1) => Math.min(max, Math.max(min, v));
+      const phase = (t, start, end) => clamp((t - start) / (end - start));
+      const fadeWindow = (t, inStart, inEnd, outStart, outEnd) => phase(t, inStart, inEnd) * (1 - phase(t, outStart, outEnd));
+      const easeOutQuint = (x) => 1 - Math.pow(1 - clamp(x), 5);
+      const easeInOutCubic = (x) => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+      const easeOutBack = (x) => {
+        const c1 = 1.25;
+        const c3 = c1 + 1;
+        return 1 + c3 * Math.pow(clamp(x) - 1, 3) + c1 * Math.pow(clamp(x) - 1, 2);
+      };
+      const mix = (a, b, x) => a + (b - a) * x;
+      const pose = (el, opacity, x = 0, y = 0, scale = 1, rotate = 0) => {
+        el.style.opacity = opacity;
+        el.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale}) rotate(${rotate}deg)`;
+      };
+
+      const offsetWithin = (node, ancestor) => {
+        let x = 0;
+        let y = 0;
+        for (let current = node; current && current !== ancestor; current = current.offsetParent) {
+          x += current.offsetLeft;
+          y += current.offsetTop;
+        }
+        return { x, y, width: node.offsetWidth, height: node.offsetHeight };
+      };
+
+      const rectWithin = (node, ancestor) => {
+        const nodeRect = node.getBoundingClientRect();
+        const ancestorRect = ancestor.getBoundingClientRect();
+        return {
+          x: nodeRect.left - ancestorRect.left,
+          y: nodeRect.top - ancestorRect.top,
+          width: nodeRect.width,
+          height: nodeRect.height,
+        };
+      };
+
+      const alignAnchoredUi = () => {
+        const article = document.querySelector('.article-page');
+        const hoverTerm = document.querySelector('.term');
+        const hoverCard = $('s2Popover');
+        const hover = offsetWithin(hoverTerm, article);
+        const hoverCenter = hover.x + hover.width / 2;
+        const hoverLeft = clamp(hoverCenter - hoverCard.offsetWidth / 2, 18, article.clientWidth - hoverCard.offsetWidth - 18);
+        const hoverArrowLeft = hoverCenter - hoverLeft - 11.5;
+        const hoverTopAbove = hover.y - hoverCard.offsetHeight - 18;
+        const placeAbove = hoverTopAbove >= 18;
+        hoverCard.style.left = `${hoverLeft}px`;
+        hoverCard.style.top = `${placeAbove ? hoverTopAbove : hover.y + hover.height + 18}px`;
+        hoverCard.style.setProperty('--hover-arrow-left', `${hoverArrowLeft}px`);
+        hoverCard.style.setProperty('--anchor-origin', `${hoverArrowLeft + 11.5}px`);
+        hoverCard.style.setProperty('--anchor-edge', placeAbove ? '100%' : '0%');
+        hoverCard.dataset.placement = placeAbove ? 'above' : 'below';
+
+        const selectionPage = document.querySelector('.s3-page');
+        const selectionNode = document.querySelector('.selection-wrap');
+        const selection = offsetWithin(selectionNode, selectionPage);
+        const menu = $('s3Menu');
+        const selectionCard = $('s3Popover');
+        const menuLeft = selection.x + selection.width - 8;
+        const menuTop = selection.y + selection.height + 8;
+        menu.style.left = `${menuLeft}px`;
+        menu.style.top = `${menuTop}px`;
+        selectionCard.style.left = `${selection.x + selection.width / 2 - selectionCard.offsetWidth / 2}px`;
+        selectionCard.style.top = `${selection.y + selection.height + 18}px`;
+        selectionCard.style.setProperty('--arrow-left', `${selectionCard.offsetWidth / 2 - 11.5}px`);
+        selectionCard.style.setProperty('transform-origin', '50% 0');
+        selectionCard.style.setProperty('z-index', '19');
+        selectionCard.style.setProperty('overflow', 'visible');
+        selectionCard.style.setProperty('isolation', 'isolate');
+        const arrowLeft = selectionCard.offsetWidth / 2 - 11.5;
+        selectionCard.dataset.arrowLeft = String(arrowLeft);
+
+        const paper = document.querySelector('.paper');
+        const pdfTerm = document.querySelector('.pdf-term');
+        const pdfCard = $('s4Popover');
+        const pdf = rectWithin(pdfTerm, paper);
+        const pdfCenter = pdf.x + pdf.width / 2;
+        const pdfLeft = clamp(pdfCenter - pdfCard.offsetWidth / 2, 18, paper.clientWidth - pdfCard.offsetWidth - 18);
+        const pdfTopAbove = pdf.y - pdfCard.offsetHeight - 18;
+        const pdfPlaceAbove = pdfTopAbove >= 18;
+        const pdfArrowLeft = pdfCenter - pdfLeft - 11.5;
+        pdfCard.style.left = `${pdfLeft}px`;
+        pdfCard.style.top = `${pdfPlaceAbove ? pdfTopAbove : pdf.y + pdf.height + 18}px`;
+        pdfCard.style.setProperty('--pdf-arrow-left', `${pdfArrowLeft}px`);
+        pdfCard.style.setProperty('--pdf-anchor-origin', `${pdfArrowLeft + 11.5}px`);
+        pdfCard.style.setProperty('--pdf-anchor-edge', pdfPlaceAbove ? '100%' : '0%');
+        pdfCard.dataset.placement = pdfPlaceAbove ? 'above' : 'below';
+
+        const active = $('s3MenuActive');
+        return {
+          hoverCursor: {
+            x: hover.x + hover.width * .52,
+            y: hover.y + hover.height * .58,
+          },
+          selectionCursor: {
+            x: selection.x + selection.width - 5,
+            y: selection.y + selection.height * .66,
+          },
+          menuCursor: {
+            x: menuLeft + active.offsetLeft + active.offsetWidth * .58,
+            y: menuTop + active.offsetTop + active.offsetHeight * .52,
+          },
+        };
+      };
+
+      const anchors = alignAnchoredUi();
+      const selectionCardStyle = document.createElement('style');
+      selectionCardStyle.textContent = `.s2-popover::after { left: var(--hover-arrow-left); } .s3-popover::after { left: var(--arrow-left); }`;
+      document.head.append(selectionCardStyle);
+
+      window.renderAt = (t) => {
+        const s1 = $('s1');
+        const s2 = $('s2');
+        const s3 = $('s3');
+        const s4 = $('s4');
+        const s5 = $('s5');
+        const s6 = $('s6');
+        const s7 = $('s7');
+
+        s1.style.opacity = fadeWindow(t, 0, .28, 5.20, 6.05);
+        s2.style.opacity = fadeWindow(t, 5.30, 6.08, 16.20, 17.08);
+        s3.style.opacity = fadeWindow(t, 16.30, 17.12, 27.10, 28.04);
+        s4.style.opacity = fadeWindow(t, 27.25, 27.98, 38.05, 39.00);
+        s5.style.opacity = fadeWindow(t, 38.20, 39.02, 46.10, 47.02);
+        s6.style.opacity = fadeWindow(t, 46.20, 47.04, 52.90, 53.76);
+        s7.style.opacity = phase(t, 53.00, 53.80);
+
+        let p = easeOutQuint(phase(t, .12, .78));
+        pose($('s1Brand'), p, 0, mix(30, 0, p), mix(.96, 1, p));
+        p = easeOutBack(phase(t, .78, 1.58));
+        pose($('s1Line1'), phase(t, .78, 1.16), 0, mix(92, 0, p), mix(.94, 1, p));
+        p = easeOutBack(phase(t, 1.46, 2.34));
+        pose($('s1Line2'), phase(t, 1.46, 1.90), 0, mix(106, 0, p), mix(.93, 1, p));
+        $('s1Rule').style.width = `${620 * easeOutQuint(phase(t, 2.72, 3.52))}px`;
+        p = easeOutQuint(phase(t, 3.06, 3.82));
+        pose($('s1Subtitle'), p, mix(-24, 0, p), 0, 1);
+
+        p = easeOutQuint(phase(t, 5.42, 6.34));
+        pose($('s2Browser'), p, 0, mix(122, 0, p), mix(.88, 1, p));
+        p = easeOutQuint(phase(t, 6.36, 7.10));
+        pose($('s2Guide'), p, mix(38, 0, p), 0, 1);
+        $('s2Mark').style.transform = `scaleX(${easeOutQuint(phase(t, 7.82, 8.52))})`;
+        const cp = easeInOutCubic(phase(t, 8.24, 9.76));
+        pose($('s2Cursor'), phase(t, 8.12, 8.40) * (1 - phase(t, 10.38, 10.72)), mix(1290, anchors.hoverCursor.x, cp), mix(700, anchors.hoverCursor.y, cp), 1);
+        p = easeOutBack(phase(t, 10.14, 10.92));
+        pose($('s2Popover'), phase(t, 10.14, 10.54), 0, mix(38, 0, p), mix(.90, 1, p));
+        p = easeOutQuint(phase(t, 12.18, 13.02));
+        pose($('s2Callout'), p, mix(35, 0, p), 0, 1);
+
+        p = easeOutQuint(phase(t, 16.46, 17.34));
+        pose($('s3Browser'), p, mix(150, 0, p), 0, mix(.95, 1, p));
+        p = easeOutQuint(phase(t, 17.34, 18.08));
+        pose($('s3Guide'), p, mix(38, 0, p), 0, 1);
+        $('s3Selection').style.transform = `scaleX(${easeInOutCubic(phase(t, 18.74, 19.72))})`;
+        const cp3 = easeInOutCubic(phase(t, 18.48, 20.02));
+        const cpMenu = easeInOutCubic(phase(t, 20.94, 21.60));
+        const selectionCursorX = mix(1330, anchors.selectionCursor.x, cp3);
+        const selectionCursorY = mix(690, anchors.selectionCursor.y, cp3);
+        pose(
+          $('s3Cursor'),
+          phase(t, 18.34, 18.62) * (1 - phase(t, 22.08, 22.42)),
+          mix(selectionCursorX, anchors.menuCursor.x, cpMenu),
+          mix(selectionCursorY, anchors.menuCursor.y, cpMenu),
+          1
+        );
+        p = easeOutBack(phase(t, 20.22, 20.92));
+        pose($('s3Menu'), phase(t, 20.22, 20.58) * (1 - phase(t, 22.08, 22.42)), 0, mix(-12, 0, p), mix(.92, 1, p));
+        const active = phase(t, 21.58, 22.00);
+        $('s3MenuActive').style.boxShadow = `0 0 0 ${mix(0, 5, active)}px rgba(33,103,232,${mix(0, .12, active)})`;
+        p = easeOutBack(phase(t, 22.48, 23.28));
+        pose($('s3Popover'), phase(t, 22.48, 22.88), 0, mix(28, 0, p), mix(.90, 1, p));
+        p = easeOutQuint(phase(t, 24.08, 24.94));
+        pose($('s3Callout'), p, mix(35, 0, p), 0, 1);
+
+        const titleOpacity = fadeWindow(t, 27.34, 27.76, 29.08, 29.62);
+        $('s4Title').style.opacity = titleOpacity;
+        p = easeOutBack(phase(t, 27.58, 28.42));
+        const titleBlock = $('s4Title').firstElementChild;
+        pose(titleBlock, titleOpacity, 0, mix(70, 0, p), mix(.95, 1, p));
+        const pdfOpacity = phase(t, 29.40, 30.04);
+        $('s4Pdf').style.opacity = pdfOpacity;
+        p = easeOutQuint(phase(t, 29.40, 30.34));
+        pose($('s4PdfWindow'), pdfOpacity, 0, mix(126, 0, p), mix(.9, 1, p));
+        $('s4Mark').style.transform = `scaleX(${easeOutQuint(phase(t, 32.02, 32.68))})`;
+        p = easeOutBack(phase(t, 33.00, 33.84));
+        pose($('s4Popover'), phase(t, 33.00, 33.42), 0, mix(36, 0, p), mix(.9, 1, p));
+
+        p = easeOutQuint(phase(t, 38.40, 39.24));
+        pose($('s5Copy'), p, mix(-36, 0, p), 0, 1);
+        p = easeOutQuint(phase(t, 38.78, 39.72));
+        pose($('s5Window'), p, mix(80, 0, p), 0, mix(.94, 1, p));
+        $('s5Line').style.transform = `scaleX(${easeInOutCubic(phase(t, 40.02, 41.18))})`;
+        pose($('s5Hit1'), easeOutQuint(phase(t, 40.54, 40.98)), 0, mix(8, 0, easeOutQuint(phase(t, 40.54, 40.98))), 1);
+        pose($('s5Hit2'), easeOutQuint(phase(t, 41.00, 41.44)), 0, mix(8, 0, easeOutQuint(phase(t, 41.00, 41.44))), 1);
+        pose($('s5Hit3'), easeOutQuint(phase(t, 41.46, 41.90)), 0, mix(8, 0, easeOutQuint(phase(t, 41.46, 41.90))), 1);
+        p = easeOutBack(phase(t, 42.08, 42.90));
+        pose($('s5Result'), phase(t, 42.08, 42.52), 0, mix(30, 0, p), mix(.90, 1, p));
+        p = easeOutQuint(phase(t, 43.18, 43.92));
+        pose($('s5Proof'), p, 0, mix(20, 0, p), 1);
+
+        p = easeOutQuint(phase(t, 46.36, 47.08));
+        pose($('s5Brand'), p, 0, mix(32, 0, p), 1);
+        p = easeOutBack(phase(t, 46.78, 47.62));
+        pose($('s5Line1'), phase(t, 46.78, 47.16), 0, mix(82, 0, p), mix(.96, 1, p));
+        p = easeOutBack(phase(t, 47.52, 48.42));
+        pose($('s5Line2'), phase(t, 47.52, 47.94), 0, mix(82, 0, p), mix(.96, 1, p));
+        p = easeOutQuint(phase(t, 49.10, 49.82));
+        pose($('s5Pipeline'), p, 0, mix(25, 0, p), 1);
+        $('pipe1').style.width = `${120 * easeOutQuint(phase(t, 49.34, 49.92))}px`;
+        $('pipe2').style.width = `${120 * easeOutQuint(phase(t, 49.90, 50.48))}px`;
+
+        p = easeOutBack(phase(t, 53.16, 54.02));
+        pose($('s6Logo'), phase(t, 53.16, 53.62), 0, mix(54, 0, p), mix(.84, 1, p));
+        p = easeOutQuint(phase(t, 53.72, 54.42));
+        pose($('s6Wordmark'), p, 0, mix(25, 0, p), 1);
+        p = easeOutBack(phase(t, 54.36, 55.24));
+        pose($('s6Title'), phase(t, 54.36, 54.82), 0, mix(70, 0, p), mix(.96, 1, p));
+        p = easeOutQuint(phase(t, 55.08, 55.84));
+        pose($('s6Subtitle'), p, 0, mix(24, 0, p), 1);
+        p = easeOutQuint(phase(t, 55.62, 56.38));
+        pose($('s6Platforms'), p, 0, mix(18, 0, p), 1);
+      };
+
+      window.renderAt(0);
+    </script>
+  </body>
+</html>
