@@ -25,7 +25,7 @@
 
       .brand {
         position: absolute;
-        top: 82px;
+        top: 120px;
         left: 118px;
         display: flex;
         align-items: center;
@@ -34,37 +34,31 @@
       }
 
       .brand img {
-        width: 68px;
-        height: 68px;
-        border-radius: 17px;
+        width: 104px;
+        height: 104px;
+        border-radius: 25px;
         object-fit: contain;
         filter: drop-shadow(0 14px 26px rgba(37, 119, 246, .2));
       }
 
       .brand span {
         color: #111827;
-        font-size: 36px;
-        font-weight: 700;
+        font-size: 52px;
+        font-weight: 740;
       }
 
       .copy {
         position: absolute;
         left: 120px;
-        top: 284px;
+        top: 340px;
         width: 790px;
         z-index: 4;
       }
 
-      .eyebrow {
-        color: #5b9cff;
-        font-size: 28px;
-        font-weight: 720;
-      }
-
       h1 {
-        margin: 28px 0 0;
+        margin: 0;
         color: #111827;
-        font-size: 106px;
+        font-size: 108px;
         font-weight: 770;
         line-height: .98;
         letter-spacing: 0;
@@ -74,45 +68,28 @@
       h1 em { color: #5b9cff; font-style: normal; }
 
       .subtitle {
-        width: 720px;
-        margin: 40px 0 0;
+        width: 750px;
+        margin: 48px 0 0;
         color: #64748b;
-        font-size: 33px;
-        line-height: 1.55;
-      }
-
-      .feature-line {
-        display: flex;
-        align-items: center;
-        gap: 15px;
-        margin-top: 44px;
-        color: #334155;
-        font-size: 24px;
-        font-weight: 660;
-      }
-
-      .feature-line i {
-        width: 5px;
-        height: 5px;
-        border-radius: 50%;
-        background: #3b82f6;
+        font-size: 39px;
+        line-height: 1.45;
       }
 
       .product-stage {
         position: absolute;
-        top: 132px;
-        right: 82px;
-        width: 900px;
-        height: 816px;
+        top: 182px;
+        right: 88px;
+        width: 850px;
+        height: 716px;
         z-index: 2;
       }
 
       .blue-edge {
         position: absolute;
-        top: 41px;
+        top: 34px;
         right: 20px;
-        width: 763px;
-        height: 708px;
+        width: 724px;
+        height: 624px;
         border: 0;
         border-radius: 42px;
         background: #1266e9;
@@ -160,27 +137,20 @@
       .page {
         position: absolute;
         inset: 74px 0 0;
-        padding: 82px 70px;
+        padding: 0;
         color: #111827;
         background: linear-gradient(118deg, #fff 0%, #fff 53%, #edf4ff 100%);
       }
 
-      .kicker { color: #2563eb; font-size: 22px; font-weight: 730; }
-
-      .article-title {
-        width: 620px;
-        margin: 17px 0 28px;
-        font-size: 56px;
-        font-weight: 770;
-        line-height: 1.04;
-      }
-
       .article-copy {
-        width: 650px;
+        position: absolute;
+        left: 68px;
+        top: 104px;
+        width: 720px;
         margin: 0;
         color: #536174;
-        font-size: 27px;
-        line-height: 1.75;
+        font-size: 30px;
+        line-height: 1.65;
       }
 
       .term {
@@ -208,7 +178,7 @@
         position: absolute;
         left: 68px;
         right: auto;
-        bottom: 41px;
+        bottom: 48px;
         width: 500px;
         min-height: 318px;
         padding: 29px 31px 27px;
@@ -244,24 +214,6 @@
       .popover-tags { display: flex; gap: 8px; }
       .popover-tags span { padding: 8px 12px; border-radius: 999px; background: #edf4ff; color: #31537f; font-size: 16px; font-weight: 650; }
 
-      .product-label {
-        position: absolute;
-        right: 39px;
-        top: 105px;
-        color: rgba(37, 99, 235, .14);
-        font-size: 134px;
-        font-weight: 780;
-        line-height: 1;
-      }
-
-      .footer-mark {
-        position: absolute;
-        left: 121px;
-        bottom: 77px;
-        color: #2563eb;
-        font-size: 21px;
-        font-weight: 700;
-      }
     </style>
   </head>
   <body>
@@ -272,10 +224,8 @@
       </div>
 
       <section class="copy">
-        <div class="eyebrow">AI 阅读解释助手</div>
         <h1><span>不离开页面，</span><span>也能看懂<em>术语</em>。</span></h1>
-        <p class="subtitle">轻量、原位、贴合上下文。让解释回到阅读发生的位置。</p>
-        <div class="feature-line"><span>悬停解释</span><i></i><span>划词解释</span><i></i><span>PDF 阅读</span></div>
+        <p class="subtitle">轻量、原位、贴合上下文的阅读解释。</p>
       </section>
 
       <section class="product-stage">
@@ -286,9 +236,6 @@
             <div class="address">termpop.com/read/attention</div>
           </div>
           <div class="page">
-            <div class="product-label">01</div>
-            <div class="kicker">技术阅读</div>
-            <h2 class="article-title">理解复杂概念，<br />不必离开页面。</h2>
             <p class="article-copy">一个 <span class="term"><span>Transformer</span></span> 会使用 self-attention 来建模 token 之间的关系。</p>
             <div class="popover">
               <div class="popover-head"><div class="popover-title">Transformer</div><div class="refresh">↻</div></div>
@@ -299,8 +246,6 @@
           </div>
         </div>
       </section>
-
-      <div class="footer-mark">CHROME · EDGE</div>
     </main>
     <script>
       const term = document.querySelector(".term");
