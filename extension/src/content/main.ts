@@ -20,9 +20,10 @@ import type {
 } from "../shared/types";
 import { TermPopOverlayController } from "../shared/overlay";
 import { filterAllowedDetectedTerms, findAllowedOccurrences } from "../shared/term-matching";
-import { domainFromUrl, originPatternFromUrl, pageFingerprintFromUrlAndText, sanitizeForLog, SITE_ACCESS_STORAGE_KEY } from "../shared/browser-utils";
+import { originPatternFromUrl, pageFingerprintFromUrlAndText, sanitizeForLog, SITE_ACCESS_STORAGE_KEY } from "../shared/browser-utils";
 import styles from "./styles.css?inline";
 import overlayStyles from "../shared/overlay.css?inline";
+import { isCachedTermAvailable, mergeCachedTermView } from "./cache-view";
 
 const MAX_HIGHLIGHTS_AUTO = 80;
 const MAX_HIGHLIGHTS_HYBRID = 40;
@@ -55,7 +56,7 @@ const explanationRequestIds = new WeakMap<HTMLElement, number>();
 let explanationRequestSeq = 0;
 const debugOptions = readDebugOptions();
 const runtimeState = globalThis as typeof globalThis & { __termpopBooted?: boolean };
-let cachedPageFingerprint: { value: string; at: number } | undefined;
+let cachedPageFingerprint: { value: string; at: number; url: string } | undefined;
 
 type DetectionModeOverride = "primary" | "llm" | "all";
 type TextNodeSpan = {
@@ -402,8 +403,19 @@ function setupModeChangeListener(): void {
     if (areaName !== "local" || !changes[SETTINGS_KEY]) {
       return;
     }
+    const previousDictionary = changes[SETTINGS_KEY].oldValue?.dictionary;
+    const nextDictionary = changes[SETTINGS_KEY].newValue?.dictionary;
+    const dictionaryChanged = JSON.stringify(previousDictionary ?? {}) !== JSON.stringify(nextDictionary ?? {});
     void getSettings().then((settings) => {
+      const previousMode = activeMode;
+      if (dictionaryChanged) {
+        overlay?.hide();
+        removeAllHighlights();
+      }
       applyModeChange(settings.mode);
+      if (dictionaryChanged && previousMode === settings.mode && settings.mode !== "selection" && !siteDisabled) {
+        startAutomaticHighlighting();
+      }
     });
   });
 }
@@ -895,6 +907,12 @@ async function loadGlobalCachedTerms(): Promise<CachedTermEntry[]> {
 function detectCachedTermsLocally(text: string): DetectedTerm[] {
   const terms: DetectedTerm[] = [];
   for (const entry of globalCachedTerms) {
+    if (!isCachedTermAvailable(entry, {
+      url: location.href,
+      pageFingerprint: currentPageFingerprint()
+    })) {
+      continue;
+    }
     for (const [start, end] of findAllowedOccurrences(text, entry.term)) {
       terms.push({
         term: text.slice(start, end),
@@ -946,7 +964,7 @@ function rememberDetectedTerms(terms: DetectedTerm[]): void {
   }, 500);
 }
 
-function mergeGlobalCachedTerms(terms: DetectedTerm[]): void {
+function mergeGlobalCachedTerms(terms: Array<DetectedTerm | CachedTermEntry>): void {
   if (debugOptions.disableCache) {
     return;
   }
@@ -955,29 +973,10 @@ function mergeGlobalCachedTerms(terms: DetectedTerm[]): void {
     return;
   }
 
-  const byKey = new Map(globalCachedTerms.map((term) => [explanationCacheKey(term.term), term]));
-  for (const term of terms) {
-    const key = explanationCacheKey(term.term);
-    if (key.length < 2 || term.term.trim().length > 80) {
-      continue;
-    }
-
-    const existing = byKey.get(key);
-    if (!existing || term.confidence >= existing.confidence) {
-      byKey.set(key, {
-        term: term.term.trim(),
-        term_type: term.term_type,
-        confidence: term.confidence,
-        source: term.source,
-        scope: term.source === "Ner" ? "domain" : "global",
-        domain: term.source === "Ner" ? domainFromUrl(location.href) ?? null : null,
-        page_fingerprint: null,
-        last_seen_at: Date.now()
-      });
-    }
-  }
-
-  globalCachedTerms = [...byKey.values()];
+  globalCachedTerms = mergeCachedTermView(globalCachedTerms, terms, {
+    url: location.href,
+    pageFingerprint: currentPageFingerprint()
+  });
 }
 
 function readDebugOptions(): DebugOptions {
@@ -1277,12 +1276,13 @@ function explanationResultCacheKey(term: string, context: string): string {
 
 function currentPageFingerprint(): string {
   const now = Date.now();
-  if (cachedPageFingerprint && now - cachedPageFingerprint.at < 10_000) {
+  if (cachedPageFingerprint && cachedPageFingerprint.url === location.href && now - cachedPageFingerprint.at < 10_000) {
     return cachedPageFingerprint.value;
   }
   cachedPageFingerprint = {
     value: pageFingerprintFromUrlAndText(location.href, document.body.innerText || document.body.textContent || ""),
-    at: now
+    at: now,
+    url: location.href
   };
   return cachedPageFingerprint.value;
 }
