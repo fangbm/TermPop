@@ -7,20 +7,20 @@
     <style>
       :root {
         font-family: "Segoe UI Variable Display", "Segoe UI", "Microsoft YaHei UI", sans-serif;
-        color: #f8fafc;
+        color: #111827;
         font-synthesis: none;
       }
 
       * { box-sizing: border-box; }
       html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; }
-      body { background: #050608; }
+      body { background: #f3f6fb; }
 
       .cover {
         position: relative;
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: #050608;
+        background: #f3f6fb;
       }
 
       .brand {
@@ -42,7 +42,8 @@
       }
 
       .brand span {
-        font-size: 31px;
+        color: #111827;
+        font-size: 36px;
         font-weight: 700;
       }
 
@@ -56,13 +57,14 @@
 
       .eyebrow {
         color: #5b9cff;
-        font-size: 23px;
+        font-size: 28px;
         font-weight: 720;
       }
 
       h1 {
         margin: 28px 0 0;
-        font-size: 102px;
+        color: #111827;
+        font-size: 106px;
         font-weight: 770;
         line-height: .98;
         letter-spacing: 0;
@@ -72,10 +74,10 @@
       h1 em { color: #5b9cff; font-style: normal; }
 
       .subtitle {
-        width: 690px;
+        width: 720px;
         margin: 40px 0 0;
-        color: #939cab;
-        font-size: 28px;
+        color: #64748b;
+        font-size: 33px;
         line-height: 1.55;
       }
 
@@ -84,9 +86,9 @@
         align-items: center;
         gap: 15px;
         margin-top: 44px;
-        color: #cbd2dc;
-        font-size: 19px;
-        font-weight: 620;
+        color: #334155;
+        font-size: 24px;
+        font-weight: 660;
       }
 
       .feature-line i {
@@ -111,9 +113,11 @@
         right: 20px;
         width: 763px;
         height: 708px;
-        border: 2px solid rgba(72, 139, 255, .28);
+        border: 0;
         border-radius: 42px;
-        transform: translate(30px, 30px);
+        background: #1266e9;
+        box-shadow: 0 35px 80px rgba(18, 102, 233, .25);
+        transform: translate(36px, 36px);
       }
 
       .browser {
@@ -147,8 +151,8 @@
         flex: 1;
         border-radius: 999px;
         background: #edf2f8;
-        color: #8290a2;
-        font-size: 17px;
+        color: #68778b;
+        font-size: 19px;
         line-height: 42px;
         padding: 0 20px;
       }
@@ -161,7 +165,7 @@
         background: linear-gradient(118deg, #fff 0%, #fff 53%, #edf4ff 100%);
       }
 
-      .kicker { color: #2563eb; font-size: 18px; font-weight: 730; }
+      .kicker { color: #2563eb; font-size: 22px; font-weight: 730; }
 
       .article-title {
         width: 620px;
@@ -175,7 +179,7 @@
         width: 650px;
         margin: 0;
         color: #536174;
-        font-size: 25px;
+        font-size: 27px;
         line-height: 1.75;
       }
 
@@ -202,10 +206,11 @@
 
       .popover {
         position: absolute;
-        right: 58px;
-        bottom: 63px;
-        width: 480px;
-        min-height: 306px;
+        left: 68px;
+        right: auto;
+        bottom: 41px;
+        width: 500px;
+        min-height: 318px;
         padding: 29px 31px 27px;
         border: 1px solid #dce3ed;
         border-radius: 23px;
@@ -215,7 +220,7 @@
 
       .popover::after {
         position: absolute;
-        left: 86px;
+        left: var(--arrow-left, 117px);
         top: -12px;
         width: 23px;
         height: 23px;
@@ -235,9 +240,9 @@
       .popover-title { font-size: 35px; font-weight: 770; }
       .refresh { color: #2167e8; font-size: 23px; }
       .popover-type { margin-top: 6px; color: #2167e8; font-size: 18px; font-weight: 690; }
-      .popover-copy { margin: 18px 0 22px; color: #4b5563; font-size: 21px; line-height: 1.52; }
+      .popover-copy { margin: 18px 0 22px; color: #4b5563; font-size: 23px; line-height: 1.52; }
       .popover-tags { display: flex; gap: 8px; }
-      .popover-tags span { padding: 7px 11px; border-radius: 999px; background: #edf4ff; color: #31537f; font-size: 14px; font-weight: 650; }
+      .popover-tags span { padding: 8px 12px; border-radius: 999px; background: #edf4ff; color: #31537f; font-size: 16px; font-weight: 650; }
 
       .product-label {
         position: absolute;
@@ -253,8 +258,8 @@
         position: absolute;
         left: 121px;
         bottom: 77px;
-        color: #5b9cff;
-        font-size: 17px;
+        color: #2563eb;
+        font-size: 21px;
         font-weight: 700;
       }
     </style>
@@ -297,5 +302,19 @@
 
       <div class="footer-mark">CHROME · EDGE</div>
     </main>
+    <script>
+      const term = document.querySelector(".term");
+      const popover = document.querySelector(".popover");
+      const alignArrow = () => {
+        const termRect = term.getBoundingClientRect();
+        const cardRect = popover.getBoundingClientRect();
+        const arrowSize = 23;
+        const centered = termRect.left + termRect.width / 2 - cardRect.left - arrowSize / 2;
+        const clamped = Math.max(34, Math.min(cardRect.width - 57, centered));
+        popover.style.setProperty("--arrow-left", `${clamped}px`);
+      };
+      document.fonts.ready.then(alignArrow);
+      window.addEventListener("load", alignArrow);
+    </script>
   </body>
 </html>

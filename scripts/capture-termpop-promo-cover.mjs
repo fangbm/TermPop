@@ -20,6 +20,19 @@ const browser = await chromium.launch({
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
 await page.goto(pathToFileURL(source).href, { waitUntil: "load" });
 await page.evaluate(() => document.fonts.ready);
+const anchorGeometry = await page.evaluate(() => {
+  const term = document.querySelector(".term").getBoundingClientRect();
+  const card = document.querySelector(".popover");
+  const cardRect = card.getBoundingClientRect();
+  const arrowLeft = Number.parseFloat(getComputedStyle(card, "::after").left);
+  const termCenter = term.left + term.width / 2;
+  const arrowCenter = cardRect.left + arrowLeft + 11.5;
+  return { termCenter, arrowCenter, delta: Math.abs(termCenter - arrowCenter) };
+});
+if (anchorGeometry.delta > 1) {
+  throw new Error(`Popover arrow is not aligned: ${JSON.stringify(anchorGeometry)}`);
+}
+console.log(`Popover anchor delta: ${anchorGeometry.delta.toFixed(2)}px`);
 await page.screenshot({ path: path.join(output, "termpop-promo-cover-1920x1080.png") });
 await page.screenshot({
   path: path.join(output, "termpop-promo-cover-1920x1080.jpg"),
