@@ -752,6 +752,7 @@ function ensureSelectionAnchor(): HTMLElement {
 
   selectionAnchor = document.createElement("span");
   selectionAnchor.id = "termpop-selection-anchor";
+  selectionAnchor.dataset.termpopVirtualAnchor = "true";
   selectionAnchor.style.position = "fixed";
   selectionAnchor.style.width = "1px";
   selectionAnchor.style.height = "1px";

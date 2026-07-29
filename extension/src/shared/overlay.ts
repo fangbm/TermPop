@@ -1,4 +1,5 @@
 import type { Explanation } from "./types";
+import { resolveOverlayLayer } from "./stacking-layer";
 
 export interface OverlayOptions {
   rootId: string;
@@ -32,7 +33,7 @@ export class TermPopOverlayController {
     this.root.id = options.rootId;
     Object.assign(this.root.style, {
       position: "fixed",
-      zIndex: "900",
+      zIndex: "1",
       display: "none",
       width: "min(340px, calc(100vw - 24px))"
     });
@@ -111,6 +112,7 @@ export class TermPopOverlayController {
     this.currentAnchor = undefined;
     this.anchorPoint = undefined;
     this.initialPlacement = undefined;
+    this.restoreDefaultContainer();
   }
 
   isPointerOverCard(): boolean {
@@ -160,6 +162,7 @@ export class TermPopOverlayController {
       this.anchorPoint = { x: pointer.clientX, y: pointer.clientY };
     }
     this.cancelHide();
+    this.syncLayer(anchor);
     this.root.innerHTML = `<div class="termpop-card">${html}</div>`;
     this.root.classList.add("is-visible");
     this.root.style.display = "block";
@@ -186,6 +189,8 @@ export class TermPopOverlayController {
       return;
     }
 
+    this.syncLayer(anchor);
+
     const anchorRect = getBestAnchorRect(anchor, this.anchorPoint);
     if (!isRectInViewport(anchorRect)) {
       this.root.classList.remove("is-visible");
@@ -209,6 +214,21 @@ export class TermPopOverlayController {
     top = clamp(top, 12, Math.max(12, window.innerHeight - cardRect.height - 12));
     this.root.style.left = `${left}px`;
     this.root.style.top = `${top}px`;
+  }
+
+  private syncLayer(anchor: HTMLElement): void {
+    const layer = resolveOverlayLayer(anchor, this.root, this.anchorPoint);
+    if (this.root.parentElement !== layer.container) {
+      layer.container.append(this.root);
+    }
+    this.root.style.zIndex = String(layer.zIndex);
+  }
+
+  private restoreDefaultContainer(): void {
+    if (this.root.parentElement !== document.documentElement) {
+      document.documentElement.append(this.root);
+    }
+    this.root.style.zIndex = "1";
   }
 
   private resolvePlacement(canFitAbove: boolean, canFitBelow: boolean): "above" | "below" {
