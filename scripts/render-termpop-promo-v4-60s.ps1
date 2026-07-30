@@ -40,8 +40,8 @@ $filter = @(
   "[1:a]atrim=0:$duration,asetpts=PTS-STARTPTS,volume=0.60,afade=t=in:st=0:d=0.45,afade=t=out:st=58.55:d=1.45[music]",
   "[2:a]volume=0.10,afade=t=out:st=0.045:d=0.035,adelay=7820|7820[p1]",
   "[3:a]volume=0.09,afade=t=out:st=0.05:d=0.04,adelay=10140|10140[p2]",
-  "[4:a]highpass=f=1800,lowpass=f=7000,volume=5.0,afade=t=out:st=0.012:d=0.043,adelay=20220|20220[p3]",
-  "[5:a]highpass=f=1800,lowpass=f=7000,volume=5.0,afade=t=out:st=0.012:d=0.043,adelay=22100|22100[p4]",
+  "[4:a]highpass=f=500,lowpass=f=8000,volume=1.0,afade=t=out:st=0.02:d=0.09,adelay=20220|20220[p3]",
+  "[5:a]highpass=f=500,lowpass=f=8000,volume=1.0,afade=t=out:st=0.02:d=0.09,adelay=22100|22100[p4]",
   "[6:a]volume=0.10,afade=t=out:st=0.045:d=0.035,adelay=32020|32020[p5]",
   "[7:a]volume=0.09,afade=t=out:st=0.05:d=0.04,adelay=33000|33000[p6]",
   "[8:a]volume=0.10,afade=t=out:st=0.05:d=0.04,adelay=42080|42080[p7]",
@@ -55,8 +55,8 @@ $filter = @(
   -i $music `
   -f lavfi -i "sine=frequency=920:sample_rate=48000:duration=0.08" `
   -f lavfi -i "sine=frequency=620:sample_rate=48000:duration=0.09" `
-  -f lavfi -i "anoisesrc=color=pink:amplitude=0.55:sample_rate=48000:duration=0.055" `
-  -f lavfi -i "anoisesrc=color=pink:amplitude=0.55:sample_rate=48000:duration=0.055" `
+  -f lavfi -i "aevalsrc='(0.65*cos(2*PI*1450*t)+0.25*cos(2*PI*2900*t)+0.12*cos(2*PI*760*t))*exp(-48*t)':s=48000:d=0.11" `
+  -f lavfi -i "aevalsrc='(0.65*cos(2*PI*1450*t)+0.25*cos(2*PI*2900*t)+0.12*cos(2*PI*760*t))*exp(-48*t)':s=48000:d=0.11" `
   -f lavfi -i "sine=frequency=880:sample_rate=48000:duration=0.08" `
   -f lavfi -i "sine=frequency=460:sample_rate=48000:duration=0.10" `
   -f lavfi -i "sine=frequency=740:sample_rate=48000:duration=0.09" `
