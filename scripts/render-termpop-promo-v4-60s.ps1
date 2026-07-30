@@ -41,8 +41,8 @@ $filter = @(
   "[1:a]atrim=0:$duration,asetpts=PTS-STARTPTS,volume=0.60,afade=t=in:st=0:d=0.45,afade=t=out:st=58.55:d=1.45[music]",
   "[2:a]volume=0.10,afade=t=out:st=0.045:d=0.035,adelay=7820|7820[p1]",
   "[3:a]volume=0.09,afade=t=out:st=0.05:d=0.04,adelay=10140|10140[p2]",
-  "[4:a]volume=1.25,adelay=20220|20220[p3]",
-  "[5:a]volume=1.25,adelay=22100|22100[p4]",
+  "[4:a]volume=1.05,adelay=20220|20220[p3]",
+  "[5:a]volume=1.05,adelay=22100|22100[p4]",
   "[6:a]volume=0.10,afade=t=out:st=0.045:d=0.035,adelay=32020|32020[p5]",
   "[7:a]volume=0.09,afade=t=out:st=0.05:d=0.04,adelay=33000|33000[p6]",
   "[8:a]volume=0.10,afade=t=out:st=0.05:d=0.04,adelay=42080|42080[p7]",
@@ -81,6 +81,12 @@ $audioNote = @"
 - Source: https://assets.mixkit.co/music/1167/1167.mp3
 - License: Mixkit Stock Music Free License
 - License URL: https://mixkit.co/license/#musicFree
+
+- Sound effect: Mouse click close
+- Source: https://mixkit.co/free-sound-effects/click/
+- Asset ID: 1113
+- License: Mixkit Sound Effects Free License
+- License URL: https://mixkit.co/license/#sfxFree
 "@
 Set-Content -LiteralPath "$destination.audio.md" -Value $audioNote -Encoding UTF8
 
