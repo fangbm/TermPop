@@ -15,12 +15,14 @@ import type {
   Explanation,
   GetCachedTermsRequest,
   GetCachedTermsResponse,
+  GetSiteAccessResponse,
   TermType,
   TermPopMode
 } from "../shared/types";
 import { TermPopOverlayController } from "../shared/overlay";
 import { filterAllowedDetectedTerms, findAllowedOccurrences } from "../shared/term-matching";
-import { originPatternFromUrl, pageFingerprintFromUrlAndText, sanitizeForLog, SITE_ACCESS_STORAGE_KEY } from "../shared/browser-utils";
+import { BLOCKED_SITES_STORAGE_KEY, pageFingerprintFromUrlAndText, sanitizeForLog } from "../shared/browser-utils";
+import { utf8ByteOffsetToUtf16Index } from "../shared/unicode";
 import styles from "./styles.css?inline";
 import overlayStyles from "../shared/overlay.css?inline";
 import { isCachedTermAvailable, mergeCachedTermView } from "./cache-view";
@@ -39,6 +41,7 @@ const HOVER_SHOW_DELAY_MS = 420;
 let overlay: TermPopOverlayController | undefined;
 let activeMode: TermPopMode = "hover";
 let scanTimer: number | undefined;
+let pendingScanRoots: Node[] = [];
 let cacheFlushTimer: number | undefined;
 let selectionAnchor: HTMLElement | undefined;
 let mutationObserver: MutationObserver | undefined;
@@ -80,7 +83,8 @@ async function boot(): Promise<void> {
   injectStyles();
   overlay = new TermPopOverlayController({
     rootId: ROOT_ID,
-    anchorSelector: `.${HIGHLIGHT_CLASS}`
+    anchorSelector: `.${HIGHLIGHT_CLASS}`,
+    locale: uiLocale()
   });
 
   const settings = await getSettings();
@@ -114,7 +118,7 @@ function injectStyles(): void {
   document.documentElement.append(style);
 }
 
-async function scanAndHighlight(mode: TermPopMode): Promise<void> {
+async function scanAndHighlight(mode: TermPopMode, dirtyRoots?: Node[]): Promise<void> {
   if (siteDisabled) {
     return;
   }
@@ -130,28 +134,13 @@ async function scanAndHighlight(mode: TermPopMode): Promise<void> {
     return;
   }
 
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      if (!node.textContent?.trim()) {
-        return NodeFilter.FILTER_REJECT;
-      }
-      if (!isHighlightableTextNode(node)) {
-        return NodeFilter.FILTER_REJECT;
-      }
-      return NodeFilter.FILTER_ACCEPT;
-    }
-  });
-
-  const nodes: Text[] = [];
-  while (walker.nextNode()) {
-    nodes.push(walker.currentNode as Text);
-  }
+  const nodes = collectScanTextNodes(dirtyRoots?.length ? dirtyRoots : [document.body]);
   nodes.sort((left, right) => Number(!isTextNodeNearViewport(left)) - Number(!isTextNodeNearViewport(right)));
 
   const llmCandidates: Text[] = [];
 
   if (debugOptions.detectionMode === "llm") {
-    await scanLlmDebugBlocks(limit, termHighlightCounts);
+    await scanLlmDebugBlocks(limit, termHighlightCounts, dirtyRoots);
     return;
   }
 
@@ -224,8 +213,8 @@ function isCurrentScan(scanId: number): boolean {
   return !siteDisabled && scanId === scanGeneration && (activeMode !== "selection" || Boolean(debugOptions.detectionMode));
 }
 
-async function scanLlmDebugBlocks(limit: number, termHighlightCounts: Map<string, number>): Promise<number> {
-  const blocks = getLlmDebugScanBlocks().slice(0, LLM_DETECTION_NODE_LIMIT);
+async function scanLlmDebugBlocks(limit: number, termHighlightCounts: Map<string, number>, dirtyRoots?: Node[]): Promise<number> {
+  const blocks = getLlmDebugScanBlocks(dirtyRoots).slice(0, LLM_DETECTION_NODE_LIMIT);
   const batches = collectLlmDebugBlockBatches(blocks);
   let highlighted = 0;
 
@@ -284,7 +273,22 @@ function collectLlmDebugBlockBatches(blocks: HTMLElement[]): Array<{ text: strin
   return batches;
 }
 
-function getLlmDebugScanBlocks(): HTMLElement[] {
+function getLlmDebugScanBlocks(dirtyRoots?: Node[]): HTMLElement[] {
+  if (dirtyRoots?.length) {
+    return dirtyRoots
+      .flatMap((root) => {
+        const element = root instanceof HTMLElement ? root : root.parentElement;
+        if (!element) {
+          return [];
+        }
+        const block = element.closest("p, li") as HTMLElement | null;
+        const scanRoot = block ?? element;
+        return [scanRoot, ...scanRoot.querySelectorAll<HTMLElement>("p, li")];
+      })
+      .filter((element, index, elements) => elements.indexOf(element) === index)
+      .filter(isVisibleElement);
+  }
+
   const scopedBlocks = [...document.querySelectorAll<HTMLElement>("[data-termpop-scan] p, [data-termpop-scan] li")];
   if (scopedBlocks.length > 0) {
     return scopedBlocks.filter(isVisibleElement);
@@ -407,6 +411,7 @@ function setupModeChangeListener(): void {
     const nextDictionary = changes[SETTINGS_KEY].newValue?.dictionary;
     const dictionaryChanged = JSON.stringify(previousDictionary ?? {}) !== JSON.stringify(nextDictionary ?? {});
     void getSettings().then((settings) => {
+      pageExplanationCache.clear();
       const previousMode = activeMode;
       if (dictionaryChanged) {
         overlay?.hide();
@@ -426,23 +431,18 @@ function setupSiteAccessChangeListener(): void {
   }
 
   chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== "local" || !changes[SITE_ACCESS_STORAGE_KEY]) {
+    if (areaName !== "local" || !changes[BLOCKED_SITES_STORAGE_KEY]) {
       return;
     }
-
-    const originPattern = originPatternFromUrl(location.href);
-    if (!originPattern) {
-      return;
-    }
-
-    const nextOrigins = Array.isArray(changes[SITE_ACCESS_STORAGE_KEY].newValue)
-      ? changes[SITE_ACCESS_STORAGE_KEY].newValue as string[]
-      : [];
-    if (nextOrigins.includes(originPattern)) {
-      void enableSite();
-      return;
-    }
-    disableSite();
+    void chrome.runtime.sendMessage({ type: "TERMPOP_GET_SITE_ACCESS" })
+      .then((response: GetSiteAccessResponse) => {
+        if (response.ok && response.access?.enabled) {
+          void enableSite();
+        } else {
+          disableSite();
+        }
+      })
+      .catch(() => disableSite());
   });
 }
 
@@ -513,6 +513,7 @@ function stopAutomaticHighlighting(): void {
     window.clearTimeout(scanTimer);
     scanTimer = undefined;
   }
+  pendingScanRoots = [];
   mutationObserver?.disconnect();
   mutationObserver = undefined;
 }
@@ -536,11 +537,24 @@ function observeDynamicContent(): void {
   }
 
   mutationObserver = new MutationObserver((mutations) => {
-    if (mutations.every((mutation) => mutation.target instanceof Element && mutation.target.closest(`#${ROOT_ID}, .${HIGHLIGHT_CLASS}`))) {
-      return;
+    const dirtyRoots: Node[] = [];
+    for (const mutation of mutations) {
+      if (isIgnoredMutationNode(mutation.target)) {
+        continue;
+      }
+      if (mutation.type === "characterData") {
+        dirtyRoots.push(mutation.target);
+      } else {
+        for (const addedNode of mutation.addedNodes) {
+          if (!isIgnoredMutationNode(addedNode)) {
+            dirtyRoots.push(addedNode);
+          }
+        }
+      }
     }
-
-    scheduleScan();
+    if (dirtyRoots.length > 0) {
+      scheduleScan(dirtyRoots);
+    }
   });
 
   mutationObserver.observe(document.body, {
@@ -550,7 +564,7 @@ function observeDynamicContent(): void {
   });
 }
 
-function scheduleScan(): void {
+function scheduleScan(dirtyRoots: Node[] = []): void {
   if (siteDisabled) {
     return;
   }
@@ -558,14 +572,51 @@ function scheduleScan(): void {
     return;
   }
 
+  pendingScanRoots.push(...dirtyRoots.filter((root) => root.isConnected));
+
   if (scanTimer !== undefined) {
     window.clearTimeout(scanTimer);
   }
 
   scanTimer = window.setTimeout(() => {
     scanTimer = undefined;
-    void scanAndHighlight(activeMode);
+    const roots = pendingScanRoots;
+    pendingScanRoots = [];
+    void scanAndHighlight(activeMode, roots.length > 0 ? roots : undefined);
   }, RESCAN_DELAY_MS);
+}
+
+function isIgnoredMutationNode(node: Node): boolean {
+  const element = node instanceof Element ? node : node.parentElement;
+  return Boolean(element?.closest(`#${ROOT_ID}, .${HIGHLIGHT_CLASS}, [data-termpop-ignore]`));
+}
+
+function collectScanTextNodes(roots: Node[]): Text[] {
+  const nodes = new Set<Text>();
+  for (const root of roots) {
+    if (!root.isConnected || isIgnoredMutationNode(root)) {
+      continue;
+    }
+    if (root.nodeType === Node.TEXT_NODE) {
+      const textNode = root as Text;
+      if (textNode.textContent?.trim() && isHighlightableTextNode(textNode)) {
+        nodes.add(textNode);
+      }
+      continue;
+    }
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        if (!node.textContent?.trim() || !isHighlightableTextNode(node)) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    while (walker.nextNode()) {
+      nodes.add(walker.currentNode as Text);
+    }
+  }
+  return [...nodes];
 }
 
 function setupSelectionMessageListener(): void {
@@ -879,8 +930,8 @@ function detectTermsLocally(text: string): DetectedTerm[] {
   const raw = detect_terms_json(text);
   const rustTerms = (JSON.parse(raw) as DetectedTerm[]).map((term) => ({
     ...term,
-    start: byteOffsetToJsIndex(text, term.start),
-    end: byteOffsetToJsIndex(text, term.end)
+    start: utf8ByteOffsetToUtf16Index(text, term.start),
+    end: utf8ByteOffsetToUtf16Index(text, term.end)
   }));
   const cachedTerms = debugOptions.disableCache ? [] : detectCachedTermsLocally(text);
   return dedupeDetectedTerms(filterAllowedDetectedTerms(text, [...rustTerms, ...cachedTerms]));
@@ -1009,36 +1060,6 @@ function dedupeDetectedTerms(terms: DetectedTerm[]): DetectedTerm[] {
       const previous = sorted[index - 1];
       return !previous || !(previous.start < term.end && term.start < previous.end);
     });
-}
-
-function byteOffsetToJsIndex(text: string, byteOffset: number): number {
-  let bytes = 0;
-  let jsIndex = 0;
-
-  for (const char of text) {
-    if (bytes >= byteOffset) {
-      return jsIndex;
-    }
-
-    bytes += utf8ByteLength(char);
-    jsIndex += char.length;
-  }
-
-  return text.length;
-}
-
-function utf8ByteLength(char: string): number {
-  const codePoint = char.codePointAt(0) ?? 0;
-  if (codePoint <= 0x7f) {
-    return 1;
-  }
-  if (codePoint <= 0x7ff) {
-    return 2;
-  }
-  if (codePoint <= 0xffff) {
-    return 3;
-  }
-  return 4;
 }
 
 function isHighlightableTextNode(node: Node): boolean {
@@ -1208,7 +1229,7 @@ async function showExplanation(anchor: HTMLElement, term: DetectedTerm, context:
       return;
     }
     const message = error instanceof Error ? error.message : String(error);
-    overlay?.showError(anchor, term.term, message || "解释请求失败。", options.pin, !options.refresh, options.pointer);
+    overlay?.showError(anchor, term.term, message || contentCopy[uiLocale()].requestFailed, options.pin, !options.refresh, options.pointer);
     return;
   }
 
@@ -1217,7 +1238,7 @@ async function showExplanation(anchor: HTMLElement, term: DetectedTerm, context:
   }
 
   if (!response.ok || !response.explanation) {
-    overlay?.showError(anchor, term.term, response.error ?? "暂时无法解释这个词。", options.pin, !options.refresh, options.pointer);
+    overlay?.showError(anchor, term.term, response.error ?? contentCopy[uiLocale()].unavailable, options.pin, !options.refresh, options.pointer);
     return;
   }
 
@@ -1264,6 +1285,22 @@ function requestExplanation(term: string, context: string, cacheKey: string, ref
     }
   });
   return request;
+}
+
+const contentCopy = {
+  zh: {
+    requestFailed: "解释请求失败。",
+    unavailable: "暂时无法解释这个词。"
+  },
+  en: {
+    requestFailed: "Explanation request failed.",
+    unavailable: "This term cannot be explained right now."
+  }
+} as const;
+
+function uiLocale(): "zh" | "en" {
+  const language = chrome.i18n?.getUILanguage?.() ?? navigator.language;
+  return language.toLocaleLowerCase().startsWith("zh") ? "zh" : "en";
 }
 
 function explanationCacheKey(term: string): string {

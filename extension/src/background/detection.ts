@@ -1,8 +1,10 @@
 import { filterAllowedDetectedTerms, findAllowedOccurrences, findAllowedOccurrencesIgnoreCase } from "../shared/term-matching";
+import { utf8ByteOffsetToUtf16Index } from "../shared/unicode";
 import type { DetectTermsDebug, DetectedTerm, LlmSettings, TermType } from "../shared/types";
 import { addCachedTerms, detectCachedTerms } from "./cache";
 import { extractJsonPayload } from "./json";
 import { createLlmProvider } from "./llm-provider";
+import { assertLlmProviderAuthorized } from "./provider-access";
 import { buildTermExtractionPrompt, buildTermExtractionSystemPrompt } from "./prompts";
 import { debugLog, defaultBaseUrl, defaultModel, sanitizeForLog } from "./utils";
 import { detectWithWasm } from "./wasm-runtime";
@@ -85,6 +87,7 @@ export async function detectTerms(
   let llmDebug: DetectTermsDebug | undefined;
   if (settings.llm.provider !== "mock" && settings.llm.apiKey.trim()) {
     try {
+      await assertLlmProviderAuthorized(settings.llm);
       const result = await fetchLlmDetectedTerms(text, settings.llm, primaryTerms);
       llmTerms = result.terms;
       llmDebug = result.debug;
@@ -413,8 +416,8 @@ async function rustDetect(text: string, dictionaryJson: string | undefined): Pro
   const parsed = JSON.parse(raw) as Array<DetectedTerm & { start: number; end: number }>;
   return parsed.map((term) => ({
     term: term.term,
-    start: byteOffsetToJsIndex(text, term.start),
-    end: byteOffsetToJsIndex(text, term.end),
+    start: utf8ByteOffsetToUtf16Index(text, term.start),
+    end: utf8ByteOffsetToUtf16Index(text, term.end),
     term_type: normalizeTermType(term.term_type),
     confidence: normalizeConfidence(term.confidence),
     source: normalizeDetectionSource(term.source)
@@ -452,23 +455,4 @@ function normalizeConfidence(value: unknown): number {
     return Math.min(1, Math.max(0, value));
   }
   return 0.75;
-}
-
-function byteOffsetToJsIndex(text: string, byteOffset: number): number {
-  let bytes = 0;
-  for (let index = 0; index < text.length; index += 1) {
-    if (bytes >= byteOffset) {
-      return index;
-    }
-    bytes += utf8ByteLength(text[index]);
-  }
-  return text.length;
-}
-
-function utf8ByteLength(char: string): number {
-  const code = char.codePointAt(0) ?? 0;
-  if (code <= 0x7f) return 1;
-  if (code <= 0x7ff) return 2;
-  if (code <= 0xffff) return 3;
-  return 4;
 }

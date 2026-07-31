@@ -1,6 +1,13 @@
 import type { SiteAccessState } from "../shared/types";
-import { originPatternFromUrl, SITE_ACCESS_STORAGE_KEY } from "../shared/browser-utils";
+import {
+  ALL_SITES_ORIGIN_PATTERNS,
+  BLOCKED_SITES_STORAGE_KEY,
+  FILE_ORIGIN_PATTERN,
+  LEGACY_SITE_ACCESS_STORAGE_KEY,
+  originPatternFromUrl
+} from "../shared/browser-utils";
 import { sanitizeForLog } from "./utils";
+import { isSiteEnabledByPolicy } from "./site-access-policy";
 
 export async function getSiteAccessForActiveTab(): Promise<SiteAccessState> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -16,30 +23,54 @@ export async function getSiteAccessForTab(tab: chrome.tabs.Tab | undefined): Pro
       originPattern: "",
       supported: false,
       enabled: false,
-      hasPermission: false
+      hasPermission: false,
+      allSitesGranted: await hasAllSitesAccess(),
+      blocked: false,
+      isFile: false
     };
   }
 
-  const enabledOrigins = await getEnabledOrigins();
-  const enabled = enabledOrigins.includes(originPattern);
-  const hasPermission = await chrome.permissions.contains({ origins: [originPattern] });
+  const isFile = originPattern === FILE_ORIGIN_PATTERN;
+  const [allSitesGranted, blockedOrigins] = await Promise.all([
+    hasAllSitesAccess(),
+    getBlockedOrigins()
+  ]);
+  const blocked = !isFile && blockedOrigins.includes(originPattern);
+  const hasPermission = isFile
+    ? await chrome.permissions.contains({ origins: [FILE_ORIGIN_PATTERN] })
+    : allSitesGranted;
+  const enabled = isSiteEnabledByPolicy({
+    originPattern,
+    allSitesGranted,
+    isFile,
+    filePermission: hasPermission,
+    blockedOrigins
+  });
   return {
     url,
     originPattern,
     supported: true,
     enabled,
-    hasPermission
+    hasPermission,
+    allSitesGranted,
+    blocked,
+    isFile
   };
 }
 
 export async function setOriginEnabled(originPattern: string, enabled: boolean): Promise<void> {
-  const origins = new Set(await getEnabledOrigins());
-  if (enabled) {
-    origins.add(originPattern);
-  } else {
-    origins.delete(originPattern);
+  if (originPattern === FILE_ORIGIN_PATTERN) {
+    return;
   }
-  await chrome.storage.local.set({ [SITE_ACCESS_STORAGE_KEY]: [...origins] });
+
+  const origins = new Set(await getBlockedOrigins());
+  if (enabled) {
+    origins.delete(originPattern);
+  } else {
+    origins.add(originPattern);
+  }
+  await chrome.storage.local.set({ [BLOCKED_SITES_STORAGE_KEY]: [...origins] });
+  await chrome.storage.local.remove(LEGACY_SITE_ACCESS_STORAGE_KEY);
 }
 
 export async function isUrlEnabled(url: string | undefined): Promise<boolean> {
@@ -47,11 +78,43 @@ export async function isUrlEnabled(url: string | undefined): Promise<boolean> {
   if (!originPattern) {
     return false;
   }
-  const origins = await getEnabledOrigins();
-  if (!origins.includes(originPattern)) {
-    return false;
+
+  const isFile = originPattern === FILE_ORIGIN_PATTERN;
+  const [allSitesGranted, blockedOrigins, filePermission] = await Promise.all([
+    hasAllSitesAccess(),
+    getBlockedOrigins(),
+    isFile
+      ? chrome.permissions.contains({ origins: [FILE_ORIGIN_PATTERN] })
+      : Promise.resolve(false)
+  ]);
+  return isSiteEnabledByPolicy({
+    originPattern,
+    allSitesGranted,
+    isFile,
+    filePermission,
+    blockedOrigins
+  });
+}
+
+export async function hasAllSitesAccess(): Promise<boolean> {
+  return chrome.permissions.contains({ origins: [...ALL_SITES_ORIGIN_PATTERNS] });
+}
+
+export async function migrateLegacySiteAccess(): Promise<void> {
+  await chrome.storage.local.remove([LEGACY_SITE_ACCESS_STORAGE_KEY, "termpop.authorizedProviderOrigins"]);
+
+  // Old releases granted individual site and provider origins. Remove those
+  // grants before the user opts into the new all-sites permission model.
+  if (!await hasAllSitesAccess()) {
+    const permissions = await chrome.permissions.getAll();
+    const legacyOrigins = (permissions.origins ?? []).filter((origin) =>
+      origin !== FILE_ORIGIN_PATTERN
+      && !ALL_SITES_ORIGIN_PATTERNS.includes(origin as typeof ALL_SITES_ORIGIN_PATTERNS[number])
+    );
+    if (legacyOrigins.length > 0) {
+      await chrome.permissions.remove({ origins: legacyOrigins });
+    }
   }
-  return chrome.permissions.contains({ origins: [originPattern] });
 }
 
 export async function injectContentScriptForTab(tabId: number, url: string | undefined): Promise<boolean> {
@@ -79,9 +142,9 @@ export async function injectActiveTab(): Promise<boolean> {
   return injectContentScriptForTab(tab.id, tab.url);
 }
 
-async function getEnabledOrigins(): Promise<string[]> {
-  const stored = await chrome.storage.local.get(SITE_ACCESS_STORAGE_KEY);
-  return Array.isArray(stored[SITE_ACCESS_STORAGE_KEY])
-    ? stored[SITE_ACCESS_STORAGE_KEY].filter((value): value is string => typeof value === "string")
+async function getBlockedOrigins(): Promise<string[]> {
+  const stored = await chrome.storage.local.get(BLOCKED_SITES_STORAGE_KEY);
+  return Array.isArray(stored[BLOCKED_SITES_STORAGE_KEY])
+    ? stored[BLOCKED_SITES_STORAGE_KEY].filter((value): value is string => typeof value === "string")
     : [];
 }

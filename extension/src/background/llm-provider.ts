@@ -7,6 +7,7 @@ import { defaultBaseUrl, defaultModel, normalizeBaseUrl, sanitizeForLog } from "
 export interface TermPopLlmProvider {
   detectTerms(prompt: string, system: string, settings: LlmSettings, timeoutMs: number): Promise<string>;
   explain(term: string, context: string | undefined, settings: LlmSettings): Promise<Explanation>;
+  test(settings: LlmSettings): Promise<void>;
 }
 
 export function createLlmProvider(settings: LlmSettings): TermPopLlmProvider {
@@ -23,6 +24,9 @@ const openAiCompatibleProvider: TermPopLlmProvider = {
     return runWithLlmConcurrency(settings, { priority: "explanation" }, (signal) =>
       fetchOpenAiCompatibleExplanation(term, context, settings, signal)
     );
+  },
+  async test(settings) {
+    await this.explain("TermPop", undefined, settings);
   }
 };
 
@@ -36,6 +40,9 @@ const anthropicProvider: TermPopLlmProvider = {
     return runWithLlmConcurrency(settings, { priority: "explanation" }, (signal) =>
       fetchAnthropicExplanation(term, context, settings, signal)
     );
+  },
+  async test(settings) {
+    await this.explain("TermPop", undefined, settings);
   }
 };
 
@@ -197,7 +204,8 @@ function parseExplanation(content: string, fallbackTerm: string, includeUsageExa
         ? parsed.related_terms.map(String).map((value) => value.trim()).filter(Boolean).slice(0, 6)
         : [],
       usage_example: includeUsageExample && typeof parsed.usage_example === "string" ? parsed.usage_example.trim() : null,
-      source_url: typeof parsed.source_url === "string" ? parsed.source_url : null
+      source_url: typeof parsed.source_url === "string" ? parsed.source_url : null,
+      provider_status: "llm"
     };
   } catch {
     return {
@@ -206,7 +214,8 @@ function parseExplanation(content: string, fallbackTerm: string, includeUsageExa
       category: "LLM explanation",
       related_terms: [],
       usage_example: null,
-      source_url: null
+      source_url: null,
+      provider_status: "llm"
     };
   }
 }
@@ -287,14 +296,35 @@ async function formatProviderError(response: Response): Promise<string> {
 }
 
 function providerErrorFallback(response: Response): string {
+  const locale = uiLocale();
   if (response.status === 401) {
-    return "LLM API 授权失败，请检查插件设置里的 API Key、Base URL 和模型。";
+    return providerErrorCopy[locale].unauthorized;
   }
   if (response.status === 403) {
-    return "LLM API 拒绝访问，请检查 API Key 权限或账号状态。";
+    return providerErrorCopy[locale].forbidden;
   }
   if (response.status === 429) {
-    return "LLM API 请求过于频繁，请稍后再试。";
+    return providerErrorCopy[locale].rateLimited;
   }
-  return `LLM API 请求失败：${response.status} ${response.statusText}`;
+  return `${providerErrorCopy[locale].failed}: ${response.status} ${response.statusText}`;
+}
+
+const providerErrorCopy = {
+  zh: {
+    unauthorized: "LLM API 授权失败，请检查插件设置里的 API Key、Base URL 和模型。",
+    forbidden: "LLM API 拒绝访问，请检查 API Key 权限或账号状态。",
+    rateLimited: "LLM API 请求过于频繁，请稍后再试。",
+    failed: "LLM API 请求失败"
+  },
+  en: {
+    unauthorized: "LLM API authorization failed. Check the API Key, Base URL, and model in extension settings.",
+    forbidden: "LLM API access was denied. Check the API Key permissions or account status.",
+    rateLimited: "LLM API rate limit reached. Please try again later.",
+    failed: "LLM API request failed"
+  }
+} as const;
+
+function uiLocale(): "zh" | "en" {
+  const language = chrome.i18n?.getUILanguage?.() ?? "en";
+  return language.toLocaleLowerCase().startsWith("zh") ? "zh" : "en";
 }

@@ -1,6 +1,6 @@
 import type { Explanation, ExplanationLanguage, LlmProvider } from "../shared/types";
-import { sanitizeForLog as sanitizeValueForLog } from "../shared/browser-utils";
-export { hashString, sanitizeForLog } from "../shared/browser-utils";
+import { sanitizeForLog as sanitizeValueForLog } from "../shared/browser-utils.ts";
+export { hashString, sanitizeForLog } from "../shared/browser-utils.ts";
 
 export function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, "");

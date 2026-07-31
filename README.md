@@ -81,7 +81,7 @@ extension/dist
 
 ## Usage
 
-TermPop no longer asks for broad page access at install time. Open the extension popup on a page and click "Enable current site" before using hover or hybrid highlighting there. You can disable the current site from the same popup later.
+TermPop does not ask for broad page access at install time. On first use, open the popup and click "Enable TermPop on all websites" to grant HTTP/HTTPS access once. After that, TermPop works across normal websites without per-site prompts. Use "Disable on this site" to add sensitive sites such as banking or email pages to the local blacklist. Access to local `file://` pages remains a separate optional permission.
 
 Open the extension popup to choose a mode:
 
@@ -101,6 +101,7 @@ TermPop can use:
 - Anthropic-style message endpoints.
 
 If no usable provider key is configured, TermPop falls back to the Rust mock explanation flow.
+The provider connection test uses the existing all-sites permission and does not request a separate provider-host permission.
 
 ## Release Automation
 

@@ -2,148 +2,161 @@ import type { LlmSettings } from "../shared/types";
 
 export type LlmPriority = "explanation" | "detection";
 
-interface LlmRunOptions {
+export interface LlmRunOptions {
   priority: LlmPriority;
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
-interface LlmQueueEntry {
-  start: () => void;
-  signal: AbortSignal;
+export interface LlmConcurrencyController {
+  run<T>(settings: LlmSettings, options: LlmRunOptions, task: (signal: AbortSignal) => Promise<T>): Promise<T>;
+}
+
+interface QueueEntry {
   priority: LlmPriority;
-  maxActiveRequests: number;
+  signal: AbortSignal;
+  started: boolean;
+  start: () => void;
 }
 
-let activeExplanationRequests = 0;
-let activeDetectionRequests = 0;
-const explanationQueue: LlmQueueEntry[] = [];
-const detectionQueue: LlmQueueEntry[] = [];
+const DEFAULT_TIMEOUT_MS = 120_000;
+const EXPLANATION_BURST_LIMIT = 3;
 
-export async function runWithLlmConcurrency<T>(
-  settings: LlmSettings,
-  options: LlmRunOptions,
-  task: (signal: AbortSignal) => Promise<T>
-): Promise<T> {
-  const controller = new AbortController();
-  let timeoutId: number | undefined;
+export function createLlmConcurrencyController(): LlmConcurrencyController {
+  let activeRequests = 0;
+  let currentLimit = 1;
+  let consecutiveExplanations = 0;
+  const explanationQueue: QueueEntry[] = [];
+  const detectionQueue: QueueEntry[] = [];
 
-  if (options.timeoutMs !== undefined) {
-    timeoutId = setTimeout(() => controller.abort(new Error("LLM request timed out.")), options.timeoutMs);
-  }
-
-  await acquireLlmSlot(settings, options.priority, controller.signal);
-  try {
-    return await task(controller.signal);
-  } finally {
-    if (timeoutId !== undefined) {
-      clearTimeout(timeoutId);
+  function schedule(): void {
+    discardAbortedEntries();
+    while (activeRequests < currentLimit && (explanationQueue.length > 0 || detectionQueue.length > 0)) {
+      const next = takeNextEntry();
+      if (!next) {
+        return;
+      }
+      activeRequests += 1;
+      next.started = true;
+      next.start();
     }
-    releaseLlmSlot(options.priority);
-  }
-}
-
-async function acquireLlmSlot(settings: LlmSettings, priority: LlmPriority, signal: AbortSignal): Promise<void> {
-  const limit = normalizeConcurrency(settings.maxConcurrency);
-  const maxActiveRequests = maxActiveRequestsForPriority(priority, limit);
-  if (activeRequestsForPriority(priority) < maxActiveRequests) {
-    incrementActiveRequests(priority);
-    return;
   }
 
-  await new Promise<void>((resolve, reject) => {
-    let entry: LlmQueueEntry;
-    const cleanup = () => {
-      signal.removeEventListener("abort", onAbort);
-      removeQueuedEntry(entry);
-    };
-    const onAbort = () => {
-      cleanup();
-      reject(signal.reason instanceof Error ? signal.reason : new Error("LLM request was cancelled."));
-    };
+  function takeNextEntry(): QueueEntry | undefined {
+    const explanationAvailable = explanationQueue.length > 0;
+    const detectionAvailable = detectionQueue.length > 0;
+    let queue: QueueEntry[];
 
-    entry = {
-      signal,
-      priority,
-      maxActiveRequests,
-      start: () => {
-        cleanup();
-        incrementActiveRequests(priority);
-        resolve();
+    // Explanations are preferred, but a detection is admitted after a short burst.
+    if (explanationAvailable && (!detectionAvailable || consecutiveExplanations < EXPLANATION_BURST_LIMIT)) {
+      queue = explanationQueue;
+      consecutiveExplanations += 1;
+    } else if (detectionAvailable) {
+      queue = detectionQueue;
+      consecutiveExplanations = 0;
+    } else {
+      return undefined;
+    }
+
+    return queue.shift();
+  }
+
+  function discardAbortedEntries(): void {
+    for (const queue of [explanationQueue, detectionQueue]) {
+      for (let index = queue.length - 1; index >= 0; index -= 1) {
+        if (queue[index].signal.aborted) {
+          queue.splice(index, 1);
+        }
+      }
+    }
+  }
+
+  function remove(entry: QueueEntry): void {
+    for (const queue of [explanationQueue, detectionQueue]) {
+      const index = queue.indexOf(entry);
+      if (index >= 0) {
+        queue.splice(index, 1);
+      }
+    }
+  }
+
+  function cancellationError(signal: AbortSignal): Error {
+    return signal.reason instanceof Error ? signal.reason : new Error("LLM request was cancelled.");
+  }
+
+  async function run<T>(settings: LlmSettings, options: LlmRunOptions, task: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    currentLimit = normalizeConcurrency(settings.maxConcurrency);
+    const controller = new AbortController();
+    const timeoutMs = Math.max(1, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let entry!: QueueEntry;
+    let rejectStart!: (error: Error) => void;
+
+    const startPromise = new Promise<void>((resolve, reject) => {
+      rejectStart = reject;
+      entry = {
+        priority: options.priority,
+        signal: controller.signal,
+        started: false,
+        start: resolve
+      };
+      (options.priority === "explanation" ? explanationQueue : detectionQueue).push(entry);
+      schedule();
+    });
+
+    timeoutId = setTimeout(() => abort(new Error("LLM request timed out.")), timeoutMs);
+
+    const abort = (reason: unknown): void => {
+      const error = reason instanceof Error ? reason : new Error("LLM request was cancelled.");
+      if (!controller.signal.aborted) {
+        controller.abort(error);
+      }
+      if (!entry.started) {
+        remove(entry);
+        if (timeoutId !== undefined) {
+          clearTimeout(timeoutId);
+          timeoutId = undefined;
+        }
+        rejectStart(error);
+        schedule();
       }
     };
 
-    signal.addEventListener("abort", onAbort, { once: true });
-    queueForPriority(priority).push(entry);
-  });
-}
-
-function scheduleNextLlmRequest(): void {
-  const explanation = takeStartableEntry(explanationQueue);
-  if (explanation) {
-    explanation.start();
-    return;
+    const onExternalAbort = (): void => abort(options.signal?.reason);
+    if (options.signal) {
+      if (options.signal.aborted) {
+        abort(options.signal.reason);
+      } else {
+        options.signal.addEventListener("abort", onExternalAbort, { once: true });
+      }
+    }
+    try {
+      await startPromise;
+      if (controller.signal.aborted) {
+        throw cancellationError(controller.signal);
+      }
+      return await task(controller.signal);
+    } finally {
+      if (options.signal) {
+        options.signal.removeEventListener("abort", onExternalAbort);
+      }
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
+      if (entry.started) {
+        activeRequests = Math.max(0, activeRequests - 1);
+        schedule();
+      }
+    }
   }
 
-  takeStartableEntry(detectionQueue)?.start();
+  return { run };
 }
 
-function takeStartableEntry(queue: LlmQueueEntry[]): LlmQueueEntry | undefined {
-  const index = queue.findIndex((entry) => !entry.signal.aborted && activeRequestsForPriority(entry.priority) < entry.maxActiveRequests);
-  if (index < 0) {
-    return undefined;
-  }
-  const [entry] = queue.splice(index, 1);
-  return entry;
-}
+const defaultController = createLlmConcurrencyController();
 
-function removeQueuedEntry(entry: LlmQueueEntry): void {
-  removeFromQueue(explanationQueue, entry);
-  removeFromQueue(detectionQueue, entry);
-}
-
-function removeFromQueue(queue: LlmQueueEntry[], entry: LlmQueueEntry): void {
-  const index = queue.indexOf(entry);
-  if (index >= 0) {
-    queue.splice(index, 1);
-  }
-}
-
-function queueForPriority(priority: LlmPriority): LlmQueueEntry[] {
-  return priority === "explanation" ? explanationQueue : detectionQueue;
-}
-
-function maxActiveRequestsForPriority(priority: LlmPriority, limit: number): number {
-  if (priority === "explanation") {
-    return Math.max(1, limit);
-  }
-  return Math.max(1, Math.min(limit - activeExplanationRequests, limit));
-}
-
-function releaseLlmSlot(priority: LlmPriority): void {
-  decrementActiveRequests(priority);
-  scheduleNextLlmRequest();
-}
-
-function activeRequestsForPriority(priority: LlmPriority): number {
-  return priority === "explanation" ? activeExplanationRequests : activeDetectionRequests;
-}
-
-function incrementActiveRequests(priority: LlmPriority): void {
-  if (priority === "explanation") {
-    activeExplanationRequests += 1;
-    return;
-  }
-
-  activeDetectionRequests += 1;
-}
-
-function decrementActiveRequests(priority: LlmPriority): void {
-  if (priority === "explanation") {
-    activeExplanationRequests = Math.max(0, activeExplanationRequests - 1);
-    return;
-  }
-
-  activeDetectionRequests = Math.max(0, activeDetectionRequests - 1);
+export function runWithLlmConcurrency<T>(settings: LlmSettings, options: LlmRunOptions, task: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  return defaultController.run(settings, options, task);
 }
 
 function normalizeConcurrency(value: number): number {

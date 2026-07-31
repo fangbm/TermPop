@@ -1,4 +1,7 @@
-export const SITE_ACCESS_STORAGE_KEY = "termpop.enabledOrigins";
+export const LEGACY_SITE_ACCESS_STORAGE_KEY = "termpop.enabledOrigins";
+export const BLOCKED_SITES_STORAGE_KEY = "termpop.blockedOrigins";
+export const ALL_SITES_ORIGIN_PATTERNS = ["http://*/*", "https://*/*"] as const;
+export const FILE_ORIGIN_PATTERN = "file:///*";
 
 export function originPatternFromUrl(value: string | undefined): string | undefined {
   if (!value || /^chrome(?:-extension)?:/i.test(value) || /^edge:/i.test(value) || /^about:/i.test(value)) {
@@ -8,6 +11,18 @@ export function originPatternFromUrl(value: string | undefined): string | undefi
     return "file:///*";
   }
 
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return undefined;
+    }
+    return `${url.origin}/*`;
+  } catch {
+    return undefined;
+  }
+}
+
+export function providerOriginPatternFromBaseUrl(value: string): string | undefined {
   try {
     const url = new URL(value);
     if (url.protocol !== "http:" && url.protocol !== "https:") {

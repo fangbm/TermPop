@@ -33,6 +33,8 @@ export interface Explanation {
   related_terms: string[];
   usage_example?: string | null;
   source_url?: string | null;
+  provider_status?: "mock" | "llm";
+  fallback_reason?: "missing-api-key";
 }
 
 export interface ExtensionSettings {
@@ -80,6 +82,16 @@ export interface ExplainRequest {
 export interface ExplainResponse {
   ok: boolean;
   explanation?: Explanation;
+  error?: string;
+}
+
+export interface TestLlmProviderRequest {
+  type: "TERMPOP_TEST_LLM_PROVIDER";
+  settings: LlmSettings;
+}
+
+export interface TestLlmProviderResponse {
+  ok: boolean;
   error?: string;
 }
 
@@ -149,6 +161,9 @@ export interface SiteAccessState {
   supported: boolean;
   enabled: boolean;
   hasPermission: boolean;
+  allSitesGranted: boolean;
+  blocked: boolean;
+  isFile: boolean;
 }
 
 export interface GetSiteAccessRequest {
