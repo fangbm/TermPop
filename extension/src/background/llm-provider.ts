@@ -1,12 +1,19 @@
-import type { Explanation, LlmSettings } from "../shared/types";
+import type { Explanation, LlmSettings, ScreenshotRecognition } from "../shared/types";
 import { extractJsonObject } from "./json";
 import { runWithLlmConcurrency } from "./llm-queue";
-import { buildExplanationPrompt, buildExplanationSystemPrompt } from "./prompts";
+import {
+  buildExplanationPrompt,
+  buildExplanationSystemPrompt,
+  buildScreenshotRecognitionPrompt,
+  buildScreenshotRecognitionSystemPrompt
+} from "./prompts";
 import { defaultBaseUrl, defaultModel, normalizeBaseUrl, sanitizeForLog } from "./utils";
+import { parseScreenshotRecognition, splitImageDataUrl } from "./vision";
 
 export interface TermPopLlmProvider {
   detectTerms(prompt: string, system: string, settings: LlmSettings, timeoutMs: number): Promise<string>;
   explain(term: string, context: string | undefined, settings: LlmSettings): Promise<Explanation>;
+  recognizeSelection(termImageDataUrl: string, contextImageDataUrl: string, settings: LlmSettings): Promise<ScreenshotRecognition>;
   test(settings: LlmSettings): Promise<void>;
 }
 
@@ -25,6 +32,11 @@ const openAiCompatibleProvider: TermPopLlmProvider = {
       fetchOpenAiCompatibleExplanation(term, context, settings, signal)
     );
   },
+  recognizeSelection(termImageDataUrl, contextImageDataUrl, settings) {
+    return runWithLlmConcurrency(settings, { priority: "explanation" }, (signal) =>
+      fetchOpenAiCompatibleScreenshotRecognition(termImageDataUrl, contextImageDataUrl, settings, signal)
+    );
+  },
   async test(settings) {
     await this.explain("TermPop", undefined, settings);
   }
@@ -41,10 +53,112 @@ const anthropicProvider: TermPopLlmProvider = {
       fetchAnthropicExplanation(term, context, settings, signal)
     );
   },
+  recognizeSelection(termImageDataUrl, contextImageDataUrl, settings) {
+    return runWithLlmConcurrency(settings, { priority: "explanation" }, (signal) =>
+      fetchAnthropicScreenshotRecognition(termImageDataUrl, contextImageDataUrl, settings, signal)
+    );
+  },
   async test(settings) {
     await this.explain("TermPop", undefined, settings);
   }
 };
+
+async function fetchOpenAiCompatibleScreenshotRecognition(
+  termImageDataUrl: string,
+  contextImageDataUrl: string,
+  settings: LlmSettings,
+  signal?: AbortSignal
+): Promise<ScreenshotRecognition> {
+  const baseUrl = normalizeBaseUrl(settings.baseUrl || defaultBaseUrl(settings.provider));
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${settings.apiKey}`
+    },
+    body: JSON.stringify({
+      model: settings.model || defaultModel(settings.provider),
+      temperature: Math.min(settings.temperature, 0.1),
+      max_tokens: Math.max(128, Math.min(settings.maxTokens, 450)),
+      messages: [
+        {
+          role: "system",
+          content: buildScreenshotRecognitionSystemPrompt(settings.language)
+        },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: buildScreenshotRecognitionPrompt(settings.language) },
+            { type: "text", text: "Nearby context image:" },
+            { type: "image_url", image_url: { url: contextImageDataUrl, detail: "high" } },
+            { type: "text", text: "Exact user-selected area:" },
+            { type: "image_url", image_url: { url: termImageDataUrl, detail: "high" } }
+          ]
+        }
+      ]
+    }),
+    signal
+  });
+
+  if (!response.ok) {
+    throw new Error(await formatProviderError(response));
+  }
+
+  const payload = await response.json();
+  return parseScreenshotRecognition(extractOpenAiCompatibleAnswerText(payload));
+}
+
+async function fetchAnthropicScreenshotRecognition(
+  termImageDataUrl: string,
+  contextImageDataUrl: string,
+  settings: LlmSettings,
+  signal?: AbortSignal
+): Promise<ScreenshotRecognition> {
+  const termImage = splitImageDataUrl(termImageDataUrl);
+  const contextImage = splitImageDataUrl(contextImageDataUrl);
+  const baseUrl = normalizeBaseUrl(settings.baseUrl || defaultBaseUrl(settings.provider));
+  const response = await fetch(`${baseUrl}/messages`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": settings.apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    },
+    body: JSON.stringify({
+      model: settings.model || defaultModel(settings.provider),
+      max_tokens: Math.max(128, Math.min(settings.maxTokens, 450)),
+      temperature: Math.min(settings.temperature, 0.1),
+      system: buildScreenshotRecognitionSystemPrompt(settings.language),
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: buildScreenshotRecognitionPrompt(settings.language) },
+            { type: "text", text: "Nearby context image:" },
+            { type: "image", source: { type: "base64", media_type: contextImage.mediaType, data: contextImage.data } },
+            { type: "text", text: "Exact user-selected area:" },
+            { type: "image", source: { type: "base64", media_type: termImage.mediaType, data: termImage.data } }
+          ]
+        }
+      ]
+    }),
+    signal
+  });
+
+  if (!response.ok) {
+    throw new Error(await formatProviderError(response));
+  }
+
+  const payload = (await response.json()) as {
+    content?: Array<{ type?: string; text?: string }>;
+  };
+  const content = payload.content?.find((part) => part.type === "text")?.text;
+  if (!content) {
+    throw new Error("LLM response did not include text content.");
+  }
+  return parseScreenshotRecognition(content);
+}
 
 async function fetchOpenAiCompatibleExplanation(
   term: string,

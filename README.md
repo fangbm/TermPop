@@ -10,6 +10,7 @@ It combines a Rust detection core compiled to WebAssembly with a TypeScript brow
 - Rust/WASM term detection for programming languages, frameworks, cloud services, AI products, common acronyms, Minecraft/server terms, and custom user terms.
 - Hover explanation cards with refresh support.
 - Selection mode: select text and use the context menu to request an explanation.
+- Screenshot recognition: press `Alt+Shift+E` (`Command+Shift+X` on macOS), drag around a term, and use a configured multimodal model to recognize and explain it.
 - Hybrid mode: automatic highlights plus selection-based explanations.
 - Local explanation and term caches to reduce repeated requests.
 - Optional host permissions: page scanning is only injected after the user enables a site.
@@ -88,6 +89,8 @@ Open the extension popup to choose a mode:
 - Hover: automatically scan the page, highlight detected terms, and show explanations on hover.
 - Selection: select text, then use the browser context menu explanation action.
 - Hybrid: enable both hover highlights and selection explanations.
+
+For text that is rendered without usable DOM text, press `Alt+Shift+E` (`Command+Shift+X` on macOS) and drag around the word or short phrase. On first use, TermPop asks before sending the selected area and a small surrounding context image to the configured multimodal LLM. Screenshots remain in memory only and are not added to TermPop's local caches. The configured model must support image input, and the provider's own data policy still applies.
 
 The public build still stores local LLM settings in browser extension storage. For private testing this is convenient, but it is not hardened secret storage and is not a final security model for hosted or commercial use.
 

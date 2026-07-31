@@ -46,6 +46,28 @@ export function buildExplanationPrompt(term: string, context: string | undefined
   ].filter(Boolean).join("\n");
 }
 
+export function buildScreenshotRecognitionSystemPrompt(language: ExplanationLanguage): string {
+  return [
+    languageInstruction(language),
+    "You identify one vocabulary term from screenshots for a reading assistant.",
+    "Do not explain the term and do not describe the images.",
+    "Return exactly one minified JSON object and nothing else."
+  ].join(" ");
+}
+
+export function buildScreenshotRecognitionPrompt(language: ExplanationLanguage): string {
+  return [
+    languageInstruction(language),
+    "The first image shows nearby reading context. The second image is the exact area selected by the user.",
+    "Identify the single word or short phrase the user most likely wants explained from the selected area.",
+    "Preserve the visible casing and punctuation. Do not return a full sentence.",
+    "Use the context image to transcribe a concise nearby sentence or phrase that disambiguates the term.",
+    "If the selected area is ambiguous, choose the most central prominent term and lower confidence.",
+    "Return JSON only in this shape:",
+    "{\"term\":\"exact visible term\",\"context\":\"nearby context\",\"confidence\":0.0}"
+  ].join("\n");
+}
+
 function explanationJsonShapeInstruction(includeUsageExample: boolean): string {
   return includeUsageExample
     ? "JSON shape: {\"term\":\"...\",\"definition\":\"...\",\"category\":\"...\",\"related_terms\":[\"...\"],\"usage_example\":\"...\",\"source_url\":null}"

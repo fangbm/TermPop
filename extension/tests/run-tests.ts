@@ -2,12 +2,37 @@ import { createLlmConcurrencyController } from "../src/background/llm-queue.ts";
 import { canUseCachedExplanation, pruneEntriesToByteBudget, serializedEntriesByteSize, utf8ByteSize } from "../src/background/cache-helpers.ts";
 import { setPersistentExplanation } from "../src/background/cache.ts";
 import { isSiteEnabledByPolicy } from "../src/background/site-access-policy.ts";
+import { parseScreenshotRecognition, splitImageDataUrl } from "../src/background/vision.ts";
 import { utf8ByteOffsetToUtf16Index } from "../src/shared/unicode.ts";
 import type { Explanation } from "../src/shared/types.ts";
 
 type TestCase = { name: string; run: () => void | Promise<void> };
 
 const tests: TestCase[] = [
+  {
+    name: "screenshot recognition extracts strict fields from noisy model output",
+    run: () => {
+      const result = parseScreenshotRecognition(`Reasoning omitted.\n\`\`\`json\n{"term":"  multi-head   attention ","context":"Models use multi-head attention in parallel.","confidence":1.4}\n\`\`\``);
+      equal(result.term, "multi-head attention");
+      equal(result.context, "Models use multi-head attention in parallel.");
+      equal(result.confidence, 1);
+    }
+  },
+  {
+    name: "screenshot image payloads accept packaged image data only",
+    run: () => {
+      const image = splitImageDataUrl("data:image/png;base64,YQ==");
+      equal(image.mediaType, "image/png");
+      equal(image.data, "YQ==");
+      let failed = false;
+      try {
+        splitImageDataUrl("https://example.com/image.png");
+      } catch {
+        failed = true;
+      }
+      ok(failed);
+    }
+  },
   {
     name: "all-sites access uses a per-origin blacklist and separate file permission",
     run: () => {

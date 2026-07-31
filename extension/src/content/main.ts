@@ -2,6 +2,8 @@ import initWasm, { detect_terms_json } from "../wasm/termpop_core.js";
 import { getSettings } from "../shared/settings";
 import type {
   AddCachedTermsRequest,
+  BeginScreenshotSelectionRequest,
+  BeginScreenshotSelectionResponse,
   CachedTermEntry,
   DetectTermsRequest,
   DetectTermsResponse,
@@ -16,6 +18,8 @@ import type {
   GetCachedTermsRequest,
   GetCachedTermsResponse,
   GetSiteAccessResponse,
+  RecognizeScreenshotRequest,
+  RecognizeScreenshotResponse,
   TermType,
   TermPopMode
 } from "../shared/types";
@@ -25,7 +29,9 @@ import { BLOCKED_SITES_STORAGE_KEY, pageFingerprintFromUrlAndText, sanitizeForLo
 import { utf8ByteOffsetToUtf16Index } from "../shared/unicode";
 import styles from "./styles.css?inline";
 import overlayStyles from "../shared/overlay.css?inline";
+import screenshotSelectionStyles from "./screenshot-selection.css?inline";
 import { isCachedTermAvailable, mergeCachedTermView } from "./cache-view";
+import { ScreenshotSelectionController } from "./screenshot-selection";
 
 const MAX_HIGHLIGHTS_AUTO = 80;
 const MAX_HIGHLIGHTS_HYBRID = 40;
@@ -44,6 +50,9 @@ let scanTimer: number | undefined;
 let pendingScanRoots: Node[] = [];
 let cacheFlushTimer: number | undefined;
 let selectionAnchor: HTMLElement | undefined;
+let screenshotAnchor: HTMLElement | undefined;
+let screenshotSelection: ScreenshotSelectionController | undefined;
+let screenshotRequestSeq = 0;
 let mutationObserver: MutationObserver | undefined;
 let scanGeneration = 0;
 let lastContextMenuPoint: { x: number; y: number; time: number } | undefined;
@@ -83,9 +92,10 @@ async function boot(): Promise<void> {
   injectStyles();
   overlay = new TermPopOverlayController({
     rootId: ROOT_ID,
-    anchorSelector: `.${HIGHLIGHT_CLASS}`,
+    anchorSelector: `.${HIGHLIGHT_CLASS}, [data-termpop-virtual-anchor]`,
     locale: uiLocale()
   });
+  screenshotSelection = new ScreenshotSelectionController(uiLocale());
 
   const settings = await getSettings();
   globalCachedTerms = debugOptions.disableCache ? [] : await loadGlobalCachedTerms();
@@ -114,7 +124,7 @@ function injectStyles(): void {
 
   const style = document.createElement("style");
   style.id = "termpop-styles";
-  style.textContent = `${styles}\n${overlayStyles}`;
+  style.textContent = `${styles}\n${overlayStyles}\n${screenshotSelectionStyles}`;
   document.documentElement.append(style);
 }
 
@@ -460,6 +470,10 @@ async function enableSite(): Promise<void> {
 
 function disableSite(): void {
   siteDisabled = true;
+  screenshotRequestSeq += 1;
+  screenshotSelection?.cancel();
+  screenshotAnchor?.remove();
+  screenshotAnchor = undefined;
   stopAutomaticHighlighting();
   if (cacheFlushTimer !== undefined) {
     window.clearTimeout(cacheFlushTimer);
@@ -620,10 +634,24 @@ function collectScanTextNodes(roots: Node[]): Text[] {
 }
 
 function setupSelectionMessageListener(): void {
-  chrome.runtime.onMessage.addListener((message: ExplainSelectionRequest | DisableSiteRequest, _sender, sendResponse) => {
+  chrome.runtime.onMessage.addListener((
+    message: ExplainSelectionRequest | DisableSiteRequest | BeginScreenshotSelectionRequest,
+    _sender,
+    sendResponse
+  ) => {
     if (message.type === "TERMPOP_DISABLE_SITE") {
       disableSite();
       sendResponse({ ok: true } satisfies DisableSiteResponse);
+      return false;
+    }
+
+    if (message.type === "TERMPOP_BEGIN_SCREENSHOT_SELECTION") {
+      if (siteDisabled) {
+        sendResponse({ ok: false, error: "TermPop is disabled on this site." } satisfies BeginScreenshotSelectionResponse);
+        return false;
+      }
+      sendResponse({ ok: true } satisfies BeginScreenshotSelectionResponse);
+      void beginScreenshotExplanation();
       return false;
     }
 
@@ -644,6 +672,91 @@ function setupSelectionMessageListener(): void {
       });
     return true;
   });
+}
+
+async function beginScreenshotExplanation(): Promise<void> {
+  const requestId = ++screenshotRequestSeq;
+  try {
+    const selection = await screenshotSelection?.begin();
+    if (!selection || siteDisabled || requestId !== screenshotRequestSeq) {
+      return;
+    }
+    const anchor = ensureScreenshotAnchor(selection.rect);
+    overlay?.showLoading(anchor, contentCopy[uiLocale()].recognizingScreenshot, true, true, selection.pointer);
+    const response = await chrome.runtime.sendMessage({
+      type: "TERMPOP_RECOGNIZE_SCREENSHOT",
+      termImageDataUrl: selection.termImageDataUrl,
+      contextImageDataUrl: selection.contextImageDataUrl,
+      url: location.href
+    } satisfies RecognizeScreenshotRequest) as RecognizeScreenshotResponse;
+    if (siteDisabled || requestId !== screenshotRequestSeq) {
+      return;
+    }
+    if (!response.ok || !response.recognition) {
+      overlay?.showError(
+        anchor,
+        contentCopy[uiLocale()].screenshotTitle,
+        response.error ?? contentCopy[uiLocale()].recognitionFailed,
+        true,
+        true,
+        selection.pointer
+      );
+      return;
+    }
+    const term: DetectedTerm = {
+      term: response.recognition.term,
+      start: 0,
+      end: response.recognition.term.length,
+      term_type: "Custom",
+      confidence: response.recognition.confidence,
+      source: "User"
+    };
+    await showExplanation(anchor, term, response.recognition.context, {
+      refresh: false,
+      pin: true,
+      pointer: selection.pointer
+    });
+  } catch (error) {
+    if (siteDisabled || requestId !== screenshotRequestSeq) {
+      return;
+    }
+    const anchor = screenshotAnchor ?? ensureScreenshotAnchor({
+      left: Math.max(0, window.innerWidth / 2 - 1),
+      top: Math.max(0, window.innerHeight / 2 - 1),
+      width: 2,
+      height: 2
+    });
+    overlay?.showError(
+      anchor,
+      contentCopy[uiLocale()].screenshotTitle,
+      error instanceof Error ? error.message : contentCopy[uiLocale()].recognitionFailed,
+      true,
+      true
+    );
+  }
+}
+
+function ensureScreenshotAnchor(rect: { left: number; top: number; width: number; height: number }): HTMLElement {
+  if (!screenshotAnchor?.isConnected) {
+    screenshotAnchor = document.createElement("span");
+    screenshotAnchor.id = "termpop-screenshot-anchor";
+    screenshotAnchor.dataset.termpopVirtualAnchor = "true";
+    screenshotAnchor.dataset.termpopIgnore = "true";
+    Object.assign(screenshotAnchor.style, {
+      position: "fixed",
+      pointerEvents: "none",
+      opacity: "0",
+      zIndex: "-1"
+    });
+    document.documentElement.append(screenshotAnchor);
+  }
+  Object.assign(screenshotAnchor.style, {
+    left: `${rect.left}px`,
+    top: `${rect.top}px`,
+    width: `${Math.max(1, rect.width)}px`,
+    height: `${Math.max(1, rect.height)}px`
+  });
+  return screenshotAnchor;
 }
 
 function setupSelectionPointerTracking(): void {
@@ -1171,7 +1284,7 @@ function highlightTextNode(node: Text, terms: DetectedTerm[]): number {
 interface ShowExplanationOptions {
   refresh: boolean;
   pin: boolean;
-  pointer?: MouseEvent | PointerEvent;
+  pointer?: { clientX: number; clientY: number };
 }
 function scheduleHoverExplanation(anchor: HTMLElement, term: DetectedTerm, context: string, pointer: MouseEvent | PointerEvent): void {
   cancelHoverExplanation(anchor);
@@ -1290,11 +1403,17 @@ function requestExplanation(term: string, context: string, cacheKey: string, ref
 const contentCopy = {
   zh: {
     requestFailed: "解释请求失败。",
-    unavailable: "暂时无法解释这个词。"
+    unavailable: "暂时无法解释这个词。",
+    screenshotTitle: "截图识词",
+    recognizingScreenshot: "正在识别框选内容...",
+    recognitionFailed: "无法从框选内容中识别词汇。"
   },
   en: {
     requestFailed: "Explanation request failed.",
-    unavailable: "This term cannot be explained right now."
+    unavailable: "This term cannot be explained right now.",
+    screenshotTitle: "Screenshot recognition",
+    recognizingScreenshot: "Recognizing the selected area...",
+    recognitionFailed: "No term could be identified in the selected area."
   }
 } as const;
 

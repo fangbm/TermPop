@@ -2,6 +2,8 @@ import { getSettings } from "../shared/settings";
 import type {
   AddCachedTermsRequest,
   AddCachedTermsResponse,
+  CaptureVisibleTabRequest,
+  CaptureVisibleTabResponse,
   DetectTermsRequest,
   DetectTermsResponse,
   ExplainRequest,
@@ -13,6 +15,8 @@ import type {
   InjectActiveTabRequest,
   InjectActiveTabResponse,
   DisableSiteRequest,
+  RecognizeScreenshotRequest,
+  RecognizeScreenshotResponse,
   TestLlmProviderRequest,
   TestLlmProviderResponse,
   SetSiteAccessRequest,
@@ -34,6 +38,7 @@ import {
 } from "./site-access";
 import { assertLlmProviderAuthorized } from "./provider-access";
 import { createLlmProvider } from "./llm-provider";
+import { captureVisibleSenderTab, recognizeScreenshot, setupScreenshotCommand } from "./screenshot";
 
 type RuntimeMessage =
   | ExplainRequest
@@ -43,7 +48,9 @@ type RuntimeMessage =
   | GetSiteAccessRequest
   | SetSiteAccessRequest
   | InjectActiveTabRequest
-  | TestLlmProviderRequest;
+  | TestLlmProviderRequest
+  | CaptureVisibleTabRequest
+  | RecognizeScreenshotRequest;
 
 interface CacheContextMessage {
   url?: string;
@@ -52,6 +59,7 @@ interface CacheContextMessage {
 
 setupContextMenus();
 setupDynamicInjection();
+setupScreenshotCommand();
 
 chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendResponse) => {
   if (message.type === "TERMPOP_GET_SITE_ACCESS") {
@@ -81,6 +89,22 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
       .then(() => createLlmProvider(message.settings).test(message.settings))
       .then(() => sendResponse({ ok: true } satisfies TestLlmProviderResponse))
       .catch((error: unknown) => sendResponse({ ok: false, error: errorMessage(error) } satisfies TestLlmProviderResponse));
+    return true;
+  }
+
+  if (message.type === "TERMPOP_CAPTURE_VISIBLE_TAB") {
+    ensureSenderCanUsePageServices(sender)
+      .then(() => captureVisibleSenderTab(sender))
+      .then((dataUrl) => sendResponse({ ok: true, dataUrl } satisfies CaptureVisibleTabResponse))
+      .catch((error: unknown) => sendResponse({ ok: false, error: errorMessage(error) } satisfies CaptureVisibleTabResponse));
+    return true;
+  }
+
+  if (message.type === "TERMPOP_RECOGNIZE_SCREENSHOT") {
+    ensureSenderCanUsePageServices(sender)
+      .then(() => recognizeScreenshot(message))
+      .then((recognition) => sendResponse({ ok: true, recognition } satisfies RecognizeScreenshotResponse))
+      .catch((error: unknown) => sendResponse({ ok: false, error: errorMessage(error) } satisfies RecognizeScreenshotResponse));
     return true;
   }
 
