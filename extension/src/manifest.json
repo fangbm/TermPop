@@ -10,7 +10,7 @@
     "48": "assets/icons/icon-48.png",
     "128": "assets/icons/icon-128.png"
   },
-  "permissions": ["storage", "activeTab", "contextMenus", "scripting"],
+  "permissions": ["storage", "activeTab", "contextMenus", "scripting", "offscreen"],
   "host_permissions": [
     "https://api.openai.com/*",
     "https://api.moonshot.cn/*",
@@ -18,7 +18,7 @@
   ],
   "optional_host_permissions": ["http://*/*", "https://*/*", "file:///*"],
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; object-src 'self';"
   },
   "background": {
     "service_worker": "assets/background.js",
@@ -37,8 +37,8 @@
   "commands": {
     "explain-screenshot": {
       "suggested_key": {
-        "default": "Alt+Shift+E",
-        "mac": "Command+Shift+X"
+        "default": "Alt+Shift+S",
+        "mac": "Alt+Shift+S"
       },
       "description": "__MSG_screenshotCommandDescription__"
     }

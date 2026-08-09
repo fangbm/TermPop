@@ -5,6 +5,7 @@ import { canUseCachedExplanation, pruneEntriesToByteBudget, serializedEntriesByt
 import { setPersistentExplanation } from "../src/background/cache.ts";
 import { isSiteEnabledByPolicy } from "../src/background/site-access-policy.ts";
 import { parseScreenshotRecognition, splitImageDataUrl } from "../src/background/vision.ts";
+import { inferImageInputCapability, isImageInputUnsupportedError, shouldStartWithOcr } from "../src/background/model-capabilities.ts";
 import { utf8ByteOffsetToUtf16Index } from "../src/shared/unicode.ts";
 import { cancelPdfSessionToken, createPdfSessionToken, drainPdfLlmQueue, isPdfSessionCurrent } from "../src/pdf-viewer/pdf-session.ts";
 import type { Explanation } from "../src/shared/types.ts";
@@ -12,6 +13,20 @@ import type { Explanation } from "../src/shared/types.ts";
 type TestCase = { name: string; run: () => void | Promise<void> };
 
 const tests: TestCase[] = [
+  {
+    name: "screenshot routing uses OCR for text-only models and vision for multimodal models",
+    run: () => {
+      const base = testSettings(1);
+      equal(inferImageInputCapability({ ...base, provider: "openai", apiKey: "secret", model: "gpt-4.1-mini" }), "supported");
+      equal(inferImageInputCapability({ ...base, provider: "openai", apiKey: "secret", model: "text-embedding-3-small" }), "unsupported");
+      equal(inferImageInputCapability({ ...base, provider: "openai-compatible", apiKey: "secret", model: "custom-model" }), "unknown");
+      ok(shouldStartWithOcr({ ...base, screenshotRecognitionMode: "ocr" }));
+      ok(shouldStartWithOcr({ ...base, provider: "mock", screenshotRecognitionMode: "auto" }));
+      ok(!shouldStartWithOcr({ ...base, provider: "openai", apiKey: "secret", model: "gpt-4o", screenshotRecognitionMode: "auto" }));
+      ok(isImageInputUnsupportedError(new Error("This model does not support image_url content.")));
+      ok(!isImageInputUnsupportedError(new Error("Request timed out.")));
+    }
+  },
   {
     name: "detection cache expires entries and evicts the least recently used value",
     run: () => {
@@ -352,6 +367,7 @@ function testSettings(maxConcurrency: number) {
     language: "en" as const,
     includeUsageExample: false,
     screenshotRecognitionEnabled: true,
+    screenshotRecognitionMode: "auto" as const,
     maxConcurrency,
     temperature: 0.2,
     maxTokens: 128

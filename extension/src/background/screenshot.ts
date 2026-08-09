@@ -8,10 +8,12 @@ import type {
 import { createLlmProvider } from "./llm-provider";
 import { assertLlmProviderAuthorized } from "./provider-access";
 import { injectContentScriptForTab, isUrlEnabled } from "./site-access";
-import { storeExplanation } from "./explanations";
+import { explain, storeExplanation } from "./explanations";
 import { sanitizeForLog } from "./utils";
 import { assertScreenshotDataUrl } from "./vision";
 import { explanationResultCacheScope } from "../shared/browser-utils";
+import { isImageInputUnsupportedError, shouldStartWithOcr } from "./model-capabilities";
+import { recognizeWithLocalOcr } from "./ocr";
 
 const SCREENSHOT_COMMAND = "explain-screenshot";
 
@@ -45,23 +47,51 @@ export async function recognizeScreenshot(request: RecognizeScreenshotRequest): 
   if (!settings.llm.screenshotRecognitionEnabled) {
     throw new Error(screenshotCopy[uiLocale()].disabled);
   }
+  if (shouldStartWithOcr(settings.llm)) {
+    return recognizeAndExplainWithOcr(request, settings.llm);
+  }
   if (settings.llm.provider === "mock" || !settings.llm.apiKey.trim()) {
-    throw new Error(screenshotCopy[uiLocale()].providerRequired);
+    if (settings.llm.screenshotRecognitionMode === "multimodal") {
+      throw new Error(screenshotCopy[uiLocale()].providerRequired);
+    }
+    return recognizeAndExplainWithOcr(request, settings.llm);
   }
   await assertLlmProviderAuthorized(settings.llm);
-  const recognition = await createLlmProvider(settings.llm).recognizeSelection(
-    request.termImageDataUrl,
-    request.contextImageDataUrl,
-    settings.llm
-  );
-  await storeExplanation(
-    recognition.term,
-    recognition.context,
-    explanationResultCacheScope(recognition.term, recognition.context),
-    settings.llm,
-    recognition.explanation
-  );
-  return recognition;
+  try {
+    const recognition = await createLlmProvider(settings.llm).recognizeSelection(
+      request.termImageDataUrl,
+      request.contextImageDataUrl,
+      settings.llm
+    );
+    await storeExplanation(
+      recognition.term,
+      recognition.context,
+      explanationResultCacheScope(recognition.term, recognition.context),
+      settings.llm,
+      recognition.explanation
+    );
+    return recognition;
+  } catch (error) {
+    if (settings.llm.screenshotRecognitionMode !== "auto" || !isImageInputUnsupportedError(error)) {
+      throw error;
+    }
+    return recognizeAndExplainWithOcr(request, settings.llm);
+  }
+}
+
+async function recognizeAndExplainWithOcr(
+  request: RecognizeScreenshotRequest,
+  settings: Awaited<ReturnType<typeof getSettings>>["llm"]
+): Promise<ScreenshotRecognition> {
+  const result = await recognizeWithLocalOcr(request.termImageDataUrl, request.contextImageDataUrl);
+  const cacheScope = explanationResultCacheScope(result.termText, result.contextText);
+  const explanation = await explain(result.termText, result.contextText, cacheScope, false, settings);
+  return {
+    term: result.termText,
+    context: result.contextText,
+    confidence: result.confidence,
+    explanation
+  };
 }
 
 async function beginScreenshotSelection(tab: chrome.tabs.Tab): Promise<void> {
@@ -109,11 +139,11 @@ function delay(ms: number): Promise<void> {
 
 const screenshotCopy = {
   zh: {
-    providerRequired: "截图识词需要在插件设置中配置支持图片输入的多模态 LLM。",
+    providerRequired: "多模态截图解释需要配置支持图片输入的 LLM 和 API Key。",
     disabled: "截图解释已在插件设置中关闭。"
   },
   en: {
-    providerRequired: "Screenshot recognition requires a multimodal LLM configured in extension settings.",
+    providerRequired: "Multimodal screenshot explanations require an image-capable LLM and API key.",
     disabled: "Screenshot explanations are disabled in extension settings."
   }
 } as const;

@@ -10,6 +10,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
     language: "auto",
     includeUsageExample: false,
     screenshotRecognitionEnabled: true,
+    screenshotRecognitionMode: "auto",
     maxConcurrency: 5,
     temperature: 0.2,
     maxTokens: 450,

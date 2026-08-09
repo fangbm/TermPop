@@ -258,7 +258,7 @@ function escapeHtml(value: string): string {
 const copy = {
   zh: {
     consentTitle: "启用截图识词",
-    consentBody: "TermPop 会把你框选的区域和少量周边画面发送到当前配置的多模态 LLM，用于识别词汇与上下文。截图不会写入 TermPop 本地缓存；数据处理规则由所选服务商决定。",
+    consentBody: "TermPop 会按设置使用本地 OCR，或把你框选的区域和少量周边画面发送到当前配置的多模态 LLM。截图本身不会写入 TermPop 缓存。",
     cancel: "取消",
     continue: "继续框选",
     hint: "拖动框选要解释的词汇，按 Esc 取消",
@@ -266,7 +266,7 @@ const copy = {
   },
   en: {
     consentTitle: "Enable screenshot recognition",
-    consentBody: "TermPop sends the area you select and a small surrounding region to your configured multimodal LLM to identify the term and its context. Screenshots are not written to TermPop's local cache; your provider's data policy applies.",
+    consentBody: "Depending on your settings, TermPop uses local OCR or sends the selected area and a small surrounding region to your configured multimodal LLM. Screenshot images are not stored in the TermPop cache.",
     cancel: "Cancel",
     continue: "Continue",
     hint: "Drag around the term to explain. Press Esc to cancel.",

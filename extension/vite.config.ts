@@ -12,6 +12,7 @@ export default defineConfig({
       input: {
         background: resolve(__dirname, "src/background/service-worker.ts"),
         content: resolve(__dirname, "src/content/main.ts"),
+        ocr: resolve(__dirname, "src/ocr/ocr.html"),
         popup: resolve(__dirname, "src/popup/popup.html"),
         pdfViewer: resolve(__dirname, "src/pdf-viewer/pdf-viewer.html")
       },
@@ -32,6 +33,7 @@ export default defineConfig({
         copyFileSync(resolve(__dirname, "src/manifest.json"), resolve(__dirname, "dist/manifest.json"));
         copyFileSync(resolve(__dirname, "src/content/loader.js"), resolve(__dirname, "dist/content-loader.js"));
         copyFileSync(resolve(__dirname, "dist/src/popup/popup.html"), resolve(__dirname, "dist/assets/popup.html"));
+        copyFileSync(resolve(__dirname, "dist/src/ocr/ocr.html"), resolve(__dirname, "dist/assets/ocr.html"));
         copyFileSync(resolve(__dirname, "dist/src/pdf-viewer/pdf-viewer.html"), resolve(__dirname, "dist/assets/pdf-viewer.html"));
         for (const iconFile of readdirSync(resolve(__dirname, "src/assets/icons"))) {
           copyFileSync(
@@ -40,11 +42,39 @@ export default defineConfig({
           );
         }
         copyDirectory(resolve(__dirname, "src/_locales"), resolve(__dirname, "dist/_locales"));
+        copyOcrAssets();
         validateManifestResources();
       }
     }
   ]
 });
+
+function copyOcrAssets(): void {
+  const destination = resolve(__dirname, "dist/assets/ocr");
+  const coreDestination = resolve(destination, "core");
+  const languageDestination = resolve(destination, "lang");
+  mkdirSync(coreDestination, { recursive: true });
+  mkdirSync(languageDestination, { recursive: true });
+  copyFileSync(
+    resolve(__dirname, "node_modules/tesseract.js/dist/worker.min.js"),
+    resolve(destination, "worker.min.js")
+  );
+  for (const file of [
+    "tesseract-core-lstm.wasm.js",
+    "tesseract-core-simd-lstm.wasm.js",
+    "tesseract-core-relaxedsimd-lstm.wasm.js"
+  ]) {
+    copyFileSync(resolve(__dirname, "node_modules/tesseract.js-core", file), resolve(coreDestination, file));
+  }
+  copyFileSync(
+    resolve(__dirname, "node_modules/@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz"),
+    resolve(languageDestination, "eng.traineddata.gz")
+  );
+  copyFileSync(
+    resolve(__dirname, "node_modules/@tesseract.js-data/chi_sim/4.0.0_best_int/chi_sim.traineddata.gz"),
+    resolve(languageDestination, "chi_sim.traineddata.gz")
+  );
+}
 
 function validateManifestResources(): void {
   const distDir = resolve(__dirname, "dist");
@@ -63,6 +93,14 @@ function validateManifestResources(): void {
   if (manifest.action?.default_popup) {
     resources.add(manifest.action.default_popup);
   }
+  resources.add("assets/ocr.html");
+  resources.add("assets/ocr.js");
+  resources.add("assets/ocr/worker.min.js");
+  resources.add("assets/ocr/core/tesseract-core-lstm.wasm.js");
+  resources.add("assets/ocr/core/tesseract-core-simd-lstm.wasm.js");
+  resources.add("assets/ocr/core/tesseract-core-relaxedsimd-lstm.wasm.js");
+  resources.add("assets/ocr/lang/eng.traineddata.gz");
+  resources.add("assets/ocr/lang/chi_sim.traineddata.gz");
   for (const resource of Object.values(manifest.icons ?? {})) {
     resources.add(resource);
   }

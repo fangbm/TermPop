@@ -7,6 +7,7 @@ import type {
   InjectActiveTabResponse,
   LlmProvider,
   LlmSettings,
+  ScreenshotRecognitionMode,
   SetSiteAccessResponse,
   SiteAccessState,
   TermPopMode,
@@ -27,6 +28,9 @@ const baseUrlInput = document.querySelector<HTMLInputElement>("#base-url");
 const languageInput = document.querySelector<HTMLSelectElement>("#language");
 const includeUsageExampleInput = document.querySelector<HTMLInputElement>("#include-usage-example");
 const screenshotRecognitionEnabledInput = document.querySelector<HTMLInputElement>("#screenshot-recognition-enabled");
+const screenshotRecognitionModeInput = document.querySelector<HTMLSelectElement>("#screenshot-recognition-mode");
+const screenshotShortcut = document.querySelector<HTMLElement>("#screenshot-shortcut");
+const customizeShortcutButton = document.querySelector<HTMLButtonElement>("#customize-shortcut");
 const temperatureInput = document.querySelector<HTMLInputElement>("#temperature");
 const maxTokensInput = document.querySelector<HTMLInputElement>("#max-tokens");
 const maxConcurrencyInput = document.querySelector<HTMLInputElement>("#max-concurrency");
@@ -82,7 +86,14 @@ const t = {
     languageAuto: "跟随上下文",
     languageChinese: "中文",
     includeUsageExample: "生成例句",
-    screenshotRecognitionEnabled: "启用截图解释（Alt+Shift+E）",
+    screenshotRecognitionEnabled: "启用截图解释",
+    screenshotRecognitionMode: "截图识别方式",
+    screenshotModeAuto: "自动选择",
+    screenshotModeMultimodal: "多模态 LLM",
+    screenshotModeOcr: "本地 OCR",
+    screenshotShortcutLabel: "截图快捷键",
+    customizeShortcut: "自定义快捷键",
+    shortcutUnassigned: "未设置",
     advancedSettings: "高级设置",
     collapseAdvancedSettings: "收起高级设置",
     temperature: "温度",
@@ -138,7 +149,14 @@ const t = {
     languageAuto: "Follow context",
     languageChinese: "Chinese",
     includeUsageExample: "Generate usage example",
-    screenshotRecognitionEnabled: "Enable screenshot explanations (Alt+Shift+E)",
+    screenshotRecognitionEnabled: "Enable screenshot explanations",
+    screenshotRecognitionMode: "Screenshot recognition",
+    screenshotModeAuto: "Automatic",
+    screenshotModeMultimodal: "Multimodal LLM",
+    screenshotModeOcr: "Local OCR",
+    screenshotShortcutLabel: "Screenshot shortcut",
+    customizeShortcut: "Customize shortcut",
+    shortcutUnassigned: "Not assigned",
     advancedSettings: "Advanced settings",
     collapseAdvancedSettings: "Collapse advanced settings",
     temperature: "Temperature",
@@ -174,6 +192,7 @@ async function init(): Promise<void> {
   renderAdvancedSettings(settings.llm);
   await renderSiteAccess();
   await renderPdfToolsVisibility();
+  await renderScreenshotShortcut();
 
   for (const button of buttons) {
     button.addEventListener("click", () => {
@@ -231,6 +250,14 @@ async function init(): Promise<void> {
 
   screenshotRecognitionEnabledInput?.addEventListener("change", () => {
     void saveLlm();
+  });
+
+  screenshotRecognitionModeInput?.addEventListener("change", () => {
+    void saveLlm();
+  });
+
+  customizeShortcutButton?.addEventListener("click", () => {
+    void openShortcutSettings();
   });
 
   advancedToggle?.addEventListener("click", () => {
@@ -548,6 +575,7 @@ function collectLlmSettings(): LlmSettings {
     language: (languageInput?.value || "auto") as ExplanationLanguage,
     includeUsageExample: includeUsageExampleInput?.checked ?? false,
     screenshotRecognitionEnabled: screenshotRecognitionEnabledInput?.checked ?? true,
+    screenshotRecognitionMode: (screenshotRecognitionModeInput?.value || "auto") as ScreenshotRecognitionMode,
     maxConcurrency: Math.round(clampNumber(Number(maxConcurrencyInput?.value), 1, Number.MAX_SAFE_INTEGER, 5)),
     temperature: clampNumber(Number(temperatureInput?.value), 0, 2, 0.2),
     maxTokens: Math.round(clampNumber(Number(maxTokensInput?.value), 128, 4000, 450)),
@@ -596,9 +624,25 @@ function renderNormalizedLlmFields(llm: LlmSettings): void {
   if (languageInput) languageInput.value = llm.language;
   if (includeUsageExampleInput) includeUsageExampleInput.checked = llm.includeUsageExample;
   if (screenshotRecognitionEnabledInput) screenshotRecognitionEnabledInput.checked = llm.screenshotRecognitionEnabled;
+  if (screenshotRecognitionModeInput) screenshotRecognitionModeInput.value = llm.screenshotRecognitionMode;
   if (maxConcurrencyInput) maxConcurrencyInput.value = String(llm.maxConcurrency);
   if (temperatureInput) temperatureInput.value = String(llm.temperature);
   if (maxTokensInput) maxTokensInput.value = String(llm.maxTokens);
+}
+
+async function renderScreenshotShortcut(): Promise<void> {
+  if (!screenshotShortcut) {
+    return;
+  }
+  const commands = await chrome.commands.getAll();
+  const command = commands.find((item) => item.name === "explain-screenshot");
+  screenshotShortcut.textContent = command?.shortcut || t[uiLocale].shortcutUnassigned;
+}
+
+async function openShortcutSettings(): Promise<void> {
+  const scheme = navigator.userAgent.includes("Edg/") ? "edge" : "chrome";
+  await chrome.tabs.create({ url: `${scheme}://extensions/shortcuts` });
+  window.close();
 }
 
 function renderAdvancedSettings(llm: LlmSettings): void {

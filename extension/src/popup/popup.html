@@ -66,8 +66,23 @@
         </label>
         <label class="checkbox-row">
           <input id="screenshot-recognition-enabled" name="screenshotRecognitionEnabled" type="checkbox" />
-          <span data-i18n="screenshotRecognitionEnabled">启用截图解释（Alt+Shift+E）</span>
+          <span data-i18n="screenshotRecognitionEnabled">启用截图解释</span>
         </label>
+        <label>
+          <span data-i18n="screenshotRecognitionMode">截图识别方式</span>
+          <select id="screenshot-recognition-mode" name="screenshotRecognitionMode">
+            <option value="auto" data-i18n="screenshotModeAuto">自动选择</option>
+            <option value="multimodal" data-i18n="screenshotModeMultimodal">多模态 LLM</option>
+            <option value="ocr" data-i18n="screenshotModeOcr">本地 OCR</option>
+          </select>
+        </label>
+        <section class="shortcut-settings" aria-label="截图快捷键" data-i18n-attr="aria-label:screenshotShortcutLabel">
+          <div>
+            <span data-i18n="screenshotShortcutLabel">截图快捷键</span>
+            <strong id="screenshot-shortcut">Alt+Shift+S</strong>
+          </div>
+          <button id="customize-shortcut" class="secondary-button" type="button" data-i18n="customizeShortcut">自定义快捷键</button>
+        </section>
         <button id="advanced-toggle" class="secondary-button" type="button">高级设置</button>
         <section id="advanced-settings" class="advanced-settings" hidden>
           <div class="inline-fields">

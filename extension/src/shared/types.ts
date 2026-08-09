@@ -4,6 +4,7 @@ export type TermPopMode = "hover" | "selection" | "hybrid";
 export type LlmProvider = "mock" | "openai" | "kimi" | "openai-compatible" | "anthropic";
 export type ExplanationLanguage = "auto" | "zh-CN" | "en";
 export type CacheScope = "global" | "domain" | "pageFingerprint";
+export type ScreenshotRecognitionMode = "auto" | "multimodal" | "ocr";
 
 export interface DetectedTerm {
   term: string;
@@ -51,6 +52,7 @@ export interface LlmSettings {
   language: ExplanationLanguage;
   includeUsageExample: boolean;
   screenshotRecognitionEnabled: boolean;
+  screenshotRecognitionMode: ScreenshotRecognitionMode;
   maxConcurrency: number;
   temperature: number;
   maxTokens: number;
@@ -241,6 +243,25 @@ export interface RecognizeScreenshotRequest {
   termImageDataUrl: string;
   contextImageDataUrl: string;
   url?: string;
+}
+
+export interface OcrImageResult {
+  termText: string;
+  contextText: string;
+  confidence: number;
+}
+
+export interface RunOcrRequest {
+  type: "TERMPOP_RUN_OCR";
+  target: "offscreen";
+  termImageDataUrl: string;
+  contextImageDataUrl: string;
+}
+
+export interface RunOcrResponse {
+  ok: boolean;
+  result?: OcrImageResult;
+  error?: string;
 }
 
 export interface RecognizeScreenshotResponse {
