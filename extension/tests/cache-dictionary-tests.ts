@@ -79,6 +79,7 @@ async function testUserDictionarySettings(): Promise<void> {
   const settings = await getSettings();
   equal(settings.dictionary.user.length, 1);
   equal(settings.dictionary.user[0].term, "星穹检索");
+  equal(settings.llm.screenshotRecognitionEnabled, true);
 }
 
 function testContentCacheView(): void {
@@ -121,6 +122,7 @@ function llmSettings(): LlmSettings {
     baseUrl: "https://api.example/v1",
     language: "zh-CN",
     includeUsageExample: false,
+    screenshotRecognitionEnabled: true,
     maxConcurrency: 5,
     temperature: 0.2,
     maxTokens: 450

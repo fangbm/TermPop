@@ -42,6 +42,9 @@ export async function recognizeScreenshot(request: RecognizeScreenshotRequest): 
   assertScreenshotDataUrl(request.termImageDataUrl);
   assertScreenshotDataUrl(request.contextImageDataUrl);
   const settings = await getSettings();
+  if (!settings.llm.screenshotRecognitionEnabled) {
+    throw new Error(screenshotCopy[uiLocale()].disabled);
+  }
   if (settings.llm.provider === "mock" || !settings.llm.apiKey.trim()) {
     throw new Error(screenshotCopy[uiLocale()].providerRequired);
   }
@@ -62,6 +65,10 @@ export async function recognizeScreenshot(request: RecognizeScreenshotRequest): 
 }
 
 async function beginScreenshotSelection(tab: chrome.tabs.Tab): Promise<void> {
+  const settings = await getSettings();
+  if (!settings.llm.screenshotRecognitionEnabled) {
+    throw new Error(screenshotCopy[uiLocale()].disabled);
+  }
   if (tab.id === undefined || !tab.url || !await isUrlEnabled(tab.url)) {
     throw new Error("TermPop is not enabled on this site.");
   }
@@ -102,10 +109,12 @@ function delay(ms: number): Promise<void> {
 
 const screenshotCopy = {
   zh: {
-    providerRequired: "截图识词需要在插件设置中配置支持图片输入的多模态 LLM。"
+    providerRequired: "截图识词需要在插件设置中配置支持图片输入的多模态 LLM。",
+    disabled: "截图解释已在插件设置中关闭。"
   },
   en: {
-    providerRequired: "Screenshot recognition requires a multimodal LLM configured in extension settings."
+    providerRequired: "Screenshot recognition requires a multimodal LLM configured in extension settings.",
+    disabled: "Screenshot explanations are disabled in extension settings."
   }
 } as const;
 

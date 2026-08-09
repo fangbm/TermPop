@@ -50,6 +50,7 @@ export interface LlmSettings {
   baseUrl: string;
   language: ExplanationLanguage;
   includeUsageExample: boolean;
+  screenshotRecognitionEnabled: boolean;
   maxConcurrency: number;
   temperature: number;
   maxTokens: number;

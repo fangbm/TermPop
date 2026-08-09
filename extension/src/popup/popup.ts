@@ -26,6 +26,7 @@ const modelInput = document.querySelector<HTMLInputElement>("#model");
 const baseUrlInput = document.querySelector<HTMLInputElement>("#base-url");
 const languageInput = document.querySelector<HTMLSelectElement>("#language");
 const includeUsageExampleInput = document.querySelector<HTMLInputElement>("#include-usage-example");
+const screenshotRecognitionEnabledInput = document.querySelector<HTMLInputElement>("#screenshot-recognition-enabled");
 const temperatureInput = document.querySelector<HTMLInputElement>("#temperature");
 const maxTokensInput = document.querySelector<HTMLInputElement>("#max-tokens");
 const maxConcurrencyInput = document.querySelector<HTMLInputElement>("#max-concurrency");
@@ -81,6 +82,7 @@ const t = {
     languageAuto: "跟随上下文",
     languageChinese: "中文",
     includeUsageExample: "生成例句",
+    screenshotRecognitionEnabled: "启用截图解释（Alt+Shift+E）",
     advancedSettings: "高级设置",
     collapseAdvancedSettings: "收起高级设置",
     temperature: "温度",
@@ -136,6 +138,7 @@ const t = {
     languageAuto: "Follow context",
     languageChinese: "Chinese",
     includeUsageExample: "Generate usage example",
+    screenshotRecognitionEnabled: "Enable screenshot explanations (Alt+Shift+E)",
     advancedSettings: "Advanced settings",
     collapseAdvancedSettings: "Collapse advanced settings",
     temperature: "Temperature",
@@ -223,6 +226,10 @@ async function init(): Promise<void> {
   });
 
   includeUsageExampleInput?.addEventListener("change", () => {
+    void saveLlm();
+  });
+
+  screenshotRecognitionEnabledInput?.addEventListener("change", () => {
     void saveLlm();
   });
 
@@ -540,6 +547,7 @@ function collectLlmSettings(): LlmSettings {
     baseUrl: normalizeBaseUrl(baseUrlInput?.value.trim() || defaultBaseUrl((providerInput?.value || "mock") as LlmProvider)),
     language: (languageInput?.value || "auto") as ExplanationLanguage,
     includeUsageExample: includeUsageExampleInput?.checked ?? false,
+    screenshotRecognitionEnabled: screenshotRecognitionEnabledInput?.checked ?? true,
     maxConcurrency: Math.round(clampNumber(Number(maxConcurrencyInput?.value), 1, Number.MAX_SAFE_INTEGER, 5)),
     temperature: clampNumber(Number(temperatureInput?.value), 0, 2, 0.2),
     maxTokens: Math.round(clampNumber(Number(maxTokensInput?.value), 128, 4000, 450)),
@@ -587,6 +595,7 @@ function renderNormalizedLlmFields(llm: LlmSettings): void {
   if (baseUrlInput) baseUrlInput.value = llm.baseUrl;
   if (languageInput) languageInput.value = llm.language;
   if (includeUsageExampleInput) includeUsageExampleInput.checked = llm.includeUsageExample;
+  if (screenshotRecognitionEnabledInput) screenshotRecognitionEnabledInput.checked = llm.screenshotRecognitionEnabled;
   if (maxConcurrencyInput) maxConcurrencyInput.value = String(llm.maxConcurrency);
   if (temperatureInput) temperatureInput.value = String(llm.temperature);
   if (maxTokensInput) maxTokensInput.value = String(llm.maxTokens);

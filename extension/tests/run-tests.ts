@@ -351,6 +351,7 @@ function testSettings(maxConcurrency: number) {
     baseUrl: "https://api.openai.com/v1",
     language: "en" as const,
     includeUsageExample: false,
+    screenshotRecognitionEnabled: true,
     maxConcurrency,
     temperature: 0.2,
     maxTokens: 128

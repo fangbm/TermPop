@@ -9,6 +9,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
     baseUrl: "https://api.openai.com/v1",
     language: "auto",
     includeUsageExample: false,
+    screenshotRecognitionEnabled: true,
     maxConcurrency: 5,
     temperature: 0.2,
     maxTokens: 450,
