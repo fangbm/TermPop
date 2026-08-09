@@ -4,5 +4,8 @@
   },
   "extensionDescription": {
     "message": "Highlight technical terms on web pages and show contextual explanations."
+  },
+  "screenshotCommandDescription": {
+    "message": "Select an area of the page and explain the term in it"
   }
 }

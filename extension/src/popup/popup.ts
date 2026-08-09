@@ -1,5 +1,6 @@
 import { getSettings, setLlmSettings, setMode } from "../shared/settings";
 import { defaultBaseUrl, defaultModel, normalizeBaseUrl } from "../shared/llm-defaults";
+import { ALL_SITES_ORIGIN_PATTERNS, FILE_ORIGIN_PATTERN, providerOriginPatternFromBaseUrl } from "../shared/browser-utils";
 import type {
   ExplanationLanguage,
   GetSiteAccessResponse,
@@ -10,7 +11,8 @@ import type {
   SiteAccessState,
   TermPopMode,
   DisableSiteRequest,
-  DisableSiteResponse
+  DisableSiteResponse,
+  TestLlmProviderResponse
 } from "../shared/types";
 import "./popup.css";
 
@@ -27,6 +29,7 @@ const includeUsageExampleInput = document.querySelector<HTMLInputElement>("#incl
 const temperatureInput = document.querySelector<HTMLInputElement>("#temperature");
 const maxTokensInput = document.querySelector<HTMLInputElement>("#max-tokens");
 const maxConcurrencyInput = document.querySelector<HTMLInputElement>("#max-concurrency");
+const providerTestButton = document.querySelector<HTMLButtonElement>("#provider-test");
 const advancedToggle = document.querySelector<HTMLButtonElement>("#advanced-toggle");
 const advancedSettings = document.querySelector<HTMLElement>("#advanced-settings");
 const siteAccess = document.querySelector<HTMLElement>(".site-access");
@@ -36,15 +39,135 @@ const pdfTools = document.querySelector<HTMLElement>(".pdf-tools");
 const openPdfViewerButton = document.querySelector<HTMLButtonElement>("#open-pdf-viewer");
 const AUTO_SAVE_DELAY_MS = 400;
 let autoSaveTimer: number | undefined;
+let settingsWriteChain: Promise<void> = Promise.resolve();
+let latestLlmSaveId = 0;
+const composingInputs = new Set<HTMLInputElement>();
+let currentSiteAccess: SiteAccessState | undefined;
+type UiLocale = "zh" | "en";
+
+const uiLocale: UiLocale = chrome.i18n.getUILanguage().toLocaleLowerCase().startsWith("zh") ? "zh" : "en";
+const t = {
+  zh: {
+    subtitle: "AI 词汇解释助手",
+    modeGroupLabel: "检测模式",
+    currentSite: "网站访问",
+    readingPermission: "正在读取权限...",
+    enableAllSites: "在所有网站启用 TermPop",
+    blockCurrentSite: "在当前站点停用",
+    unblockCurrentSite: "在当前站点重新启用",
+    enableLocalFiles: "启用本地文件访问",
+    disableLocalFiles: "停用本地文件访问",
+    unavailable: "不可用",
+    unsupportedPage: "当前页面不支持注入。",
+    allSitesRequired: "首次使用需确认一次全站权限，之后无需逐站启用。",
+    enabledOnSite: "TermPop 已在所有网站启用，当前站点允许运行。",
+    blockedOnSite: "当前站点已加入黑名单，TermPop 不会读取或高亮页面内容。",
+    localFilesEnabled: "TermPop 已获准访问本地文件。",
+    localFilesDisabled: "本地文件需要单独授权，不会随全站权限自动开启。",
+    permissionDenied: "未获得所需的网站访问权限。",
+    saveSiteAccessFailed: "保存站点权限失败。",
+    enabledAndInjected: "全站权限已启用，并已注入当前页面。",
+    enabledRefreshRequired: "已启用，刷新页面后生效。",
+    disabledAndCleaned: "当前站点已加入黑名单，并清理了页面高亮。",
+    unblockedAndInjected: "已从黑名单移除并重新启用当前站点。",
+    savedMode: "已保存。当前页面会自动切换展示方式。",
+    noCurrentTab: "没有找到当前标签页。",
+    notPdf: "当前页面不是可识别的 PDF。",
+    pdfButton: "用 TermPop 打开当前 PDF",
+    pdfToolsNote: "适用于网页 PDF 或本地 PDF 文件。浏览器可能需要为插件开启“允许访问文件网址”。",
+    provider: "服务商",
+    model: "模型",
+    explanationLanguage: "解释语言",
+    languageAuto: "跟随上下文",
+    languageChinese: "中文",
+    includeUsageExample: "生成例句",
+    advancedSettings: "高级设置",
+    collapseAdvancedSettings: "收起高级设置",
+    temperature: "温度",
+    maxConcurrency: "并发限制",
+    saving: "正在自动保存...",
+    savedMock: "已自动保存。当前使用本地 Mock 解释。",
+    savedLlm: "已自动保存。当前使用 LLM 解释。",
+    savedFallback: "已自动保存。未填写 API Key，当前使用本地 Mock 解释。",
+    testProvider: "测试连接",
+    testingProvider: "正在测试连接...",
+    providerTestSucceeded: "连接测试成功。",
+    providerNeedsAllSites: "请先点击“在所有网站启用 TermPop”，再测试服务商连接。",
+    providerApiKeyRequired: "请先填写 API Key。",
+    providerBaseUrlInvalid: "Base URL 必须是 HTTP 或 HTTPS 地址。",
+    providerTestFailed: "服务商测试失败",
+    modes: {
+      hover: "悬停",
+      selection: "划词",
+      hybrid: "混合"
+    }
+  },
+  en: {
+    subtitle: "AI term explanation assistant",
+    modeGroupLabel: "Detection mode",
+    currentSite: "Website access",
+    readingPermission: "Reading permissions...",
+    enableAllSites: "Enable TermPop on all websites",
+    blockCurrentSite: "Disable on this site",
+    unblockCurrentSite: "Re-enable on this site",
+    enableLocalFiles: "Enable local file access",
+    disableLocalFiles: "Disable local file access",
+    unavailable: "Unavailable",
+    unsupportedPage: "This page does not support injection.",
+    allSitesRequired: "Grant website access once to use TermPop without enabling every site separately.",
+    enabledOnSite: "TermPop is enabled on all websites and allowed on this site.",
+    blockedOnSite: "This site is blocked. TermPop will not read or highlight its content.",
+    localFilesEnabled: "TermPop can access local files.",
+    localFilesDisabled: "Local files require separate permission and are not included in website access.",
+    permissionDenied: "The required website permission was not granted.",
+    saveSiteAccessFailed: "Failed to save site permission.",
+    enabledAndInjected: "Website access enabled and injected into the current page.",
+    enabledRefreshRequired: "Enabled. Refresh the page if highlights do not appear.",
+    disabledAndCleaned: "Added this site to the blocklist and removed current highlights.",
+    unblockedAndInjected: "Removed this site from the blocklist and re-enabled it.",
+    savedMode: "Saved. The current page will switch display mode automatically.",
+    noCurrentTab: "No active tab was found.",
+    notPdf: "The current page is not a recognizable PDF.",
+    pdfButton: "Open current PDF with TermPop",
+    pdfToolsNote: "Works with web PDFs or local PDF files. Your browser may need file URL access enabled for this extension.",
+    provider: "Provider",
+    model: "Model",
+    explanationLanguage: "Explanation language",
+    languageAuto: "Follow context",
+    languageChinese: "Chinese",
+    includeUsageExample: "Generate usage example",
+    advancedSettings: "Advanced settings",
+    collapseAdvancedSettings: "Collapse advanced settings",
+    temperature: "Temperature",
+    maxConcurrency: "Concurrency limit",
+    saving: "Saving automatically...",
+    savedMock: "Saved automatically. Local Mock explanations are active.",
+    savedLlm: "Saved automatically. LLM explanations are active.",
+    savedFallback: "Saved automatically. No API key is configured; local Mock explanations are active.",
+    testProvider: "Test connection",
+    testingProvider: "Testing connection...",
+    providerTestSucceeded: "Connection test succeeded.",
+    providerNeedsAllSites: "Enable TermPop on all websites before testing the provider connection.",
+    providerApiKeyRequired: "Enter an API key first.",
+    providerBaseUrlInvalid: "Base URL must use an HTTP or HTTPS origin.",
+    providerTestFailed: "Provider test failed",
+    modes: {
+      hover: "Hover",
+      selection: "Selection",
+      hybrid: "Hybrid"
+    }
+  }
+} as const;
 
 void init();
 
 async function init(): Promise<void> {
   const settings = await getSettings();
+  applyUiLocale();
   setActive(settings.mode);
   renderLlmSettings(settings.llm);
-  renderAppName(settings.llm.language);
-  renderModeLabels(settings.llm.language);
+  renderAppName();
+  renderModeLabels();
   renderAdvancedSettings(settings.llm);
   await renderSiteAccess();
   await renderPdfToolsVisibility();
@@ -58,13 +181,11 @@ async function init(): Promise<void> {
 
   providerInput?.addEventListener("change", () => {
     applyProviderDefaults(providerInput.value as LlmProvider);
+    renderProviderTest();
     void saveLlm();
   });
 
   languageInput?.addEventListener("change", () => {
-    const language = (languageInput.value || "auto") as ExplanationLanguage;
-    renderAppName(language);
-    renderModeLabels(language);
     void saveLlm();
   });
 
@@ -74,9 +195,32 @@ async function init(): Promise<void> {
   });
 
   for (const input of [apiKeyInput, modelInput, baseUrlInput, temperatureInput, maxTokensInput, maxConcurrencyInput]) {
-    input?.addEventListener("input", scheduleLlmAutoSave);
-    input?.addEventListener("change", scheduleLlmAutoSave);
+    if (!input) {
+      continue;
+    }
+    input.addEventListener("compositionstart", () => {
+      composingInputs.add(input);
+      cancelLlmAutoSave();
+    });
+    input.addEventListener("compositionend", () => {
+      composingInputs.delete(input);
+      scheduleLlmAutoSave();
+    });
+    input.addEventListener("input", (event) => {
+      if (!(event instanceof InputEvent && event.isComposing) && !composingInputs.has(input)) {
+        scheduleLlmAutoSave();
+      }
+    });
+    input.addEventListener("change", () => {
+      if (!composingInputs.has(input)) {
+        scheduleLlmAutoSave();
+      }
+    });
   }
+
+  providerTestButton?.addEventListener("click", () => {
+    void testProviderConnection();
+  });
 
   includeUsageExampleInput?.addEventListener("change", () => {
     void saveLlm();
@@ -86,6 +230,9 @@ async function init(): Promise<void> {
     const nextVisible = advancedSettings?.hidden ?? true;
     if (advancedSettings) {
       advancedSettings.hidden = !nextVisible;
+    }
+    if (advancedToggle) {
+      advancedToggle.textContent = nextVisible ? t[uiLocale].collapseAdvancedSettings : t[uiLocale].advancedSettings;
     }
     void saveLlm();
   });
@@ -100,10 +247,10 @@ async function init(): Promise<void> {
 }
 
 async function saveMode(mode: TermPopMode): Promise<void> {
-  await setMode(mode);
+  await enqueueSettingsWrite(() => setMode(mode));
   setActive(mode);
   if (status) {
-    status.textContent = "已保存。当前页面会自动切换展示方式。";
+    status.textContent = t[uiLocale].savedMode;
   }
 }
 
@@ -117,13 +264,13 @@ async function openPdfViewerForActiveTab(): Promise<void> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const sourceUrl = tab?.url;
   if (!sourceUrl) {
-    if (status) status.textContent = "没有找到当前标签页。";
+    if (status) status.textContent = t[uiLocale].noCurrentTab;
     return;
   }
 
   const pdfUrl = extractPdfUrl(sourceUrl);
   if (!pdfUrl) {
-    if (status) status.textContent = "当前页面不是可识别的 PDF。";
+    if (status) status.textContent = t[uiLocale].notPdf;
     return;
   }
 
@@ -143,72 +290,145 @@ async function renderPdfToolsVisibility(): Promise<void> {
 async function renderSiteAccess(): Promise<void> {
   const response = await chrome.runtime.sendMessage({ type: "TERMPOP_GET_SITE_ACCESS" }) as GetSiteAccessResponse;
   if (!response.ok || !response.access) {
-    renderSiteAccessState(undefined, response.error ?? "无法读取当前站点权限。");
+    renderSiteAccessState(undefined, response.error ?? t[uiLocale].readingPermission);
     return;
   }
   renderSiteAccessState(response.access);
 }
 
 function renderSiteAccessState(access: SiteAccessState | undefined, error?: string): void {
+  currentSiteAccess = access;
   siteAccess?.classList.toggle("is-enabled", Boolean(access?.enabled && access.hasPermission));
   siteAccess?.classList.toggle("is-unsupported", Boolean(access && !access.supported));
   if (!access?.supported) {
-    if (siteAccessStatus) siteAccessStatus.textContent = error || "当前页面不支持注入。";
+    if (access && !access.allSitesGranted) {
+      if (siteAccessStatus) siteAccessStatus.textContent = t[uiLocale].allSitesRequired;
+      if (siteAccessToggle) {
+        siteAccessToggle.disabled = false;
+        siteAccessToggle.textContent = t[uiLocale].enableAllSites;
+      }
+      return;
+    }
+    if (siteAccessStatus) siteAccessStatus.textContent = error || t[uiLocale].unsupportedPage;
     if (siteAccessToggle) {
       siteAccessToggle.disabled = true;
-      siteAccessToggle.textContent = "不可用";
+      siteAccessToggle.textContent = t[uiLocale].unavailable;
     }
     return;
   }
 
-  const active = access.enabled && access.hasPermission;
+  if (access.isFile) {
+    if (siteAccessStatus) {
+      siteAccessStatus.textContent = access.hasPermission ? t[uiLocale].localFilesEnabled : t[uiLocale].localFilesDisabled;
+    }
+    if (siteAccessToggle) {
+      siteAccessToggle.disabled = false;
+      siteAccessToggle.textContent = access.hasPermission ? t[uiLocale].disableLocalFiles : t[uiLocale].enableLocalFiles;
+    }
+    return;
+  }
+
+  if (!access.allSitesGranted) {
+    if (siteAccessStatus) siteAccessStatus.textContent = t[uiLocale].allSitesRequired;
+    if (siteAccessToggle) {
+      siteAccessToggle.disabled = false;
+      siteAccessToggle.textContent = t[uiLocale].enableAllSites;
+    }
+    return;
+  }
+
   if (siteAccessStatus) {
-    siteAccessStatus.textContent = active
-      ? "TermPop 已在当前站点启用。"
-      : "启用后才会在当前站点扫描和高亮术语。";
+    siteAccessStatus.textContent = access.blocked ? t[uiLocale].blockedOnSite : t[uiLocale].enabledOnSite;
   }
   if (siteAccessToggle) {
     siteAccessToggle.disabled = false;
-    siteAccessToggle.textContent = active ? "停用当前站点" : "启用当前站点";
+    siteAccessToggle.textContent = access.blocked ? t[uiLocale].unblockCurrentSite : t[uiLocale].blockCurrentSite;
   }
 }
 
 async function toggleSiteAccess(): Promise<void> {
-  const current = await chrome.runtime.sendMessage({ type: "TERMPOP_GET_SITE_ACCESS" }) as GetSiteAccessResponse;
-  if (!current.ok || !current.access?.supported) {
-    renderSiteAccessState(undefined, current.error ?? "当前页面不支持注入。");
+  const access = currentSiteAccess;
+  if (!access) {
+    renderSiteAccessState(undefined, t[uiLocale].unsupportedPage);
     return;
   }
 
-  const nextEnabled = !(current.access.enabled && current.access.hasPermission);
-  if (nextEnabled) {
-    const granted = await chrome.permissions.request({ origins: [current.access.originPattern] });
+  if (!access.allSitesGranted && !access.isFile) {
+    const granted = await chrome.permissions.request({ origins: [...ALL_SITES_ORIGIN_PATTERNS] });
     if (!granted) {
-      if (status) status.textContent = "未获得当前站点权限。";
+      if (status) status.textContent = t[uiLocale].permissionDenied;
       return;
     }
-  } else {
-    await disableActiveTabContent();
-    await chrome.permissions.remove({ origins: [current.access.originPattern] });
-  }
-
-  const saved = await chrome.runtime.sendMessage({
-    type: "TERMPOP_SET_SITE_ACCESS",
-    originPattern: current.access.originPattern,
-    enabled: nextEnabled
-  }) as SetSiteAccessResponse;
-
-  if (!saved.ok || !saved.access) {
-    renderSiteAccessState(undefined, saved.error ?? "保存站点权限失败。");
+    if (access.supported) {
+      const saved = await setCurrentSiteEnabled(access.originPattern, true);
+      if (!saved) {
+        return;
+      }
+      await injectActiveTab();
+    }
+    await renderSiteAccess();
+    if (status) status.textContent = access.supported ? t[uiLocale].enabledAndInjected : t[uiLocale].enabledRefreshRequired;
     return;
   }
 
-  renderSiteAccessState(saved.access);
+  if (!access.supported) {
+    renderSiteAccessState(access, t[uiLocale].unsupportedPage);
+    return;
+  }
+
+  if (access.isFile) {
+    const nextEnabled = !access.hasPermission;
+    if (nextEnabled) {
+      const granted = await chrome.permissions.request({ origins: [FILE_ORIGIN_PATTERN] });
+      if (!granted) {
+        if (status) status.textContent = t[uiLocale].permissionDenied;
+        return;
+      }
+    } else {
+      await disableActiveTabContent();
+      await chrome.permissions.remove({ origins: [FILE_ORIGIN_PATTERN] });
+    }
+    await renderSiteAccess();
+    if (nextEnabled) {
+      await injectActiveTab();
+    }
+    return;
+  }
+
+  const nextEnabled = access.blocked;
+  if (!nextEnabled) {
+    await disableActiveTabContent();
+  }
+  const saved = await setCurrentSiteEnabled(access.originPattern, nextEnabled);
+  if (!saved) {
+    return;
+  }
+  renderSiteAccessState(saved);
   if (nextEnabled) {
-    const injected = await chrome.runtime.sendMessage({ type: "TERMPOP_INJECT_ACTIVE_TAB" }) as InjectActiveTabResponse;
-    if (status) status.textContent = injected.ok && injected.injected ? "已启用并注入当前页面。" : "已启用，刷新页面后生效。";
+    await injectActiveTab();
+    if (status) status.textContent = t[uiLocale].unblockedAndInjected;
   } else if (status) {
-    status.textContent = "已停用当前站点，并清理当前页面高亮。";
+    status.textContent = t[uiLocale].disabledAndCleaned;
+  }
+}
+
+async function setCurrentSiteEnabled(originPattern: string, enabled: boolean): Promise<SiteAccessState | undefined> {
+  const response = await chrome.runtime.sendMessage({
+    type: "TERMPOP_SET_SITE_ACCESS",
+    originPattern,
+    enabled
+  }) as SetSiteAccessResponse;
+  if (!response.ok || !response.access) {
+    renderSiteAccessState(undefined, response.error ?? t[uiLocale].saveSiteAccessFailed);
+    return undefined;
+  }
+  return response.access;
+}
+
+async function injectActiveTab(): Promise<void> {
+  const injected = await chrome.runtime.sendMessage({ type: "TERMPOP_INJECT_ACTIVE_TAB" }) as InjectActiveTabResponse;
+  if (status && (!injected.ok || !injected.injected)) {
+    status.textContent = t[uiLocale].enabledRefreshRequired;
   }
 }
 
@@ -226,31 +446,90 @@ async function disableActiveTabContent(): Promise<void> {
 }
 
 async function saveLlm(): Promise<void> {
-  if (autoSaveTimer !== undefined) {
-    window.clearTimeout(autoSaveTimer);
-    autoSaveTimer = undefined;
-  }
+  cancelLlmAutoSave();
 
   const llm = collectLlmSettings();
-  renderNormalizedLlmFields(llm);
-  await setLlmSettings(llm);
-  renderAppName(llm.language);
-  renderModeLabels(llm.language);
+  const saveId = ++latestLlmSaveId;
+  await enqueueSettingsWrite(() => setLlmSettings(llm));
+  if (saveId !== latestLlmSaveId) {
+    return;
+  }
+  renderAppName();
+  renderModeLabels();
+  renderProviderTest();
   if (status) {
-    status.textContent = llm.provider === "mock" ? "已自动保存。当前使用本地 Mock 解释。" : "已自动保存。当前使用 LLM 解释。";
+    status.textContent = llm.provider === "mock"
+      ? t[uiLocale].savedMock
+      : llm.apiKey ? t[uiLocale].savedLlm : t[uiLocale].savedFallback;
+  }
+}
+
+async function testProviderConnection(): Promise<void> {
+  const settings = collectLlmSettings();
+  if (settings.provider === "mock") {
+    if (status) status.textContent = t[uiLocale].savedMock;
+    return;
+  }
+  if (!settings.apiKey) {
+    if (status) status.textContent = t[uiLocale].providerApiKeyRequired;
+    return;
+  }
+
+  const originPattern = providerOriginPatternFromBaseUrl(settings.baseUrl);
+  if (!originPattern) {
+    if (status) status.textContent = t[uiLocale].providerBaseUrlInvalid;
+    return;
+  }
+
+  if (!currentSiteAccess?.allSitesGranted) {
+    if (status) status.textContent = t[uiLocale].providerNeedsAllSites;
+    return;
+  }
+
+  if (providerTestButton) {
+    providerTestButton.disabled = true;
+    providerTestButton.textContent = t[uiLocale].testingProvider;
+  }
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: "TERMPOP_TEST_LLM_PROVIDER",
+      settings
+    }) as TestLlmProviderResponse;
+    if (!response.ok) {
+      if (status) status.textContent = `${t[uiLocale].providerTestFailed}: ${response.error ?? ""}`.trim();
+      return;
+    }
+    await setLlmSettings(settings);
+    if (status) status.textContent = t[uiLocale].providerTestSucceeded;
+  } catch (error) {
+    if (status) status.textContent = `${t[uiLocale].providerTestFailed}: ${error instanceof Error ? error.message : String(error)}`;
+  } finally {
+    renderProviderTest();
   }
 }
 
 function scheduleLlmAutoSave(): void {
-  if (autoSaveTimer !== undefined) {
-    window.clearTimeout(autoSaveTimer);
-  }
+  cancelLlmAutoSave();
   if (status) {
-    status.textContent = "正在自动保存...";
+    status.textContent = t[uiLocale].saving;
   }
   autoSaveTimer = window.setTimeout(() => {
     void saveLlm();
   }, AUTO_SAVE_DELAY_MS);
+}
+
+function cancelLlmAutoSave(): void {
+  if (autoSaveTimer === undefined) {
+    return;
+  }
+  window.clearTimeout(autoSaveTimer);
+  autoSaveTimer = undefined;
+}
+
+function enqueueSettingsWrite(write: () => Promise<void>): Promise<void> {
+  const queued = settingsWriteChain.catch(() => undefined).then(write);
+  settingsWriteChain = queued;
+  return queued;
 }
 
 function collectLlmSettings(): LlmSettings {
@@ -270,23 +549,35 @@ function collectLlmSettings(): LlmSettings {
   return llm;
 }
 
-function renderAppName(language: ExplanationLanguage): void {
-  const name = language === "en" ? "TermPop" : "TermPop";
+function renderAppName(): void {
+  const name = "TermPop";
   document.title = name;
   if (appTitle) {
     appTitle.textContent = name;
   }
 }
 
-function renderModeLabels(language: ExplanationLanguage): void {
+function renderModeLabels(): void {
   for (const button of buttons) {
-    button.textContent = language === "en" ? button.dataset.labelEn ?? "" : button.dataset.labelZh ?? "";
+    const mode = button.dataset.mode as TermPopMode | undefined;
+    if (mode && mode in t[uiLocale].modes) {
+      button.textContent = t[uiLocale].modes[mode as keyof typeof t.zh.modes];
+    }
   }
 }
 
 function renderLlmSettings(llm: LlmSettings): void {
   renderNormalizedLlmFields(llm);
   renderAdvancedSettings(llm);
+  renderProviderTest();
+}
+
+function renderProviderTest(): void {
+  if (!providerTestButton || !providerInput) {
+    return;
+  }
+  providerTestButton.disabled = providerInput.value === "mock";
+  providerTestButton.textContent = t[uiLocale].testProvider;
 }
 
 function renderNormalizedLlmFields(llm: LlmSettings): void {
@@ -306,8 +597,30 @@ function renderAdvancedSettings(llm: LlmSettings): void {
     advancedSettings.hidden = !llm.advancedVisible;
   }
   if (advancedToggle) {
-    advancedToggle.textContent = llm.advancedVisible ? "收起高级设置" : "高级设置";
+    advancedToggle.textContent = llm.advancedVisible ? t[uiLocale].collapseAdvancedSettings : t[uiLocale].advancedSettings;
   }
+}
+
+function applyUiLocale(): void {
+  document.documentElement.lang = uiLocale === "zh" ? "zh-CN" : "en";
+  for (const element of Array.from(document.querySelectorAll<HTMLElement>("[data-i18n]"))) {
+    const key = element.dataset.i18n as keyof typeof t.zh | undefined;
+    if (key && typeof t[uiLocale][key] === "string") {
+      element.textContent = t[uiLocale][key];
+    }
+  }
+  for (const element of Array.from(document.querySelectorAll<HTMLElement>("[data-i18n-attr]"))) {
+    const rules = element.dataset.i18nAttr?.split(",") ?? [];
+    for (const rule of rules) {
+      const [attribute, key] = rule.split(":").map((part) => part.trim());
+      if (attribute && key && key in t[uiLocale] && typeof t[uiLocale][key as keyof typeof t.zh] === "string") {
+        element.setAttribute(attribute, t[uiLocale][key as keyof typeof t.zh] as string);
+      }
+    }
+  }
+  if (siteAccessStatus) siteAccessStatus.textContent = t[uiLocale].readingPermission;
+  if (siteAccessToggle) siteAccessToggle.textContent = t[uiLocale].enableAllSites;
+  if (openPdfViewerButton) openPdfViewerButton.textContent = t[uiLocale].pdfButton;
 }
 
 function applyProviderDefaults(provider: LlmProvider): void {

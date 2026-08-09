@@ -33,6 +33,8 @@ export interface Explanation {
   related_terms: string[];
   usage_example?: string | null;
   source_url?: string | null;
+  provider_status?: "mock" | "llm";
+  fallback_reason?: "missing-api-key";
 }
 
 export interface ExtensionSettings {
@@ -80,6 +82,22 @@ export interface ExplainRequest {
 export interface ExplainResponse {
   ok: boolean;
   explanation?: Explanation;
+  error?: string;
+}
+
+export interface ScreenshotRecognition {
+  term: string;
+  context: string;
+  confidence: number;
+}
+
+export interface TestLlmProviderRequest {
+  type: "TERMPOP_TEST_LLM_PROVIDER";
+  settings: LlmSettings;
+}
+
+export interface TestLlmProviderResponse {
+  ok: boolean;
   error?: string;
 }
 
@@ -149,6 +167,9 @@ export interface SiteAccessState {
   supported: boolean;
   enabled: boolean;
   hasPermission: boolean;
+  allSitesGranted: boolean;
+  blocked: boolean;
+  isFile: boolean;
 }
 
 export interface GetSiteAccessRequest {
@@ -189,6 +210,38 @@ export interface DisableSiteRequest {
 
 export interface DisableSiteResponse {
   ok: boolean;
+  error?: string;
+}
+
+export interface BeginScreenshotSelectionRequest {
+  type: "TERMPOP_BEGIN_SCREENSHOT_SELECTION";
+}
+
+export interface BeginScreenshotSelectionResponse {
+  ok: boolean;
+  error?: string;
+}
+
+export interface CaptureVisibleTabRequest {
+  type: "TERMPOP_CAPTURE_VISIBLE_TAB";
+}
+
+export interface CaptureVisibleTabResponse {
+  ok: boolean;
+  dataUrl?: string;
+  error?: string;
+}
+
+export interface RecognizeScreenshotRequest {
+  type: "TERMPOP_RECOGNIZE_SCREENSHOT";
+  termImageDataUrl: string;
+  contextImageDataUrl: string;
+  url?: string;
+}
+
+export interface RecognizeScreenshotResponse {
+  ok: boolean;
+  recognition?: ScreenshotRecognition;
   error?: string;
 }
 

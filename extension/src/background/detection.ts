@@ -1,10 +1,11 @@
-import { byteOffsetToJsIndex } from "../shared/byte-offset";
 import { filterAllowedDetectedTerms, findAllowedOccurrences, findAllowedOccurrencesIgnoreCase } from "../shared/term-matching";
+import { byteOffsetToJsIndex } from "../shared/byte-offset";
 import { normalizeTermType } from "../shared/types";
 import type { DetectTermsDebug, DetectedTerm, LlmSettings } from "../shared/types";
 import { addCachedTerms, detectCachedTerms } from "./cache";
 import { extractJsonPayload } from "./json";
 import { createLlmProvider } from "./llm-provider";
+import { assertLlmProviderAuthorized } from "./provider-access";
 import { buildTermExtractionPrompt, buildTermExtractionSystemPrompt } from "./prompts";
 import { debugLog, defaultBaseUrl, defaultModel, sanitizeForLog } from "./utils";
 import { detectWithWasm } from "./wasm-runtime";
@@ -87,6 +88,7 @@ export async function detectTerms(
   let llmDebug: DetectTermsDebug | undefined;
   if (settings.llm.provider !== "mock" && settings.llm.apiKey.trim()) {
     try {
+      await assertLlmProviderAuthorized(settings.llm);
       const result = await fetchLlmDetectedTerms(text, settings.llm, primaryTerms);
       llmTerms = result.terms;
       llmDebug = result.debug;

@@ -2,6 +2,8 @@ import initWasm, { detect_terms_json } from "../wasm/termpop_core.js";
 import { getContentSettings } from "../shared/settings";
 import type {
   AddCachedTermsRequest,
+  BeginScreenshotSelectionRequest,
+  BeginScreenshotSelectionResponse,
   CachedTermEntry,
   DetectTermsRequest,
   DetectTermsResponse,
@@ -15,15 +17,21 @@ import type {
   Explanation,
   GetCachedTermsRequest,
   GetCachedTermsResponse,
+  GetSiteAccessResponse,
+  RecognizeScreenshotRequest,
+  RecognizeScreenshotResponse,
   TermPopMode
 } from "../shared/types";
 import { TermPopOverlayController } from "../shared/overlay";
 import { byteOffsetToJsIndex } from "../shared/byte-offset";
 import { normalizeTermType } from "../shared/types";
 import { filterAllowedDetectedTerms, findAllowedOccurrences } from "../shared/term-matching";
-import { domainFromUrl, originPatternFromUrl, pageFingerprintFromUrlAndText, sanitizeForLog, SITE_ACCESS_STORAGE_KEY } from "../shared/browser-utils";
+import { BLOCKED_SITES_STORAGE_KEY, pageFingerprintFromUrlAndText, sanitizeForLog } from "../shared/browser-utils";
 import styles from "./styles.css?inline";
 import overlayStyles from "../shared/overlay.css?inline";
+import screenshotSelectionStyles from "./screenshot-selection.css?inline";
+import { isCachedTermAvailable, mergeCachedTermView } from "./cache-view";
+import { ScreenshotSelectionController } from "./screenshot-selection";
 
 const MAX_HIGHLIGHTS_AUTO = 80;
 const MAX_HIGHLIGHTS_HYBRID = 40;
@@ -39,8 +47,12 @@ const HOVER_SHOW_DELAY_MS = 420;
 let overlay: TermPopOverlayController | undefined;
 let activeMode: TermPopMode = "hover";
 let scanTimer: number | undefined;
+let pendingScanRoots: Node[] = [];
 let cacheFlushTimer: number | undefined;
 let selectionAnchor: HTMLElement | undefined;
+let screenshotAnchor: HTMLElement | undefined;
+let screenshotSelection: ScreenshotSelectionController | undefined;
+let screenshotRequestSeq = 0;
 let mutationObserver: MutationObserver | undefined;
 let scanGeneration = 0;
 let lastContextMenuPoint: { x: number; y: number; time: number } | undefined;
@@ -56,7 +68,7 @@ const explanationRequestIds = new WeakMap<HTMLElement, number>();
 let explanationRequestSeq = 0;
 const debugOptions = readDebugOptions();
 const runtimeState = globalThis as typeof globalThis & { __termpopBooted?: boolean };
-let cachedPageFingerprint: { value: string; at: number } | undefined;
+let cachedPageFingerprint: { value: string; at: number; url: string } | undefined;
 
 type DetectionModeOverride = "primary" | "llm" | "all";
 type TextNodeSpan = {
@@ -80,8 +92,10 @@ async function boot(): Promise<void> {
   injectStyles();
   overlay = new TermPopOverlayController({
     rootId: ROOT_ID,
-    anchorSelector: `.${HIGHLIGHT_CLASS}`
+    anchorSelector: `.${HIGHLIGHT_CLASS}, [data-termpop-virtual-anchor]`,
+    locale: uiLocale()
   });
+  screenshotSelection = new ScreenshotSelectionController(uiLocale());
 
   const { mode } = await getContentSettings();
   globalCachedTerms = debugOptions.disableCache ? [] : await loadGlobalCachedTerms();
@@ -110,11 +124,11 @@ function injectStyles(): void {
 
   const style = document.createElement("style");
   style.id = "termpop-styles";
-  style.textContent = `${styles}\n${overlayStyles}`;
+  style.textContent = `${styles}\n${overlayStyles}\n${screenshotSelectionStyles}`;
   document.documentElement.append(style);
 }
 
-async function scanAndHighlight(mode: TermPopMode): Promise<void> {
+async function scanAndHighlight(mode: TermPopMode, dirtyRoots?: Node[]): Promise<void> {
   if (siteDisabled) {
     return;
   }
@@ -130,28 +144,13 @@ async function scanAndHighlight(mode: TermPopMode): Promise<void> {
     return;
   }
 
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      if (!node.textContent?.trim()) {
-        return NodeFilter.FILTER_REJECT;
-      }
-      if (!isHighlightableTextNode(node)) {
-        return NodeFilter.FILTER_REJECT;
-      }
-      return NodeFilter.FILTER_ACCEPT;
-    }
-  });
-
-  const nodes: Text[] = [];
-  while (walker.nextNode()) {
-    nodes.push(walker.currentNode as Text);
-  }
+  const nodes = collectScanTextNodes(dirtyRoots?.length ? dirtyRoots : [document.body]);
   nodes.sort((left, right) => Number(!isTextNodeNearViewport(left)) - Number(!isTextNodeNearViewport(right)));
 
   const llmCandidates: Text[] = [];
 
   if (debugOptions.detectionMode === "llm") {
-    await scanLlmDebugBlocks(limit, termHighlightCounts);
+    await scanLlmDebugBlocks(limit, termHighlightCounts, dirtyRoots);
     return;
   }
 
@@ -224,8 +223,8 @@ function isCurrentScan(scanId: number): boolean {
   return !siteDisabled && scanId === scanGeneration && (activeMode !== "selection" || Boolean(debugOptions.detectionMode));
 }
 
-async function scanLlmDebugBlocks(limit: number, termHighlightCounts: Map<string, number>): Promise<number> {
-  const blocks = getLlmDebugScanBlocks().slice(0, LLM_DETECTION_NODE_LIMIT);
+async function scanLlmDebugBlocks(limit: number, termHighlightCounts: Map<string, number>, dirtyRoots?: Node[]): Promise<number> {
+  const blocks = getLlmDebugScanBlocks(dirtyRoots).slice(0, LLM_DETECTION_NODE_LIMIT);
   const batches = collectLlmDebugBlockBatches(blocks);
   let highlighted = 0;
 
@@ -284,7 +283,22 @@ function collectLlmDebugBlockBatches(blocks: HTMLElement[]): Array<{ text: strin
   return batches;
 }
 
-function getLlmDebugScanBlocks(): HTMLElement[] {
+function getLlmDebugScanBlocks(dirtyRoots?: Node[]): HTMLElement[] {
+  if (dirtyRoots?.length) {
+    return dirtyRoots
+      .flatMap((root) => {
+        const element = root instanceof HTMLElement ? root : root.parentElement;
+        if (!element) {
+          return [];
+        }
+        const block = element.closest("p, li") as HTMLElement | null;
+        const scanRoot = block ?? element;
+        return [scanRoot, ...scanRoot.querySelectorAll<HTMLElement>("p, li")];
+      })
+      .filter((element, index, elements) => elements.indexOf(element) === index)
+      .filter(isVisibleElement);
+  }
+
   const scopedBlocks = [...document.querySelectorAll<HTMLElement>("[data-termpop-scan] p, [data-termpop-scan] li")];
   if (scopedBlocks.length > 0) {
     return scopedBlocks.filter(isVisibleElement);
@@ -403,8 +417,20 @@ function setupModeChangeListener(): void {
     if (areaName !== "local" || !changes[SETTINGS_KEY]) {
       return;
     }
+    const previousDictionary = changes[SETTINGS_KEY].oldValue?.dictionary;
+    const nextDictionary = changes[SETTINGS_KEY].newValue?.dictionary;
+    const dictionaryChanged = JSON.stringify(previousDictionary ?? {}) !== JSON.stringify(nextDictionary ?? {});
     void getContentSettings().then(({ mode }) => {
+      pageExplanationCache.clear();
+      const previousMode = activeMode;
+      if (dictionaryChanged) {
+        overlay?.hide();
+        removeAllHighlights();
+      }
       applyModeChange(mode);
+      if (dictionaryChanged && previousMode === mode && mode !== "selection" && !siteDisabled) {
+        startAutomaticHighlighting();
+      }
     });
   });
 }
@@ -415,23 +441,18 @@ function setupSiteAccessChangeListener(): void {
   }
 
   chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== "local" || !changes[SITE_ACCESS_STORAGE_KEY]) {
+    if (areaName !== "local" || !changes[BLOCKED_SITES_STORAGE_KEY]) {
       return;
     }
-
-    const originPattern = originPatternFromUrl(location.href);
-    if (!originPattern) {
-      return;
-    }
-
-    const nextOrigins = Array.isArray(changes[SITE_ACCESS_STORAGE_KEY].newValue)
-      ? changes[SITE_ACCESS_STORAGE_KEY].newValue as string[]
-      : [];
-    if (nextOrigins.includes(originPattern)) {
-      void enableSite();
-      return;
-    }
-    disableSite();
+    void chrome.runtime.sendMessage({ type: "TERMPOP_GET_SITE_ACCESS" })
+      .then((response: GetSiteAccessResponse) => {
+        if (response.ok && response.access?.enabled) {
+          void enableSite();
+        } else {
+          disableSite();
+        }
+      })
+      .catch(() => disableSite());
   });
 }
 
@@ -449,6 +470,10 @@ async function enableSite(): Promise<void> {
 
 function disableSite(): void {
   siteDisabled = true;
+  screenshotRequestSeq += 1;
+  screenshotSelection?.cancel();
+  screenshotAnchor?.remove();
+  screenshotAnchor = undefined;
   stopAutomaticHighlighting();
   if (cacheFlushTimer !== undefined) {
     window.clearTimeout(cacheFlushTimer);
@@ -502,6 +527,7 @@ function stopAutomaticHighlighting(): void {
     window.clearTimeout(scanTimer);
     scanTimer = undefined;
   }
+  pendingScanRoots = [];
   mutationObserver?.disconnect();
   mutationObserver = undefined;
 }
@@ -525,11 +551,24 @@ function observeDynamicContent(): void {
   }
 
   mutationObserver = new MutationObserver((mutations) => {
-    if (mutations.every((mutation) => mutation.target instanceof Element && mutation.target.closest(`#${ROOT_ID}, .${HIGHLIGHT_CLASS}`))) {
-      return;
+    const dirtyRoots: Node[] = [];
+    for (const mutation of mutations) {
+      if (isIgnoredMutationNode(mutation.target)) {
+        continue;
+      }
+      if (mutation.type === "characterData") {
+        dirtyRoots.push(mutation.target);
+      } else {
+        for (const addedNode of mutation.addedNodes) {
+          if (!isIgnoredMutationNode(addedNode)) {
+            dirtyRoots.push(addedNode);
+          }
+        }
+      }
     }
-
-    scheduleScan();
+    if (dirtyRoots.length > 0) {
+      scheduleScan(dirtyRoots);
+    }
   });
 
   mutationObserver.observe(document.body, {
@@ -539,7 +578,7 @@ function observeDynamicContent(): void {
   });
 }
 
-function scheduleScan(): void {
+function scheduleScan(dirtyRoots: Node[] = []): void {
   if (siteDisabled) {
     return;
   }
@@ -547,21 +586,72 @@ function scheduleScan(): void {
     return;
   }
 
+  pendingScanRoots.push(...dirtyRoots.filter((root) => root.isConnected));
+
   if (scanTimer !== undefined) {
     window.clearTimeout(scanTimer);
   }
 
   scanTimer = window.setTimeout(() => {
     scanTimer = undefined;
-    void scanAndHighlight(activeMode);
+    const roots = pendingScanRoots;
+    pendingScanRoots = [];
+    void scanAndHighlight(activeMode, roots.length > 0 ? roots : undefined);
   }, RESCAN_DELAY_MS);
 }
 
+function isIgnoredMutationNode(node: Node): boolean {
+  const element = node instanceof Element ? node : node.parentElement;
+  return Boolean(element?.closest(`#${ROOT_ID}, .${HIGHLIGHT_CLASS}, [data-termpop-ignore]`));
+}
+
+function collectScanTextNodes(roots: Node[]): Text[] {
+  const nodes = new Set<Text>();
+  for (const root of roots) {
+    if (!root.isConnected || isIgnoredMutationNode(root)) {
+      continue;
+    }
+    if (root.nodeType === Node.TEXT_NODE) {
+      const textNode = root as Text;
+      if (textNode.textContent?.trim() && isHighlightableTextNode(textNode)) {
+        nodes.add(textNode);
+      }
+      continue;
+    }
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        if (!node.textContent?.trim() || !isHighlightableTextNode(node)) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    while (walker.nextNode()) {
+      nodes.add(walker.currentNode as Text);
+    }
+  }
+  return [...nodes];
+}
+
 function setupSelectionMessageListener(): void {
-  chrome.runtime.onMessage.addListener((message: ExplainSelectionRequest | DisableSiteRequest, _sender, sendResponse) => {
+  chrome.runtime.onMessage.addListener((
+    message: ExplainSelectionRequest | DisableSiteRequest | BeginScreenshotSelectionRequest,
+    _sender,
+    sendResponse
+  ) => {
     if (message.type === "TERMPOP_DISABLE_SITE") {
       disableSite();
       sendResponse({ ok: true } satisfies DisableSiteResponse);
+      return false;
+    }
+
+    if (message.type === "TERMPOP_BEGIN_SCREENSHOT_SELECTION") {
+      if (siteDisabled) {
+        sendResponse({ ok: false, error: "TermPop is disabled on this site." } satisfies BeginScreenshotSelectionResponse);
+        return false;
+      }
+      sendResponse({ ok: true } satisfies BeginScreenshotSelectionResponse);
+      void beginScreenshotExplanation();
       return false;
     }
 
@@ -582,6 +672,91 @@ function setupSelectionMessageListener(): void {
       });
     return true;
   });
+}
+
+async function beginScreenshotExplanation(): Promise<void> {
+  const requestId = ++screenshotRequestSeq;
+  try {
+    const selection = await screenshotSelection?.begin();
+    if (!selection || siteDisabled || requestId !== screenshotRequestSeq) {
+      return;
+    }
+    const anchor = ensureScreenshotAnchor(selection.rect);
+    overlay?.showLoading(anchor, contentCopy[uiLocale()].recognizingScreenshot, true, true, selection.pointer);
+    const response = await chrome.runtime.sendMessage({
+      type: "TERMPOP_RECOGNIZE_SCREENSHOT",
+      termImageDataUrl: selection.termImageDataUrl,
+      contextImageDataUrl: selection.contextImageDataUrl,
+      url: location.href
+    } satisfies RecognizeScreenshotRequest) as RecognizeScreenshotResponse;
+    if (siteDisabled || requestId !== screenshotRequestSeq) {
+      return;
+    }
+    if (!response.ok || !response.recognition) {
+      overlay?.showError(
+        anchor,
+        contentCopy[uiLocale()].screenshotTitle,
+        response.error ?? contentCopy[uiLocale()].recognitionFailed,
+        true,
+        true,
+        selection.pointer
+      );
+      return;
+    }
+    const term: DetectedTerm = {
+      term: response.recognition.term,
+      start: 0,
+      end: response.recognition.term.length,
+      term_type: "Custom",
+      confidence: response.recognition.confidence,
+      source: "User"
+    };
+    await showExplanation(anchor, term, response.recognition.context, {
+      refresh: false,
+      pin: true,
+      pointer: selection.pointer
+    });
+  } catch (error) {
+    if (siteDisabled || requestId !== screenshotRequestSeq) {
+      return;
+    }
+    const anchor = screenshotAnchor ?? ensureScreenshotAnchor({
+      left: Math.max(0, window.innerWidth / 2 - 1),
+      top: Math.max(0, window.innerHeight / 2 - 1),
+      width: 2,
+      height: 2
+    });
+    overlay?.showError(
+      anchor,
+      contentCopy[uiLocale()].screenshotTitle,
+      error instanceof Error ? error.message : contentCopy[uiLocale()].recognitionFailed,
+      true,
+      true
+    );
+  }
+}
+
+function ensureScreenshotAnchor(rect: { left: number; top: number; width: number; height: number }): HTMLElement {
+  if (!screenshotAnchor?.isConnected) {
+    screenshotAnchor = document.createElement("span");
+    screenshotAnchor.id = "termpop-screenshot-anchor";
+    screenshotAnchor.dataset.termpopVirtualAnchor = "true";
+    screenshotAnchor.dataset.termpopIgnore = "true";
+    Object.assign(screenshotAnchor.style, {
+      position: "fixed",
+      pointerEvents: "none",
+      opacity: "0",
+      zIndex: "-1"
+    });
+    document.documentElement.append(screenshotAnchor);
+  }
+  Object.assign(screenshotAnchor.style, {
+    left: `${rect.left}px`,
+    top: `${rect.top}px`,
+    width: `${Math.max(1, rect.width)}px`,
+    height: `${Math.max(1, rect.height)}px`
+  });
+  return screenshotAnchor;
 }
 
 function setupSelectionPointerTracking(): void {
@@ -738,6 +913,7 @@ function ensureSelectionAnchor(): HTMLElement {
 
   selectionAnchor = document.createElement("span");
   selectionAnchor.id = "termpop-selection-anchor";
+  selectionAnchor.dataset.termpopVirtualAnchor = "true";
   selectionAnchor.style.position = "fixed";
   selectionAnchor.style.width = "1px";
   selectionAnchor.style.height = "1px";
@@ -880,6 +1056,12 @@ async function loadGlobalCachedTerms(): Promise<CachedTermEntry[]> {
 function detectCachedTermsLocally(text: string): DetectedTerm[] {
   const terms: DetectedTerm[] = [];
   for (const entry of globalCachedTerms) {
+    if (!isCachedTermAvailable(entry, {
+      url: location.href,
+      pageFingerprint: currentPageFingerprint()
+    })) {
+      continue;
+    }
     for (const [start, end] of findAllowedOccurrences(text, entry.term)) {
       terms.push({
         term: text.slice(start, end),
@@ -931,7 +1113,7 @@ function rememberDetectedTerms(terms: DetectedTerm[]): void {
   }, 500);
 }
 
-function mergeGlobalCachedTerms(terms: DetectedTerm[]): void {
+function mergeGlobalCachedTerms(terms: Array<DetectedTerm | CachedTermEntry>): void {
   if (debugOptions.disableCache) {
     return;
   }
@@ -940,29 +1122,10 @@ function mergeGlobalCachedTerms(terms: DetectedTerm[]): void {
     return;
   }
 
-  const byKey = new Map(globalCachedTerms.map((term) => [explanationCacheKey(term.term), term]));
-  for (const term of terms) {
-    const key = explanationCacheKey(term.term);
-    if (key.length < 2 || term.term.trim().length > 80) {
-      continue;
-    }
-
-    const existing = byKey.get(key);
-    if (!existing || term.confidence >= existing.confidence) {
-      byKey.set(key, {
-        term: term.term.trim(),
-        term_type: term.term_type,
-        confidence: term.confidence,
-        source: term.source,
-        scope: term.source === "Ner" ? "domain" : "global",
-        domain: term.source === "Ner" ? domainFromUrl(location.href) ?? null : null,
-        page_fingerprint: null,
-        last_seen_at: Date.now()
-      });
-    }
-  }
-
-  globalCachedTerms = [...byKey.values()];
+  globalCachedTerms = mergeCachedTermView(globalCachedTerms, terms, {
+    url: location.href,
+    pageFingerprint: currentPageFingerprint()
+  });
 }
 
 function readDebugOptions(): DebugOptions {
@@ -1106,7 +1269,7 @@ function highlightTextNode(node: Text, terms: DetectedTerm[]): number {
 interface ShowExplanationOptions {
   refresh: boolean;
   pin: boolean;
-  pointer?: MouseEvent | PointerEvent;
+  pointer?: { clientX: number; clientY: number };
 }
 function scheduleHoverExplanation(anchor: HTMLElement, term: DetectedTerm, context: string, pointer: MouseEvent | PointerEvent): void {
   cancelHoverExplanation(anchor);
@@ -1164,7 +1327,7 @@ async function showExplanation(anchor: HTMLElement, term: DetectedTerm, context:
       return;
     }
     const message = error instanceof Error ? error.message : String(error);
-    overlay?.showError(anchor, term.term, message || "解释请求失败。", options.pin, !options.refresh, options.pointer);
+    overlay?.showError(anchor, term.term, message || contentCopy[uiLocale()].requestFailed, options.pin, !options.refresh, options.pointer);
     return;
   }
 
@@ -1173,7 +1336,7 @@ async function showExplanation(anchor: HTMLElement, term: DetectedTerm, context:
   }
 
   if (!response.ok || !response.explanation) {
-    overlay?.showError(anchor, term.term, response.error ?? "暂时无法解释这个词。", options.pin, !options.refresh, options.pointer);
+    overlay?.showError(anchor, term.term, response.error ?? contentCopy[uiLocale()].unavailable, options.pin, !options.refresh, options.pointer);
     return;
   }
 
@@ -1222,6 +1385,28 @@ function requestExplanation(term: string, context: string, cacheKey: string, ref
   return request;
 }
 
+const contentCopy = {
+  zh: {
+    requestFailed: "解释请求失败。",
+    unavailable: "暂时无法解释这个词。",
+    screenshotTitle: "截图识词",
+    recognizingScreenshot: "正在识别框选内容...",
+    recognitionFailed: "无法从框选内容中识别词汇。"
+  },
+  en: {
+    requestFailed: "Explanation request failed.",
+    unavailable: "This term cannot be explained right now.",
+    screenshotTitle: "Screenshot recognition",
+    recognizingScreenshot: "Recognizing the selected area...",
+    recognitionFailed: "No term could be identified in the selected area."
+  }
+} as const;
+
+function uiLocale(): "zh" | "en" {
+  const language = chrome.i18n?.getUILanguage?.() ?? navigator.language;
+  return language.toLocaleLowerCase().startsWith("zh") ? "zh" : "en";
+}
+
 function explanationCacheKey(term: string): string {
   return term.trim().toLocaleLowerCase();
 }
@@ -1232,12 +1417,13 @@ function explanationResultCacheKey(term: string, context: string): string {
 
 function currentPageFingerprint(): string {
   const now = Date.now();
-  if (cachedPageFingerprint && now - cachedPageFingerprint.at < 10_000) {
+  if (cachedPageFingerprint && cachedPageFingerprint.url === location.href && now - cachedPageFingerprint.at < 10_000) {
     return cachedPageFingerprint.value;
   }
   cachedPageFingerprint = {
     value: pageFingerprintFromUrlAndText(location.href, document.body.innerText || document.body.textContent || ""),
-    at: now
+    at: now,
+    url: location.href
   };
   return cachedPageFingerprint.value;
 }

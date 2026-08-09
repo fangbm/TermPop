@@ -1,6 +1,6 @@
 import { getSettings } from "../shared/settings";
 import type { ExplainSelectionRequest } from "../shared/types";
-import { SITE_ACCESS_STORAGE_KEY } from "../shared/browser-utils";
+import { BLOCKED_SITES_STORAGE_KEY } from "../shared/browser-utils";
 import { isUrlEnabled } from "./site-access";
 import { sanitizeForLog } from "./utils";
 
@@ -15,7 +15,7 @@ export function setupContextMenus(): void {
   });
 
   chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName === "local" && (changes[SETTINGS_KEY] || changes[SITE_ACCESS_STORAGE_KEY])) {
+    if (areaName === "local" && (changes[SETTINGS_KEY] || changes[BLOCKED_SITES_STORAGE_KEY])) {
       void syncContextMenus();
     }
   });
@@ -65,7 +65,7 @@ export function setupContextMenus(): void {
 export async function syncContextMenus(): Promise<void> {
   const settings = await getSettings();
   const visible = (settings.mode === "selection" || settings.mode === "hybrid") && await isActiveTabEnabled();
-  const title = settings.llm.language === "en" ? "Explain selection with TermPop" : "用 TermPop 解释选中文本";
+  const title = uiLocale() === "zh" ? "用 TermPop 解释选中文本" : "Explain selection with TermPop";
 
   chrome.contextMenus.update(SELECTION_CONTEXT_MENU_ID, { title, visible }, () => {
     if (!chrome.runtime.lastError) {
@@ -83,6 +83,11 @@ export async function syncContextMenus(): Promise<void> {
       }
     );
   });
+}
+
+function uiLocale(): "zh" | "en" {
+  const language = chrome.i18n?.getUILanguage?.() ?? "en";
+  return language.toLocaleLowerCase().startsWith("zh") ? "zh" : "en";
 }
 
 async function isActiveTabEnabled(): Promise<boolean> {

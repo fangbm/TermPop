@@ -671,4 +671,22 @@ mod tests {
         assert_eq!(terms[0].term, "Kubernetes");
         assert_eq!(terms[0].source, DetectionSource::Dictionary);
     }
+
+    #[test]
+    fn scoped_user_dictionary_overrides_rules_and_matches_unicode() {
+        let terms = detect_terms_with_dictionary_json_result(
+            "Rust 使用星穹检索，星穹检索再次出现。",
+            r#"{"base":[],"domain":[],"user":[{"term":"Rust","term_type":"Custom","confidence":0.99},{"term":"星穹检索","term_type":"Custom","confidence":1.0}]}"#,
+        )
+        .expect("valid scoped user dictionary");
+
+        let rust = terms.iter().find(|term| term.term == "Rust").expect("Rust matched");
+        assert_eq!(rust.source, DetectionSource::User);
+        assert_eq!(rust.term_type, TermType::Custom);
+        assert_eq!(terms.iter().filter(|term| term.term == "星穹检索").count(), 2);
+        assert!(terms
+            .iter()
+            .filter(|term| term.term == "星穹检索")
+            .all(|term| term.source == DetectionSource::User));
+    }
 }

@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { defineConfig } from "vite";
 
@@ -40,10 +40,45 @@ export default defineConfig({
           );
         }
         copyDirectory(resolve(__dirname, "src/_locales"), resolve(__dirname, "dist/_locales"));
+        validateManifestResources();
       }
     }
   ]
 });
+
+function validateManifestResources(): void {
+  const distDir = resolve(__dirname, "dist");
+  const manifest = JSON.parse(readFileSync(resolve(distDir, "manifest.json"), "utf8")) as {
+    background?: { service_worker?: string };
+    action?: { default_popup?: string; default_icon?: Record<string, string> };
+    icons?: Record<string, string>;
+    web_accessible_resources?: Array<{ resources?: string[] }>;
+  };
+  const resources = new Set<string>();
+
+  if (manifest.background?.service_worker) {
+    resources.add(manifest.background.service_worker);
+  }
+  if (manifest.action?.default_popup) {
+    resources.add(manifest.action.default_popup);
+  }
+  for (const resource of Object.values(manifest.icons ?? {})) {
+    resources.add(resource);
+  }
+  for (const resource of Object.values(manifest.action?.default_icon ?? {})) {
+    resources.add(resource);
+  }
+  for (const group of manifest.web_accessible_resources ?? []) {
+    for (const resource of group.resources ?? []) {
+      resources.add(resource);
+    }
+  }
+
+  const missing = [...resources].filter((resource) => !resource.includes("*") && !existsSync(resolve(distDir, resource)));
+  if (missing.length > 0) {
+    throw new Error(`Manifest references missing build resources:\n${missing.map((resource) => `- ${resource}`).join("\n")}`);
+  }
+}
 
 function copyDirectory(source: string, destination: string): void {
   mkdirSync(destination, { recursive: true });

@@ -39,7 +39,9 @@ type HighlightRect = {
 
 type PdfPageState = {
   pageNumber: number;
-  page: pdfjsLib.PDFPageProxy;
+  pdf: pdfjsLib.PDFDocumentProxy;
+  page?: pdfjsLib.PDFPageProxy;
+  pagePromise?: Promise<pdfjsLib.PDFPageProxy>;
   pageEl: HTMLElement;
   renderState: "placeholder" | "rendering" | "rendered" | "failed";
   primaryState: "pending" | "running" | "done" | "failed";
@@ -61,14 +63,18 @@ type LlmPageResult = {
 const root = document.querySelector<HTMLDivElement>("#pdf-root");
 const status = document.querySelector<HTMLParagraphElement>("#viewer-status");
 const reloadButton = document.querySelector<HTMLButtonElement>("#reload-button");
+const uiLocale = getUiLocale();
 const sourceUrl = new URLSearchParams(location.search).get("src") ?? "";
 const renderScale = Math.max(1.25, Math.min(window.devicePixelRatio || 1, 2));
 const HOVER_SHOW_DELAY_MS = 420;
 const HIGHLIGHT_CLASS = "pdf-highlight";
 const ROOT_ID = "termpop-overlay-root";
+const SETTINGS_KEY = "termpop.settings";
 const LLM_PAGE_DELAY_MS = 700;
 const LLM_NEARBY_PAGE_RADIUS = 1;
 const LLM_VIEWPORT_SCHEDULE_DELAY_MS = 250;
+const DEFAULT_PAGE_WIDTH = 612;
+const DEFAULT_PAGE_HEIGHT = 792;
 const hoverTimers = new WeakMap<HTMLElement, number>();
 const pageExplanationCache = new Map<string, Explanation>();
 let lastDetectionDebug: DetectTermsDebug | undefined;
@@ -82,7 +88,8 @@ let pageObserver: IntersectionObserver | undefined;
 const pageStateByElement = new WeakMap<Element, PdfPageState>();
 const overlay = new TermPopOverlayController({
   rootId: ROOT_ID,
-  anchorSelector: `.${HIGHLIGHT_CLASS}`
+  anchorSelector: `.${HIGHLIGHT_CLASS}`,
+  locale: uiLocale
 });
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -98,6 +105,12 @@ window.addEventListener("scroll", () => {
 window.addEventListener("resize", () => {
   scheduleViewportPageRendering();
   scheduleViewportLlmDetection();
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local" && changes[SETTINGS_KEY]) {
+    pageExplanationCache.clear();
+  }
 });
 
 void renderPdf();
@@ -122,15 +135,15 @@ async function renderPdf(): Promise<void> {
   }
 
   if (!sourceUrl) {
-    setStatus("缺少 PDF 地址。");
+    setStatus(pdfCopy[uiLocale].missingSource);
     return;
   }
 
   try {
-    setStatus("正在加载 PDF...");
+    setStatus(pdfCopy[uiLocale].loadingPdf);
     const documentTask = pdfjsLib.getDocument({ url: sourceUrl });
     const pdf = await documentTask.promise;
-    setStatus(`已加载 ${pdf.numPages} 页，正在创建页面占位...`);
+    setStatus(format(pdfCopy[uiLocale].creatingPlaceholders, { total: pdf.numPages }));
     pageObserver = new IntersectionObserver(handlePageIntersections, {
       root: null,
       rootMargin: "900px 0px",
@@ -138,31 +151,29 @@ async function renderPdf(): Promise<void> {
     });
 
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-      const page = await pdf.getPage(pageNumber);
-      activePdfPageStates.push(createPagePlaceholder(page, pageNumber));
-      setStatus(`已加载 ${pdf.numPages} 页，已创建占位 ${pageNumber}/${pdf.numPages} 页。`);
+      activePdfPageStates.push(createPagePlaceholder(pdf, pageNumber));
     }
 
-    setStatus(buildPdfStatus("当前视口附近页面会优先渲染和识别。"));
+    setStatus(buildPdfStatus(pdfCopy[uiLocale].viewportFirst));
     scheduleViewportPageRendering();
   } catch (error) {
-    setStatus(`PDF 加载失败：${error instanceof Error ? error.message : String(error)}`);
+    setStatus(format(pdfCopy[uiLocale].loadFailed, { error: error instanceof Error ? error.message : String(error) }));
   }
 }
 
-function createPagePlaceholder(page: pdfjsLib.PDFPageProxy, pageNumber: number): PdfPageState {
-  const viewport = page.getViewport({ scale: renderScale });
+function createPagePlaceholder(pdf: pdfjsLib.PDFDocumentProxy, pageNumber: number): PdfPageState {
   const pageEl = document.createElement("section");
   pageEl.className = "pdf-page";
   pageEl.dataset.pageNumber = String(pageNumber);
-  pageEl.style.width = `${viewport.width}px`;
-  pageEl.style.height = `${viewport.height}px`;
+  pageEl.style.width = `${DEFAULT_PAGE_WIDTH * renderScale}px`;
+  pageEl.style.height = `${DEFAULT_PAGE_HEIGHT * renderScale}px`;
+  pageEl.dataset.placeholder = "true";
   pageEl.style.setProperty("--total-scale-factor", String(renderScale));
   root?.append(pageEl);
 
   const state: PdfPageState = {
     pageNumber,
-    page,
+    pdf,
     pageEl,
     renderState: "placeholder",
     primaryState: "pending",
@@ -182,10 +193,14 @@ async function renderPageState(state: PdfPageState): Promise<void> {
 
   state.renderState = "rendering";
   state.primaryState = "running";
-  setStatus(buildPdfStatus(`正在渲染第 ${state.pageNumber} 页...`));
+  setStatus(buildPdfStatus(format(pdfCopy[uiLocale].renderingPage, { page: state.pageNumber })));
 
   try {
-    const viewport = state.page.getViewport({ scale: renderScale });
+    const page = await loadPage(state);
+    const viewport = page.getViewport({ scale: renderScale });
+    state.pageEl.style.width = `${viewport.width}px`;
+    state.pageEl.style.height = `${viewport.height}px`;
+    state.pageEl.dataset.placeholder = "false";
     state.pageEl.replaceChildren();
 
     const canvas = document.createElement("canvas");
@@ -205,11 +220,11 @@ async function renderPageState(state: PdfPageState): Promise<void> {
 
     const context = canvas.getContext("2d");
     if (!context) {
-      throw new Error("无法创建 PDF Canvas。");
+      throw new Error(pdfCopy[uiLocale].canvasFailed);
     }
 
-    await state.page.render({ canvas, canvasContext: context, viewport }).promise;
-    const textContent = await state.page.getTextContent();
+    await page.render({ canvas, canvasContext: context, viewport }).promise;
+    const textContent = await page.getTextContent();
     const textLayer = new pdfjsLib.TextLayer({
       textContentSource: textContent,
       container: textLayerEl,
@@ -230,14 +245,23 @@ async function renderPageState(state: PdfPageState): Promise<void> {
     state.primaryCount = primaryCount;
     renderedPageCount += 1;
     activePrimaryCount += primaryCount;
-    setStatus(buildPdfStatus(`第 ${state.pageNumber} 页词表高亮 ${primaryCount} 处。`));
+    setStatus(buildPdfStatus(format(pdfCopy[uiLocale].pagePrimaryDone, { page: state.pageNumber, count: primaryCount })));
     scheduleViewportLlmDetection();
   } catch (error) {
     state.renderState = "failed";
     state.primaryState = "failed";
     console.warn("TermPop PDF page render failed", sanitizeForLog(error, 300));
-    setStatus(buildPdfStatus(`第 ${state.pageNumber} 页渲染失败：${truncateStatus(error instanceof Error ? error.message : String(error))}`));
+    setStatus(buildPdfStatus(format(pdfCopy[uiLocale].pageRenderFailed, { page: state.pageNumber, error: truncateStatus(error instanceof Error ? error.message : String(error)) })));
   }
+}
+
+async function loadPage(state: PdfPageState): Promise<pdfjsLib.PDFPageProxy> {
+  if (state.page) {
+    return state.page;
+  }
+  state.pagePromise ??= state.pdf.getPage(state.pageNumber);
+  state.page = await state.pagePromise;
+  return state.page;
 }
 
 function handlePageIntersections(entries: IntersectionObserverEntry[]): void {
@@ -324,18 +348,18 @@ async function runViewportLlmQueue(): Promise<void> {
         continue;
       }
       pageState.llmState = "running";
-      setStatus(buildPdfStatus(`LLM 正在补充第 ${pageState.pageNumber} 页...`));
+      setStatus(buildPdfStatus(format(pdfCopy[uiLocale].llmRunning, { page: pageState.pageNumber })));
       try {
         const result = await runLlmForPage(pageState);
         pageState.llmState = "done";
         pageState.llmAdded = result.renderedCount;
         mergeDetectionDebug(lastDetectionDebug ?? {}, result.debug);
-        setStatus(buildPdfStatus(`LLM 已补充第 ${pageState.pageNumber} 页，新增 ${result.renderedCount} 处。`));
+        setStatus(buildPdfStatus(format(pdfCopy[uiLocale].llmDone, { page: pageState.pageNumber, count: result.renderedCount })));
       } catch (error) {
         pageState.llmState = "failed";
         pageState.llmError = error instanceof Error ? error.message : String(error);
         console.warn("TermPop PDF LLM detection failed", sanitizeForLog(error, 300));
-        setStatus(buildPdfStatus(`LLM 第 ${pageState.pageNumber} 页失败：${truncateStatus(pageState.llmError)}`));
+        setStatus(buildPdfStatus(format(pdfCopy[uiLocale].llmFailed, { page: pageState.pageNumber, error: truncateStatus(pageState.llmError) })));
       }
       await sleep(LLM_PAGE_DELAY_MS);
     }
@@ -384,7 +408,16 @@ function buildPdfStatus(detail: string): string {
   const done = activePdfPageStates.filter((page) => page.llmState === "done").length;
   const failed = activePdfPageStates.filter((page) => page.llmState === "failed").length;
   const added = activePdfPageStates.reduce((sum, page) => sum + page.llmAdded, 0);
-  return `已加载 ${total} 页，已渲染 ${renderedPageCount || rendered}/${total} 页，词表高亮 ${activePrimaryCount} 处；LLM 补词 ${done}/${Math.max(rendered, 1)} 页，新增 ${added} 处${failed ? `，失败 ${failed} 页` : ""}。${detail}`;
+  return format(pdfCopy[uiLocale].statusSummary, {
+    total,
+    rendered: renderedPageCount || rendered,
+    primary: activePrimaryCount,
+    done,
+    renderedMax: Math.max(rendered, 1),
+    added,
+    failedText: failed ? format(pdfCopy[uiLocale].failedSuffix, { failed }) : "",
+    detail
+  });
 }
 
 function buildTextLayerItems(items: TextItem[], textDivs: HTMLElement[]): TextLayerItem[] {
@@ -452,7 +485,7 @@ async function detectTerms(text: string, detectionMode: DetectTermsRequest["dete
   } satisfies DetectTermsRequest) as DetectTermsResponse;
 
   if (!response.ok) {
-    throw new Error(response.error || "术语识别失败");
+    throw new Error(response.error || pdfCopy[uiLocale].detectFailed);
   }
   lastDetectionDebug = response.debug;
   return response.terms ?? [];
@@ -606,7 +639,7 @@ async function showExplanation(anchor: HTMLElement, term: DetectedTerm, context:
     } satisfies ExplainRequest) as ExplainResponse;
 
     if (!response.ok || !response.explanation) {
-      throw new Error(response.error || "解释生成失败");
+      throw new Error(response.error || pdfCopy[uiLocale].explainFailed);
     }
     pageExplanationCache.set(cacheKey, response.explanation);
     if (!pin && !refresh && !anchor.matches(":hover") && !overlay.isPointerOverCard()) {
@@ -659,4 +692,54 @@ function truncateStatus(value: string): string {
 
 function setStatus(message: string): void {
   if (status) status.textContent = message;
+}
+
+const pdfCopy = {
+  zh: {
+    missingSource: "缺少 PDF 地址。",
+    loadingPdf: "正在加载 PDF...",
+    creatingPlaceholders: "已加载 {total} 页，正在创建页面占位...",
+    createdPlaceholder: "已加载 {total} 页，已创建占位 {page}/{total} 页。",
+    viewportFirst: "当前视口附近页面会优先渲染和识别。",
+    loadFailed: "PDF 加载失败：{error}",
+    renderingPage: "正在渲染第 {page} 页...",
+    canvasFailed: "无法创建 PDF Canvas。",
+    pagePrimaryDone: "第 {page} 页词表高亮 {count} 处。",
+    pageRenderFailed: "第 {page} 页渲染失败：{error}",
+    llmRunning: "LLM 正在补充第 {page} 页...",
+    llmDone: "LLM 已补充第 {page} 页，新增 {count} 处。",
+    llmFailed: "LLM 第 {page} 页失败：{error}",
+    statusSummary: "已加载 {total} 页，已渲染 {rendered}/{total} 页，词表高亮 {primary} 处；LLM 补词 {done}/{renderedMax} 页，新增 {added} 处{failedText}。{detail}",
+    failedSuffix: "，失败 {failed} 页",
+    detectFailed: "术语识别失败",
+    explainFailed: "解释生成失败"
+  },
+  en: {
+    missingSource: "Missing PDF source.",
+    loadingPdf: "Loading PDF...",
+    creatingPlaceholders: "Loaded {total} pages, creating page placeholders...",
+    createdPlaceholder: "Loaded {total} pages, created placeholder {page}/{total}.",
+    viewportFirst: "Pages near the current viewport are rendered and detected first.",
+    loadFailed: "PDF load failed: {error}",
+    renderingPage: "Rendering page {page}...",
+    canvasFailed: "Could not create PDF canvas.",
+    pagePrimaryDone: "Page {page}: {count} dictionary highlights.",
+    pageRenderFailed: "Page {page} render failed: {error}",
+    llmRunning: "LLM is enriching page {page}...",
+    llmDone: "LLM enriched page {page}, added {count} highlights.",
+    llmFailed: "LLM failed on page {page}: {error}",
+    statusSummary: "Loaded {total} pages, rendered {rendered}/{total}, dictionary highlights {primary}; LLM pages {done}/{renderedMax}, added {added}{failedText}. {detail}",
+    failedSuffix: ", failed {failed}",
+    detectFailed: "Term detection failed",
+    explainFailed: "Explanation generation failed"
+  }
+} as const;
+
+function getUiLocale(): "zh" | "en" {
+  const language = chrome.i18n?.getUILanguage?.() ?? navigator.language;
+  return language.toLocaleLowerCase().startsWith("zh") ? "zh" : "en";
+}
+
+function format(template: string, values: Record<string, string | number>): string {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) => String(values[key] ?? ""));
 }

@@ -1,21 +1,29 @@
-import { findAllowedOccurrences } from "../shared/term-matching";
+import { findAllowedOccurrences } from "../shared/term-matching.ts";
 import type { CachedTermEntry, CacheScope, DetectedTerm, Explanation, LlmSettings } from "../shared/types";
-import { normalizeTermType } from "../shared/types";
-import { domainFromUrl } from "../shared/browser-utils";
-import { debugLog, defaultBaseUrl, defaultModel, hashString, isExplanation, normalizeBaseUrl, normalizeCacheContext, normalizeCacheTerm } from "./utils";
+import { normalizeTermType } from "../shared/types.ts";
+import { domainFromUrl } from "../shared/browser-utils.ts";
+import { debugLog, defaultBaseUrl, defaultModel, hashString, isExplanation, normalizeBaseUrl, normalizeCacheContext, normalizeCacheTerm } from "./utils.ts";
+import { pruneEntriesToByteBudget, serializedEntriesByteSize } from "./cache-helpers.ts";
 
 const TERM_CACHE_KEY = "termpop.termCache";
 const LEGACY_GLOBAL_TERM_CACHE_KEY = "termpop.globalTermCache";
 const EXPLANATION_CACHE_KEY = "termpop.explanationCache";
 const MAX_CACHED_TERMS = 5000;
 const MAX_EXPLANATION_CACHE_ENTRIES = 5000;
+const MAX_EXPLANATION_CACHE_BYTES = 4 * 1024 * 1024;
 const EXPLANATION_CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
-// Read hits only bump last_used_at in memory; the on-disk cache is flushed at
-// most this often to avoid rewriting thousands of entries per lookup.
-const EXPLANATION_CACHE_FLUSH_INTERVAL_MS = 30_000;
+const EXPLANATION_LRU_WRITE_MIN_INTERVAL_MS = 5_000;
 
 let termCache: Map<string, CachedTermEntry> | undefined;
 let persistentExplanationCache: Map<string, CachedExplanationEntry> | undefined;
+let persistentExplanationCacheLoad: Promise<Map<string, CachedExplanationEntry>> | undefined;
+let explanationSaveTimer: ReturnType<typeof setTimeout> | undefined;
+let explanationSavePending = false;
+let explanationStructuralChangePending = false;
+let explanationSaveInFlight: Promise<void> | undefined;
+let explanationSaveGeneration = 0;
+let explanationSaveAttemptedGeneration = 0;
+let explanationLastSaveAt = 0;
 
 interface TermCacheContext {
   url?: string;
@@ -124,12 +132,13 @@ export async function getPersistentExplanation(cacheKey: string): Promise<Explan
   const now = Date.now();
   if (now - cached.created_at > EXPLANATION_CACHE_TTL_MS) {
     cache.delete(cacheKey);
-    void savePersistentExplanationCache(cache);
+    const saveGeneration = requestPersistentExplanationSave(true);
+    await persistPersistentExplanationNow(saveGeneration);
     return undefined;
   }
 
   cached.last_used_at = now;
-  scheduleExplanationCacheFlush(cache);
+  requestPersistentExplanationSave(false);
   return cached.explanation;
 }
 
@@ -143,25 +152,8 @@ export async function setPersistentExplanation(cacheKey: string, explanation: Ex
     last_used_at: now
   });
   prunePersistentExplanationCache(cache);
-  await savePersistentExplanationCache(cache);
-}
-
-let explanationCacheFlushTimer: number | undefined;
-let lastExplanationCacheFlushAt = 0;
-
-function scheduleExplanationCacheFlush(cache: Map<string, CachedExplanationEntry>): void {
-  const elapsed = Date.now() - lastExplanationCacheFlushAt;
-  if (elapsed >= EXPLANATION_CACHE_FLUSH_INTERVAL_MS) {
-    void savePersistentExplanationCache(cache);
-    return;
-  }
-  if (explanationCacheFlushTimer !== undefined) {
-    return;
-  }
-  explanationCacheFlushTimer = setTimeout(() => {
-    explanationCacheFlushTimer = undefined;
-    void savePersistentExplanationCache(cache);
-  }, EXPLANATION_CACHE_FLUSH_INTERVAL_MS - elapsed);
+  const saveGeneration = requestPersistentExplanationSave(true);
+  await persistPersistentExplanationNow(saveGeneration);
 }
 
 export function buildExplanationCacheKey(term: string, context: string | undefined, cacheScope: string | undefined, settings: LlmSettings): string {
@@ -292,6 +284,19 @@ async function loadPersistentExplanationCache(): Promise<Map<string, CachedExpla
     return persistentExplanationCache;
   }
 
+  if (persistentExplanationCacheLoad) {
+    return persistentExplanationCacheLoad;
+  }
+
+  persistentExplanationCacheLoad = loadPersistentExplanationCacheFromStorage();
+  try {
+    return await persistentExplanationCacheLoad;
+  } finally {
+    persistentExplanationCacheLoad = undefined;
+  }
+}
+
+async function loadPersistentExplanationCacheFromStorage(): Promise<Map<string, CachedExplanationEntry>> {
   const stored = await chrome.storage.local.get(EXPLANATION_CACHE_KEY);
   const entries = Array.isArray(stored[EXPLANATION_CACHE_KEY])
     ? stored[EXPLANATION_CACHE_KEY] as CachedExplanationEntry[]
@@ -310,43 +315,108 @@ async function loadPersistentExplanationCache(): Promise<Map<string, CachedExpla
     });
   }
 
+  const beforeEntries = persistentExplanationCache.size;
+  const beforeBytes = serializedEntriesByteSize([...persistentExplanationCache.values()]);
   prunePersistentExplanationCache(persistentExplanationCache);
+  if (persistentExplanationCache.size !== beforeEntries || serializedEntriesByteSize([...persistentExplanationCache.values()]) !== beforeBytes) {
+    const saveGeneration = requestPersistentExplanationSave(true);
+    await persistPersistentExplanationNow(saveGeneration);
+  }
   return persistentExplanationCache;
 }
 
-async function savePersistentExplanationCache(cache: Map<string, CachedExplanationEntry>): Promise<void> {
-  lastExplanationCacheFlushAt = Date.now();
+function requestPersistentExplanationSave(structuralChange: boolean): number {
+  explanationSavePending = true;
+  explanationStructuralChangePending ||= structuralChange;
+  const saveGeneration = ++explanationSaveGeneration;
+  if (structuralChange && explanationSaveTimer !== undefined) {
+    clearTimeout(explanationSaveTimer);
+    explanationSaveTimer = undefined;
+  }
+  if (!structuralChange) {
+    schedulePersistentExplanationSave();
+  }
+  return saveGeneration;
+}
+
+function schedulePersistentExplanationSave(delayMs = 400): void {
+  if (explanationSaveTimer !== undefined) {
+    return;
+  }
+  explanationSaveTimer = setTimeout(() => {
+    explanationSaveTimer = undefined;
+    void flushPersistentExplanationSave().catch((error) => {
+      debugLog("TermPop explanation cache flush failed", error);
+    });
+  }, delayMs);
+}
+
+async function persistPersistentExplanationNow(targetGeneration: number): Promise<void> {
+  while (explanationSaveAttemptedGeneration < targetGeneration) {
+    await flushPersistentExplanationSave(true);
+  }
+}
+
+async function flushPersistentExplanationSave(immediate = false): Promise<void> {
+  if (!explanationSavePending || !persistentExplanationCache) {
+    return;
+  }
+
+  if (explanationSaveInFlight) {
+    await explanationSaveInFlight;
+    if (immediate && explanationSaveAttemptedGeneration < explanationSaveGeneration) {
+      await flushPersistentExplanationSave(true);
+    }
+    return;
+  }
+
+  const structuralChange = explanationStructuralChangePending;
+  const elapsedSinceLastSave = Date.now() - explanationLastSaveAt;
+  if (!immediate && !structuralChange && elapsedSinceLastSave < EXPLANATION_LRU_WRITE_MIN_INTERVAL_MS) {
+    schedulePersistentExplanationSave(EXPLANATION_LRU_WRITE_MIN_INTERVAL_MS - elapsedSinceLastSave);
+    return;
+  }
+
+  const attemptedGeneration = explanationSaveGeneration;
+  const entries = [...persistentExplanationCache.values()];
+  explanationSavePending = false;
+  explanationStructuralChangePending = false;
+  explanationSaveInFlight = persistExplanationEntries(entries, attemptedGeneration, structuralChange);
+  await explanationSaveInFlight;
+  explanationSaveInFlight = undefined;
+
+  if (explanationSavePending && !immediate) {
+    schedulePersistentExplanationSave();
+  }
+}
+
+async function persistExplanationEntries(entries: CachedExplanationEntry[], attemptedGeneration: number, structuralChange: boolean): Promise<void> {
   try {
     await chrome.storage.local.set({
-      [EXPLANATION_CACHE_KEY]: [...cache.values()]
+      [EXPLANATION_CACHE_KEY]: entries
     });
+    explanationLastSaveAt = Date.now();
   } catch (error) {
-    // Most likely the storage.local quota is exhausted: evict the least
-    // recently used 10% and retry once before giving up.
-    debugLog("TermPop explanation cache write failed; evicting entries", error);
-    const oldestFirst = [...cache.values()].sort((left, right) => left.last_used_at - right.last_used_at);
-    for (const entry of oldestFirst.slice(0, Math.max(1, Math.ceil(oldestFirst.length * 0.1)))) {
-      cache.delete(entry.key);
+    debugLog("TermPop explanation cache write failed", error);
+  } finally {
+    explanationSaveAttemptedGeneration = Math.max(explanationSaveAttemptedGeneration, attemptedGeneration);
+    if (explanationSaveGeneration > attemptedGeneration) {
+      explanationSavePending = true;
     }
-    try {
-      await chrome.storage.local.set({
-        [EXPLANATION_CACHE_KEY]: [...cache.values()]
-      });
-    } catch (retryError) {
-      debugLog("TermPop explanation cache write failed after eviction", retryError);
+    if (structuralChange && explanationSaveGeneration === attemptedGeneration) {
+      explanationStructuralChangePending = false;
     }
   }
 }
 
 function prunePersistentExplanationCache(cache: Map<string, CachedExplanationEntry>): void {
-  if (cache.size <= MAX_EXPLANATION_CACHE_ENTRIES) {
+  if (cache.size <= MAX_EXPLANATION_CACHE_ENTRIES && serializedEntriesByteSize([...cache.values()]) <= MAX_EXPLANATION_CACHE_BYTES) {
     return;
   }
-  const keep = [...cache.values()]
-    .sort((left, right) => right.last_used_at - left.last_used_at)
-    .slice(0, MAX_EXPLANATION_CACHE_ENTRIES);
+  const keep = pruneEntriesToByteBudget([...cache.values()], MAX_EXPLANATION_CACHE_ENTRIES, MAX_EXPLANATION_CACHE_BYTES);
   cache.clear();
   for (const entry of keep) {
     cache.set(entry.key, entry);
   }
 }
+

@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TermPop promotional video cover</title>
+    <style>
+      :root {
+        font-family: "Segoe UI Variable Display", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+        color: #111827;
+        font-synthesis: none;
+      }
+
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; }
+      body { background: #f3f6fb; }
+
+      .cover {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #f3f6fb;
+      }
+
+      .brand {
+        position: absolute;
+        top: 104px;
+        left: 198px;
+        display: flex;
+        align-items: center;
+        gap: 19px;
+        z-index: 4;
+      }
+
+      .brand img {
+        width: 122px;
+        height: 122px;
+        border-radius: 29px;
+        object-fit: contain;
+        filter: drop-shadow(0 14px 26px rgba(37, 119, 246, .2));
+      }
+
+      .brand span {
+        color: #111827;
+        font-size: 62px;
+        font-weight: 740;
+      }
+
+      .copy {
+        position: absolute;
+        left: 200px;
+        top: 392px;
+        width: 730px;
+        z-index: 4;
+      }
+
+      h1 {
+        margin: 0;
+        color: #111827;
+        font-size: 102px;
+        font-weight: 770;
+        line-height: .98;
+        letter-spacing: 0;
+      }
+
+      h1 span { display: block; }
+      h1 em { color: #5b9cff; font-style: normal; }
+
+      .subtitle {
+        width: 710px;
+        margin: 48px 0 0;
+        color: #64748b;
+        font-size: 39px;
+        line-height: 1.45;
+      }
+
+      .product-stage {
+        position: absolute;
+        top: 190px;
+        right: 180px;
+        width: 790px;
+        height: 700px;
+        z-index: 2;
+      }
+
+      .blue-edge {
+        position: absolute;
+        top: 34px;
+        right: 20px;
+        width: 676px;
+        height: 606px;
+        border: 0;
+        border-radius: 42px;
+        background: #1266e9;
+        box-shadow: 0 35px 80px rgba(18, 102, 233, .25);
+        transform: translate(36px, 36px);
+      }
+
+      .browser {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        border: 1px solid rgba(148, 163, 184, .3);
+        border-radius: 36px;
+        background: #fff;
+        box-shadow: 0 42px 120px rgba(0, 0, 0, .48);
+      }
+
+      .browser-bar {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        height: 74px;
+        padding: 0 27px;
+        border-bottom: 1px solid #e7ebf1;
+        background: #fafbfc;
+      }
+
+      .dot { width: 14px; height: 14px; border-radius: 50%; }
+      .red { background: #ff5f57; }
+      .yellow { background: #febc2e; }
+      .green { background: #28c840; }
+
+      .address {
+        height: 42px;
+        margin-left: 12px;
+        flex: 1;
+        border-radius: 999px;
+        background: #edf2f8;
+        color: #68778b;
+        font-size: 19px;
+        line-height: 42px;
+        padding: 0 20px;
+      }
+
+      .page {
+        position: absolute;
+        inset: 74px 0 0;
+        padding: 0;
+        color: #111827;
+        background: linear-gradient(118deg, #fff 0%, #fff 53%, #edf4ff 100%);
+      }
+
+      .article-copy {
+        position: absolute;
+        left: 68px;
+        top: 104px;
+        width: 650px;
+        margin: 0;
+        color: #536174;
+        font-size: 30px;
+        line-height: 1.65;
+      }
+
+      .term {
+        position: relative;
+        display: inline-block;
+        color: #25364c;
+        white-space: nowrap;
+      }
+
+      .term::before {
+        position: absolute;
+        left: -4px;
+        right: -4px;
+        bottom: 0;
+        height: 15px;
+        border-radius: 4px;
+        background: rgba(56, 132, 255, .25);
+        box-shadow: inset 0 -3px 0 #2775f5;
+        content: "";
+      }
+
+      .term span { position: relative; z-index: 1; }
+
+      .popover {
+        position: absolute;
+        left: 68px;
+        right: auto;
+        bottom: 48px;
+        width: 500px;
+        min-height: 318px;
+        padding: 29px 31px 27px;
+        border: 1px solid #dce3ed;
+        border-radius: 23px;
+        background: rgba(255, 255, 255, .99);
+        box-shadow: 0 30px 75px rgba(15, 23, 42, .22);
+      }
+
+      .popover::after {
+        position: absolute;
+        left: var(--arrow-left, 117px);
+        top: -12px;
+        width: 23px;
+        height: 23px;
+        border-top: 1px solid #dce3ed;
+        border-left: 1px solid #dce3ed;
+        background: #fff;
+        content: "";
+        transform: rotate(45deg);
+      }
+
+      .popover-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+      }
+
+      .popover-title { font-size: 35px; font-weight: 770; }
+      .refresh { color: #2167e8; font-size: 23px; }
+      .popover-type { margin-top: 6px; color: #2167e8; font-size: 18px; font-weight: 690; }
+      .popover-copy { margin: 18px 0 22px; color: #4b5563; font-size: 23px; line-height: 1.52; }
+      .popover-tags { display: flex; gap: 8px; }
+      .popover-tags span { padding: 8px 12px; border-radius: 999px; background: #edf4ff; color: #31537f; font-size: 16px; font-weight: 650; }
+
+      html.ratio-4x3,
+      html.ratio-4x3 body,
+      .ratio-4x3 .cover {
+        width: 1600px;
+        height: 1200px;
+      }
+
+      .ratio-4x3 .brand {
+        top: 112px;
+        left: 142px;
+      }
+
+      .ratio-4x3 .brand img {
+        width: 116px;
+        height: 116px;
+      }
+
+      .ratio-4x3 .brand span { font-size: 58px; }
+
+      .ratio-4x3 .copy {
+        left: 144px;
+        top: 392px;
+        width: 650px;
+      }
+
+      .ratio-4x3 h1 { font-size: 88px; }
+
+      .ratio-4x3 .subtitle {
+        width: 640px;
+        font-size: 35px;
+      }
+
+      .ratio-4x3 .product-stage {
+        top: 252px;
+        right: 92px;
+        width: 700px;
+        height: 714px;
+      }
+
+      .ratio-4x3 .blue-edge {
+        width: 608px;
+        height: 620px;
+      }
+
+      .ratio-4x3 .article-copy {
+        left: 54px;
+        top: 104px;
+        width: 590px;
+        font-size: 27px;
+      }
+
+      .ratio-4x3 .popover {
+        left: 54px;
+        bottom: 48px;
+        width: 470px;
+      }
+
+    </style>
+  </head>
+  <body>
+    <main class="cover">
+      <div class="brand">
+        <img src="../extension/src/assets/icons/icon-1024.png" alt="" />
+        <span>TermPop</span>
+      </div>
+
+      <section class="copy">
+        <h1><span>不离开页面，</span><span>也能看懂<em>术语</em>。</span></h1>
+        <p class="subtitle">轻量、原位、贴合上下文的阅读解释。</p>
+      </section>
+
+      <section class="product-stage">
+        <div class="blue-edge"></div>
+        <div class="browser">
+          <div class="browser-bar">
+            <i class="dot red"></i><i class="dot yellow"></i><i class="dot green"></i>
+            <div class="address">termpop.com/read/attention</div>
+          </div>
+          <div class="page">
+            <p class="article-copy">一个 <span class="term"><span>Transformer</span></span> 会使用 self-attention 来建模 token 之间的关系。</p>
+            <div class="popover">
+              <div class="popover-head"><div class="popover-title">Transformer</div><div class="refresh">↻</div></div>
+              <div class="popover-type">深度学习架构</div>
+              <p class="popover-copy">一种基于注意力机制的神经网络架构，擅长理解文本中不同词语之间的关系。</p>
+              <div class="popover-tags"><span>注意力机制</span><span>神经网络</span><span>NLP</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+    <script>
+      if (new URLSearchParams(location.search).get("ratio") === "4x3") {
+        document.documentElement.classList.add("ratio-4x3");
+      }
+      const term = document.querySelector(".term");
+      const popover = document.querySelector(".popover");
+      const alignArrow = () => {
+        const termRect = term.getBoundingClientRect();
+        const cardRect = popover.getBoundingClientRect();
+        const arrowSize = 23;
+        const centered = termRect.left + termRect.width / 2 - cardRect.left - arrowSize / 2;
+        const clamped = Math.max(34, Math.min(cardRect.width - 57, centered));
+        popover.style.setProperty("--arrow-left", `${clamped}px`);
+      };
+      document.fonts.ready.then(alignArrow);
+      window.addEventListener("load", alignArrow);
+    </script>
+  </body>
+</html>

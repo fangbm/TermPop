@@ -1,8 +1,10 @@
 import type { Explanation } from "./types";
+import { resolveOverlayLayer } from "./stacking-layer";
 
 export interface OverlayOptions {
   rootId: string;
   anchorSelector: string;
+  locale?: "zh" | "en";
 }
 
 export interface OverlayPointer {
@@ -18,6 +20,7 @@ interface Point {
 export class TermPopOverlayController {
   private readonly root: HTMLDivElement;
   private readonly anchorSelector: string;
+  private readonly locale: "zh" | "en";
   private hideTimer: number | undefined;
   private repositionFrame: number | undefined;
   private currentAnchor: HTMLElement | undefined;
@@ -28,11 +31,12 @@ export class TermPopOverlayController {
 
   constructor(options: OverlayOptions) {
     this.anchorSelector = options.anchorSelector;
+    this.locale = options.locale ?? uiLocale();
     this.root = document.createElement("div");
     this.root.id = options.rootId;
     Object.assign(this.root.style, {
       position: "fixed",
-      zIndex: "900",
+      zIndex: "1",
       display: "none",
       width: "min(340px, calc(100vw - 24px))"
     });
@@ -52,7 +56,7 @@ export class TermPopOverlayController {
   }
 
   showLoading(anchor: HTMLElement, term: string, keepVisible = false, resetPlacement = false, pointer?: OverlayPointer): void {
-    this.render(anchor, `<div class="termpop-card-title">${escapeHtml(term)}</div><div class="termpop-muted">正在生成解释...</div>`, keepVisible, resetPlacement, pointer);
+    this.render(anchor, `<div class="termpop-card-title">${escapeHtml(term)}</div><div class="termpop-muted">${escapeHtml(copy[this.locale].loading)}</div>`, keepVisible, resetPlacement, pointer);
   }
 
   showError(anchor: HTMLElement, term: string, message: string, keepVisible = false, resetPlacement = false, pointer?: OverlayPointer): void {
@@ -67,14 +71,18 @@ export class TermPopOverlayController {
 
   showExplanation(anchor: HTMLElement, explanation: Explanation, onRefresh: () => void, keepVisible = false, resetPlacement = false, pointer?: OverlayPointer): void {
     const related = explanation.related_terms.map((term) => `<span>${escapeHtml(term)}</span>`).join("");
+    const providerStatus = explanation.provider_status === "mock"
+      ? `<div class="termpop-provider-status">${escapeHtml(explanation.fallback_reason === "missing-api-key" ? copy[this.locale].mockFallback : copy[this.locale].mockActive)}</div>`
+      : "";
     this.render(
       anchor,
       `<div class="termpop-card-header">
          <div class="termpop-card-title">${escapeHtml(explanation.term)}</div>
-         <button class="termpop-refresh-button" type="button" title="重新生成解释" aria-label="重新生成解释">↻</button>
+         <button class="termpop-refresh-button" type="button" title="${escapeHtml(copy[this.locale].refresh)}" aria-label="${escapeHtml(copy[this.locale].refresh)}">↻</button>
        </div>
-       <div class="termpop-category">${escapeHtml(explanation.category)}</div>
-       <div class="termpop-definition">${escapeHtml(explanation.definition)}</div>
+        <div class="termpop-category">${escapeHtml(explanation.category)}</div>
+        ${providerStatus}
+        <div class="termpop-definition">${escapeHtml(explanation.definition)}</div>
        ${explanation.usage_example ? `<div class="termpop-example">${escapeHtml(explanation.usage_example)}</div>` : ""}
        <div class="termpop-related">${related}</div>`,
       keepVisible,
@@ -111,6 +119,7 @@ export class TermPopOverlayController {
     this.currentAnchor = undefined;
     this.anchorPoint = undefined;
     this.initialPlacement = undefined;
+    this.restoreDefaultContainer();
   }
 
   isPointerOverCard(): boolean {
@@ -160,6 +169,7 @@ export class TermPopOverlayController {
       this.anchorPoint = { x: pointer.clientX, y: pointer.clientY };
     }
     this.cancelHide();
+    this.syncLayer(anchor);
     this.root.innerHTML = `<div class="termpop-card">${html}</div>`;
     this.root.classList.add("is-visible");
     this.root.style.display = "block";
@@ -186,6 +196,8 @@ export class TermPopOverlayController {
       return;
     }
 
+    this.syncLayer(anchor);
+
     const anchorRect = getBestAnchorRect(anchor, this.anchorPoint);
     if (!isRectInViewport(anchorRect)) {
       this.root.classList.remove("is-visible");
@@ -209,6 +221,21 @@ export class TermPopOverlayController {
     top = clamp(top, 12, Math.max(12, window.innerHeight - cardRect.height - 12));
     this.root.style.left = `${left}px`;
     this.root.style.top = `${top}px`;
+  }
+
+  private syncLayer(anchor: HTMLElement): void {
+    const layer = resolveOverlayLayer(anchor, this.root, this.anchorPoint);
+    if (this.root.parentElement !== layer.container) {
+      layer.container.append(this.root);
+    }
+    this.root.style.zIndex = String(layer.zIndex);
+  }
+
+  private restoreDefaultContainer(): void {
+    if (this.root.parentElement !== document.documentElement) {
+      document.documentElement.append(this.root);
+    }
+    this.root.style.zIndex = "1";
   }
 
   private resolvePlacement(canFitAbove: boolean, canFitBelow: boolean): "above" | "below" {
@@ -257,6 +284,28 @@ function distanceToRect(point: Point, rect: DOMRect): number {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+const copy = {
+  zh: {
+    loading: "正在生成解释...",
+    refresh: "重新生成解释",
+    mockActive: "本地 Mock 解释",
+    mockFallback: "未填写 API Key，已使用本地 Mock 解释"
+  },
+  en: {
+    loading: "Generating explanation...",
+    refresh: "Regenerate explanation",
+    mockActive: "Local Mock explanation",
+    mockFallback: "No API key is configured; using local Mock explanation"
+  }
+} as const;
+
+function uiLocale(): "zh" | "en" {
+  const language = typeof chrome !== "undefined" && chrome.i18n?.getUILanguage
+    ? chrome.i18n.getUILanguage()
+    : navigator.language;
+  return language.toLocaleLowerCase().startsWith("zh") ? "zh" : "en";
 }
 
 function escapeHtml(value: string): string {

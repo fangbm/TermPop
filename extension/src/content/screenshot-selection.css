@@ -1,0 +1,116 @@
+#termpop-screenshot-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  background: rgba(15, 23, 42, 0.34);
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#termpop-screenshot-root.is-selecting {
+  cursor: crosshair;
+}
+
+.termpop-screenshot-hint {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100vw - 32px);
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.9);
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.22);
+  color: #fff;
+  font: 600 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  letter-spacing: 0;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.termpop-screenshot-selection {
+  position: fixed;
+  display: none;
+  border: 2px solid #2563eb;
+  border-radius: 4px;
+  background: rgba(37, 99, 235, 0.12);
+  box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.28);
+  pointer-events: none;
+}
+
+.termpop-screenshot-consent {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: min(420px, calc(100vw - 32px));
+  transform: translate(-50%, -50%);
+  box-sizing: border-box;
+  padding: 22px;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.28);
+  color: #172033;
+  cursor: default;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.termpop-screenshot-consent h2 {
+  margin: 0 0 10px;
+  font-size: 19px;
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+
+.termpop-screenshot-consent p {
+  margin: 0;
+  color: #526078;
+  font-size: 14px;
+  line-height: 1.65;
+  letter-spacing: 0;
+}
+
+.termpop-screenshot-consent-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.termpop-screenshot-consent button {
+  min-height: 36px;
+  padding: 0 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  color: #172033;
+  font: 600 13px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.termpop-screenshot-consent button[data-primary="true"] {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+}
+
+@media (prefers-color-scheme: dark) {
+  .termpop-screenshot-consent {
+    border-color: #334155;
+    background: #111827;
+    color: #f8fafc;
+  }
+
+  .termpop-screenshot-consent p {
+    color: #b6c2d4;
+  }
+
+  .termpop-screenshot-consent button {
+    border-color: #475569;
+    background: #1f2937;
+    color: #f8fafc;
+  }
+}

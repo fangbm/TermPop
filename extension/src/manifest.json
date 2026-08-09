@@ -34,6 +34,15 @@
       "128": "assets/icons/icon-128.png"
     }
   },
+  "commands": {
+    "explain-screenshot": {
+      "suggested_key": {
+        "default": "Alt+Shift+E",
+        "mac": "Command+Shift+X"
+      },
+      "description": "__MSG_screenshotCommandDescription__"
+    }
+  },
   "web_accessible_resources": [
     {
       "resources": [

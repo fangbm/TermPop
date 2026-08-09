@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test": "node --experimental-strip-types tests/run-tests.ts",
     "typecheck": "tsc --noEmit",
     "build": "vite build"
   },

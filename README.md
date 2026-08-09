@@ -10,6 +10,7 @@ It combines a Rust detection core compiled to WebAssembly with a TypeScript brow
 - Rust/WASM term detection for programming languages, frameworks, cloud services, AI products, common acronyms, Minecraft/server terms, and custom user terms.
 - Hover explanation cards with refresh support.
 - Selection mode: select text and use the context menu to request an explanation.
+- Screenshot recognition: press `Alt+Shift+E` (`Command+Shift+X` on macOS), drag around a term, and use a configured multimodal model to recognize and explain it.
 - Hybrid mode: automatic highlights plus selection-based explanations.
 - Local explanation and term caches to reduce repeated requests.
 - Optional host permissions: page scanning is only injected after the user enables a site.
@@ -81,13 +82,15 @@ extension/dist
 
 ## Usage
 
-TermPop no longer asks for broad page access at install time. Open the extension popup on a page and click "Enable current site" before using hover or hybrid highlighting there. You can disable the current site from the same popup later.
+TermPop does not ask for broad page access at install time. On first use, open the popup and click "Enable TermPop on all websites" to grant HTTP/HTTPS access once. After that, TermPop works across normal websites without per-site prompts. Use "Disable on this site" to add sensitive sites such as banking or email pages to the local blacklist. Access to local `file://` pages remains a separate optional permission.
 
 Open the extension popup to choose a mode:
 
 - Hover: automatically scan the page, highlight detected terms, and show explanations on hover.
 - Selection: select text, then use the browser context menu explanation action.
 - Hybrid: enable both hover highlights and selection explanations.
+
+For text that is rendered without usable DOM text, press `Alt+Shift+E` (`Command+Shift+X` on macOS) and drag around the word or short phrase. On first use, TermPop asks before sending the selected area and a small surrounding context image to the configured multimodal LLM. Screenshots remain in memory only and are not added to TermPop's local caches. The configured model must support image input, and the provider's own data policy still applies.
 
 The public build still stores local LLM settings in browser extension storage. For private testing this is convenient, but it is not hardened secret storage and is not a final security model for hosted or commercial use.
 
@@ -101,6 +104,7 @@ TermPop can use:
 - Anthropic-style message endpoints.
 
 If no usable provider key is configured, TermPop falls back to the Rust mock explanation flow.
+The provider connection test uses the existing all-sites permission and does not request a separate provider-host permission.
 
 The extension declares host permissions for the built-in provider endpoints (`api.openai.com`, `api.moonshot.cn`, `api.anthropic.com`) so requests to them do not depend on the provider's CORS policy. Custom base URLs are still fetched directly and therefore rely on the endpoint allowing cross-origin requests from the extension.
 

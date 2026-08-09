@@ -4,5 +4,8 @@
   },
   "extensionDescription": {
     "message": "在网页中高亮技术术语，并显示结合上下文的解释。"
+  },
+  "screenshotCommandDescription": {
+    "message": "框选页面区域并解释其中的词汇"
   }
 }
