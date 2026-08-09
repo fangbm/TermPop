@@ -7,6 +7,18 @@ import { canUseCachedExplanation } from "./cache-helpers";
 
 const explanationCache = new Map<string, Explanation>();
 
+export async function storeExplanation(
+  term: string,
+  context: string | undefined,
+  cacheScope: string | undefined,
+  settings: LlmSettings,
+  explanation: Explanation
+): Promise<void> {
+  const cacheKey = buildExplanationCacheKey(term, context, cacheScope, settings);
+  explanationCache.set(cacheKey, explanation);
+  await setPersistentExplanation(cacheKey, explanation);
+}
+
 export async function explain(
   term: string,
   context: string | undefined,

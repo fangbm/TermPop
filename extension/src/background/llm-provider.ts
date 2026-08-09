@@ -88,7 +88,7 @@ async function fetchOpenAiCompatibleScreenshotRecognition(
         {
           role: "user",
           content: [
-            { type: "text", text: buildScreenshotRecognitionPrompt(settings.language) },
+            { type: "text", text: buildScreenshotRecognitionPrompt(settings.language, settings.includeUsageExample) },
             { type: "text", text: "Nearby context image:" },
             { type: "image_url", image_url: { url: contextImageDataUrl, detail: "high" } },
             { type: "text", text: "Exact user-selected area:" },
@@ -105,7 +105,7 @@ async function fetchOpenAiCompatibleScreenshotRecognition(
   }
 
   const payload = await response.json();
-  return parseScreenshotRecognition(extractOpenAiCompatibleAnswerText(payload));
+  return parseScreenshotRecognition(extractOpenAiCompatibleAnswerText(payload), settings.includeUsageExample);
 }
 
 async function fetchAnthropicScreenshotRecognition(
@@ -134,7 +134,7 @@ async function fetchAnthropicScreenshotRecognition(
         {
           role: "user",
           content: [
-            { type: "text", text: buildScreenshotRecognitionPrompt(settings.language) },
+            { type: "text", text: buildScreenshotRecognitionPrompt(settings.language, settings.includeUsageExample) },
             { type: "text", text: "Nearby context image:" },
             { type: "image", source: { type: "base64", media_type: contextImage.mediaType, data: contextImage.data } },
             { type: "text", text: "Exact user-selected area:" },
@@ -157,7 +157,7 @@ async function fetchAnthropicScreenshotRecognition(
   if (!content) {
     throw new Error("LLM response did not include text content.");
   }
-  return parseScreenshotRecognition(content);
+  return parseScreenshotRecognition(content, settings.includeUsageExample);
 }
 
 async function fetchOpenAiCompatibleExplanation(

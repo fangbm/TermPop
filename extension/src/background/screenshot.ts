@@ -8,8 +8,10 @@ import type {
 import { createLlmProvider } from "./llm-provider";
 import { assertLlmProviderAuthorized } from "./provider-access";
 import { injectContentScriptForTab, isUrlEnabled } from "./site-access";
+import { storeExplanation } from "./explanations";
 import { sanitizeForLog } from "./utils";
 import { assertScreenshotDataUrl } from "./vision";
+import { explanationResultCacheScope } from "../shared/browser-utils";
 
 const SCREENSHOT_COMMAND = "explain-screenshot";
 
@@ -44,11 +46,19 @@ export async function recognizeScreenshot(request: RecognizeScreenshotRequest): 
     throw new Error(screenshotCopy[uiLocale()].providerRequired);
   }
   await assertLlmProviderAuthorized(settings.llm);
-  return createLlmProvider(settings.llm).recognizeSelection(
+  const recognition = await createLlmProvider(settings.llm).recognizeSelection(
     request.termImageDataUrl,
     request.contextImageDataUrl,
     settings.llm
   );
+  await storeExplanation(
+    recognition.term,
+    recognition.context,
+    explanationResultCacheScope(recognition.term, recognition.context),
+    settings.llm,
+    recognition.explanation
+  );
+  return recognition;
 }
 
 async function beginScreenshotSelection(tab: chrome.tabs.Tab): Promise<void> {

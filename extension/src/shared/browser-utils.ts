@@ -56,6 +56,12 @@ export function pageFingerprintFromUrlAndText(url: string | undefined, text: str
   return hashString(`${normalizedUrl}\n${normalizedText}`);
 }
 
+export function explanationResultCacheScope(term: string, context: string): string {
+  const normalizedTerm = term.trim().toLocaleLowerCase();
+  const normalizedContext = context.replace(/\s+/g, " ").trim().slice(0, 1200);
+  return `${normalizedTerm}\n${hashString(normalizedContext)}`;
+}
+
 export function sanitizeForLog(value: unknown, maxLength = 500): string {
   return truncate(redactSecrets(stringifyForLog(value)).replace(/\s+/g, " ").trim(), maxLength);
 }

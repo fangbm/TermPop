@@ -26,12 +26,12 @@ import { TermPopOverlayController } from "../shared/overlay";
 import { byteOffsetToJsIndex } from "../shared/byte-offset";
 import { normalizeTermType } from "../shared/types";
 import { filterAllowedDetectedTerms, findAllowedOccurrences } from "../shared/term-matching";
-import { BLOCKED_SITES_STORAGE_KEY, pageFingerprintFromUrlAndText, sanitizeForLog } from "../shared/browser-utils";
+import { BLOCKED_SITES_STORAGE_KEY, explanationResultCacheScope, pageFingerprintFromUrlAndText, sanitizeForLog } from "../shared/browser-utils";
 import styles from "./styles.css?inline";
 import overlayStyles from "../shared/overlay.css?inline";
 import screenshotSelectionStyles from "./screenshot-selection.css?inline";
 import { isCachedTermAvailable, mergeCachedTermView } from "./cache-view";
-import { ScreenshotSelectionController } from "./screenshot-selection";
+import { ScreenshotSelectionController, type ScreenshotSelectionResult } from "./screenshot-selection";
 
 const MAX_HIGHLIGHTS_AUTO = 80;
 const MAX_HIGHLIGHTS_HYBRID = 40;
@@ -682,40 +682,7 @@ async function beginScreenshotExplanation(): Promise<void> {
       return;
     }
     const anchor = ensureScreenshotAnchor(selection.rect);
-    overlay?.showLoading(anchor, contentCopy[uiLocale()].recognizingScreenshot, true, true, selection.pointer);
-    const response = await chrome.runtime.sendMessage({
-      type: "TERMPOP_RECOGNIZE_SCREENSHOT",
-      termImageDataUrl: selection.termImageDataUrl,
-      contextImageDataUrl: selection.contextImageDataUrl,
-      url: location.href
-    } satisfies RecognizeScreenshotRequest) as RecognizeScreenshotResponse;
-    if (siteDisabled || requestId !== screenshotRequestSeq) {
-      return;
-    }
-    if (!response.ok || !response.recognition) {
-      overlay?.showError(
-        anchor,
-        contentCopy[uiLocale()].screenshotTitle,
-        response.error ?? contentCopy[uiLocale()].recognitionFailed,
-        true,
-        true,
-        selection.pointer
-      );
-      return;
-    }
-    const term: DetectedTerm = {
-      term: response.recognition.term,
-      start: 0,
-      end: response.recognition.term.length,
-      term_type: "Custom",
-      confidence: response.recognition.confidence,
-      source: "User"
-    };
-    await showExplanation(anchor, term, response.recognition.context, {
-      refresh: false,
-      pin: true,
-      pointer: selection.pointer
-    });
+    await requestScreenshotExplanation(selection, anchor, requestId, false);
   } catch (error) {
     if (siteDisabled || requestId !== screenshotRequestSeq) {
       return;
@@ -734,6 +701,64 @@ async function beginScreenshotExplanation(): Promise<void> {
       true
     );
   }
+}
+
+async function requestScreenshotExplanation(
+  selection: ScreenshotSelectionResult,
+  anchor: HTMLElement,
+  requestId: number,
+  refresh: boolean
+): Promise<void> {
+  overlay?.showLoading(anchor, contentCopy[uiLocale()].recognizingScreenshot, true, !refresh, selection.pointer);
+  const response = await chrome.runtime.sendMessage({
+    type: "TERMPOP_RECOGNIZE_SCREENSHOT",
+    termImageDataUrl: selection.termImageDataUrl,
+    contextImageDataUrl: selection.contextImageDataUrl,
+    url: location.href
+  } satisfies RecognizeScreenshotRequest) as RecognizeScreenshotResponse;
+  if (siteDisabled || requestId !== screenshotRequestSeq) {
+    return;
+  }
+  if (!response.ok || !response.recognition) {
+    overlay?.showError(
+      anchor,
+      contentCopy[uiLocale()].screenshotTitle,
+      response.error ?? contentCopy[uiLocale()].recognitionFailed,
+      true,
+      !refresh,
+      selection.pointer
+    );
+    return;
+  }
+
+  const { recognition } = response;
+  pageExplanationCache.set(
+    explanationResultCacheScope(recognition.term, recognition.context),
+    recognition.explanation
+  );
+  overlay?.showExplanation(
+    anchor,
+    recognition.explanation,
+    () => {
+      const refreshRequestId = ++screenshotRequestSeq;
+      void requestScreenshotExplanation(selection, anchor, refreshRequestId, true).catch((error: unknown) => {
+        if (siteDisabled || refreshRequestId !== screenshotRequestSeq) {
+          return;
+        }
+        overlay?.showError(
+          anchor,
+          recognition.term,
+          error instanceof Error ? error.message : contentCopy[uiLocale()].recognitionFailed,
+          true,
+          false,
+          selection.pointer
+        );
+      });
+    },
+    true,
+    !refresh,
+    selection.pointer
+  );
 }
 
 function ensureScreenshotAnchor(rect: { left: number; top: number; width: number; height: number }): HTMLElement {
@@ -1305,7 +1330,7 @@ async function showExplanation(anchor: HTMLElement, term: DetectedTerm, context:
 
   const requestId = ++explanationRequestSeq;
   explanationRequestIds.set(anchor, requestId);
-  const cacheKey = explanationResultCacheKey(term.term, context);
+  const cacheKey = explanationResultCacheScope(term.term, context);
   const cached = pageExplanationCache.get(cacheKey);
   if (cached && !options.refresh) {
     if (!isLatestExplanationRequest(anchor, requestId)) {
@@ -1411,10 +1436,6 @@ function explanationCacheKey(term: string): string {
   return term.trim().toLocaleLowerCase();
 }
 
-function explanationResultCacheKey(term: string, context: string): string {
-  return `${explanationCacheKey(term)}\n${hashString(context.replace(/\s+/g, " ").trim().slice(0, 1200))}`;
-}
-
 function currentPageFingerprint(): string {
   const now = Date.now();
   if (cachedPageFingerprint && cachedPageFingerprint.url === location.href && now - cachedPageFingerprint.at < 10_000) {
@@ -1426,13 +1447,4 @@ function currentPageFingerprint(): string {
     url: location.href
   };
   return cachedPageFingerprint.value;
-}
-
-function hashString(value: string): string {
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(36);
 }

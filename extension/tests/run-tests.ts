@@ -123,12 +123,17 @@ const tests: TestCase[] = [
     }
   },
   {
-    name: "screenshot recognition extracts strict fields from noisy model output",
+    name: "screenshot recognition returns a complete contextual explanation",
     run: () => {
-      const result = parseScreenshotRecognition(`Reasoning omitted.\n\`\`\`json\n{"term":"  multi-head   attention ","context":"Models use multi-head attention in parallel.","confidence":1.4}\n\`\`\``);
+      const result = parseScreenshotRecognition(`Reasoning omitted.\n\`\`\`json\n{"term":"  multi-head   attention ","context":"Models use multi-head attention in parallel.","confidence":1.4,"definition":"An attention mechanism that learns several relationships at once.","category":"Machine learning","related_terms":["Transformer","self-attention"],"usage_example":"The model uses multi-head attention.","source_url":null}\n\`\`\``, true);
       equal(result.term, "multi-head attention");
       equal(result.context, "Models use multi-head attention in parallel.");
       equal(result.confidence, 1);
+      equal(result.explanation.term, "multi-head attention");
+      equal(result.explanation.definition, "An attention mechanism that learns several relationships at once.");
+      equal(result.explanation.category, "Machine learning");
+      equal(result.explanation.related_terms.join(","), "Transformer,self-attention");
+      equal(result.explanation.usage_example, "The model uses multi-head attention.");
     }
   },
   {

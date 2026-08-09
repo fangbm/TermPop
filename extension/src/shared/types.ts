@@ -89,6 +89,7 @@ export interface ScreenshotRecognition {
   term: string;
   context: string;
   confidence: number;
+  explanation: Explanation;
 }
 
 export interface TestLlmProviderRequest {
