@@ -102,9 +102,21 @@ jobs:
         working-directory: extension
         run: npm run typecheck
 
+      - name: Test extension
+        working-directory: extension
+        run: npm test
+
       - name: Build extension
         working-directory: extension
         run: npm run build
+
+      - name: Audit all extension dependencies
+        working-directory: extension
+        run: npm audit --audit-level=high
+
+      - name: Audit extension production dependencies
+        working-directory: extension
+        run: npm audit --omit=dev --audit-level=high
 
   site:
     name: Website typecheck and build
@@ -132,3 +144,11 @@ jobs:
       - name: Build website
         working-directory: apps/termpop-site
         run: npm run build
+
+      - name: Audit all website dependencies
+        working-directory: apps/termpop-site
+        run: npm audit --audit-level=high
+
+      - name: Audit website production dependencies
+        working-directory: apps/termpop-site
+        run: npm audit --omit=dev --audit-level=high

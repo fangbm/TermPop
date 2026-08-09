@@ -1,14 +1,127 @@
 import { createLlmConcurrencyController } from "../src/background/llm-queue.ts";
+import { buildDetectionCacheKey, TimedLruCache } from "../src/background/detection-cache.ts";
+import { assertPartialBatchSuccess, runPartialBatch } from "../src/background/partial-batch.ts";
 import { canUseCachedExplanation, pruneEntriesToByteBudget, serializedEntriesByteSize, utf8ByteSize } from "../src/background/cache-helpers.ts";
 import { setPersistentExplanation } from "../src/background/cache.ts";
 import { isSiteEnabledByPolicy } from "../src/background/site-access-policy.ts";
 import { parseScreenshotRecognition, splitImageDataUrl } from "../src/background/vision.ts";
 import { utf8ByteOffsetToUtf16Index } from "../src/shared/unicode.ts";
+import { cancelPdfSessionToken, createPdfSessionToken, drainPdfLlmQueue, isPdfSessionCurrent } from "../src/pdf-viewer/pdf-session.ts";
 import type { Explanation } from "../src/shared/types.ts";
 
 type TestCase = { name: string; run: () => void | Promise<void> };
 
 const tests: TestCase[] = [
+  {
+    name: "detection cache expires entries and evicts the least recently used value",
+    run: () => {
+      const cache = new TimedLruCache<number>(2, 100);
+      cache.set("a", 1, 0);
+      cache.set("b", 2, 0);
+      equal(cache.get("a", 50), 1);
+      cache.set("c", 3, 50);
+      equal(cache.get("b", 50), undefined);
+      equal(cache.get("a", 101), undefined);
+      equal(cache.get("c", 101), 3);
+
+      const key = buildDetectionCacheKey({
+        detectionMode: "all",
+        provider: "mock",
+        apiKey: "first-secret",
+        baseUrl: "https://api.example/v1",
+        model: "mock",
+        language: "en",
+        temperature: 0.2,
+        maxTokens: 450,
+        text: "private page body"
+      });
+      ok(!key.includes("private page body"));
+      ok(!key.includes("first-secret"));
+      const changedKey = buildDetectionCacheKey({
+        detectionMode: "all",
+        provider: "mock",
+        apiKey: "second-secret",
+        baseUrl: "https://api.example/v1",
+        model: "mock",
+        language: "en",
+        temperature: 0.2,
+        maxTokens: 450,
+        text: "private page body"
+      });
+      ok(changedKey !== key);
+      const changedConfigKey = buildDetectionCacheKey({
+        detectionMode: "all",
+        provider: "mock",
+        apiKey: "first-secret",
+        baseUrl: "https://api.example/v1",
+        model: "mock",
+        language: "en",
+        temperature: 0.7,
+        maxTokens: 900,
+        text: "private page body"
+      });
+      ok(changedConfigKey !== key);
+    }
+  },
+  {
+    name: "partial batches retain successful chunks and aggregate complete failure",
+    run: async () => {
+      const partial = await runPartialBatch([1, 2, 3], async (value) => {
+        if (value === 2) throw new Error("malformed JSON");
+        return value * 2;
+      }, { continueOnError: (error) => error instanceof Error && error.message === "malformed JSON" });
+      equal(partial.successes.map(({ value }) => value).join(","), "2,6");
+      equal(partial.failures.length, 1);
+      assertPartialBatchSuccess(partial, "LLM detection");
+
+      const failed = await runPartialBatch([1, 2], async () => {
+        throw new Error("invalid");
+      }, { continueOnError: () => true });
+      await rejects(Promise.resolve().then(() => assertPartialBatchSuccess(failed, "LLM detection")), "failed for all 2 items");
+
+      let attempts = 0;
+      await rejects(runPartialBatch([1, 2], async () => {
+        attempts += 1;
+        throw new Error("provider unavailable");
+      }, { continueOnError: () => false }), "provider unavailable");
+      equal(attempts, 1);
+
+      attempts = 0;
+      await rejects(runPartialBatch([1, 2], async () => {
+        attempts += 1;
+        throw new Error("default fatal");
+      }), "default fatal");
+      equal(attempts, 1);
+    }
+  },
+  {
+    name: "PDF sessions invalidate stale work and rerun a dirty LLM queue",
+    run: async () => {
+      const first = createPdfSessionToken(1);
+      let active = first;
+      const second = createPdfSessionToken(2);
+      cancelPdfSessionToken(first);
+      active = second;
+      equal(isPdfSessionCurrent(active, first), false);
+      equal(isPdfSessionCurrent(active, second), true);
+
+      const pending = [1];
+      const processed: number[] = [];
+      await drainPdfLlmQueue(
+        second,
+        () => isPdfSessionCurrent(active, second),
+        () => pending.splice(0),
+        async (value) => {
+          processed.push(value);
+          if (value === 1) {
+            pending.push(2);
+            second.llmQueueDirty = true;
+          }
+        }
+      );
+      equal(processed.join(","), "1,2");
+    }
+  },
   {
     name: "screenshot recognition extracts strict fields from noisy model output",
     run: () => {
@@ -27,6 +140,14 @@ const tests: TestCase[] = [
       let failed = false;
       try {
         splitImageDataUrl("https://example.com/image.png");
+      } catch {
+        failed = true;
+      }
+      ok(failed);
+
+      failed = false;
+      try {
+        splitImageDataUrl("data:image/png;base64,not-valid-base64!");
       } catch {
         failed = true;
       }

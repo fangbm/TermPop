@@ -85,6 +85,18 @@ jobs:
         working-directory: extension
         run: npm run typecheck
 
+      - name: Test extension
+        working-directory: extension
+        run: npm test
+
+      - name: Audit all extension dependencies
+        working-directory: extension
+        run: npm audit --audit-level=high
+
+      - name: Audit extension production dependencies
+        working-directory: extension
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Build extension
         working-directory: extension
         run: npm run build

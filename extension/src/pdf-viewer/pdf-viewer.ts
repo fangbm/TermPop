@@ -12,6 +12,13 @@ import type {
 import { TermPopOverlayController } from "../shared/overlay";
 import { filterAllowedDetectedTerms } from "../shared/term-matching";
 import { pageFingerprintFromUrlAndText, sanitizeForLog } from "../shared/browser-utils";
+import {
+  cancelPdfSessionToken,
+  createPdfSessionToken,
+  drainPdfLlmQueue,
+  isPdfSessionCurrent,
+  type PdfSessionToken
+} from "./pdf-session";
 import "../shared/overlay.css";
 import "./pdf-viewer.css";
 
@@ -38,6 +45,7 @@ type HighlightRect = {
 };
 
 type PdfPageState = {
+  session: PdfRenderSession;
   pageNumber: number;
   pdf: pdfjsLib.PDFDocumentProxy;
   page?: pdfjsLib.PDFPageProxy;
@@ -60,6 +68,19 @@ type LlmPageResult = {
   debug?: DetectTermsDebug;
 };
 
+type PdfRenderSession = PdfSessionToken & {
+  loadingTask?: pdfjsLib.PDFDocumentLoadingTask;
+  document?: pdfjsLib.PDFDocumentProxy;
+  renderTasks: Set<pdfjsLib.RenderTask>;
+  observer?: IntersectionObserver;
+  renderSchedulerTimer?: number;
+  llmSchedulerTimer?: number;
+  pageStates: PdfPageState[];
+  primaryCount: number;
+  renderedPageCount: number;
+  detectionDebug?: DetectTermsDebug;
+};
+
 const root = document.querySelector<HTMLDivElement>("#pdf-root");
 const status = document.querySelector<HTMLParagraphElement>("#viewer-status");
 const reloadButton = document.querySelector<HTMLButtonElement>("#reload-button");
@@ -77,14 +98,9 @@ const DEFAULT_PAGE_WIDTH = 612;
 const DEFAULT_PAGE_HEIGHT = 792;
 const hoverTimers = new WeakMap<HTMLElement, number>();
 const pageExplanationCache = new Map<string, Explanation>();
-let lastDetectionDebug: DetectTermsDebug | undefined;
-let activePdfPageStates: PdfPageState[] = [];
-let activePrimaryCount = 0;
-let renderedPageCount = 0;
-let renderSchedulerTimer: number | undefined;
-let llmSchedulerTimer: number | undefined;
-let llmQueueRunning = false;
-let pageObserver: IntersectionObserver | undefined;
+let nextSessionId = 0;
+let requestedSessionId = 0;
+let activeSession: PdfRenderSession | undefined;
 const pageStateByElement = new WeakMap<Element, PdfPageState>();
 const overlay = new TermPopOverlayController({
   rootId: ROOT_ID,
@@ -99,12 +115,16 @@ reloadButton?.addEventListener("click", () => {
 });
 
 window.addEventListener("scroll", () => {
-  scheduleViewportPageRendering();
-  scheduleViewportLlmDetection();
+  const session = activeSession;
+  if (!session) return;
+  scheduleViewportPageRendering(session);
+  scheduleViewportLlmDetection(session);
 }, { passive: true });
 window.addEventListener("resize", () => {
-  scheduleViewportPageRendering();
-  scheduleViewportLlmDetection();
+  const session = activeSession;
+  if (!session) return;
+  scheduleViewportPageRendering(session);
+  scheduleViewportLlmDetection(session);
 });
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
@@ -117,51 +137,76 @@ void renderPdf();
 
 async function renderPdf(): Promise<void> {
   if (!root) return;
-  root.innerHTML = "";
-  overlay.hide();
-  pageObserver?.disconnect();
-  pageObserver = undefined;
-  activePdfPageStates = [];
-  activePrimaryCount = 0;
-  renderedPageCount = 0;
-  llmQueueRunning = false;
-  if (renderSchedulerTimer !== undefined) {
-    window.clearTimeout(renderSchedulerTimer);
-    renderSchedulerTimer = undefined;
-  }
-  if (llmSchedulerTimer !== undefined) {
-    window.clearTimeout(llmSchedulerTimer);
-    llmSchedulerTimer = undefined;
+  const requestId = ++requestedSessionId;
+  await cancelActiveSession();
+  if (requestId !== requestedSessionId) {
+    return;
   }
 
+  const session: PdfRenderSession = {
+    ...createPdfSessionToken(++nextSessionId),
+    renderTasks: new Set(),
+    pageStates: [],
+    primaryCount: 0,
+    renderedPageCount: 0
+  };
+  activeSession = session;
+  root.innerHTML = "";
+  overlay.hide();
+
   if (!sourceUrl) {
-    setStatus(pdfCopy[uiLocale].missingSource);
+    setSessionStatus(session, pdfCopy[uiLocale].missingSource);
     return;
   }
 
   try {
-    setStatus(pdfCopy[uiLocale].loadingPdf);
-    const documentTask = pdfjsLib.getDocument({ url: sourceUrl });
-    const pdf = await documentTask.promise;
-    setStatus(format(pdfCopy[uiLocale].creatingPlaceholders, { total: pdf.numPages }));
-    pageObserver = new IntersectionObserver(handlePageIntersections, {
+    setSessionStatus(session, pdfCopy[uiLocale].loadingPdf);
+    session.loadingTask = pdfjsLib.getDocument({ url: sourceUrl });
+    const pdf = await session.loadingTask.promise;
+    if (!isCurrentSession(session)) return;
+    session.document = pdf;
+    setSessionStatus(session, format(pdfCopy[uiLocale].creatingPlaceholders, { total: pdf.numPages }));
+    session.observer = new IntersectionObserver((entries) => handlePageIntersections(session, entries), {
       root: null,
       rootMargin: "900px 0px",
       threshold: 0.01
     });
 
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-      activePdfPageStates.push(createPagePlaceholder(pdf, pageNumber));
+      if (!isCurrentSession(session)) return;
+      session.pageStates.push(createPagePlaceholder(session, pdf, pageNumber));
     }
 
-    setStatus(buildPdfStatus(pdfCopy[uiLocale].viewportFirst));
-    scheduleViewportPageRendering();
+    setSessionStatus(session, buildPdfStatus(session, pdfCopy[uiLocale].viewportFirst));
+    scheduleViewportPageRendering(session);
   } catch (error) {
-    setStatus(format(pdfCopy[uiLocale].loadFailed, { error: error instanceof Error ? error.message : String(error) }));
+    if (!isCurrentSession(session)) return;
+    setSessionStatus(session, format(pdfCopy[uiLocale].loadFailed, { error: error instanceof Error ? error.message : String(error) }));
   }
 }
 
-function createPagePlaceholder(pdf: pdfjsLib.PDFDocumentProxy, pageNumber: number): PdfPageState {
+async function cancelActiveSession(): Promise<void> {
+  const session = activeSession;
+  if (!session) return;
+  activeSession = undefined;
+  cancelPdfSessionToken(session);
+  session.observer?.disconnect();
+  if (session.renderSchedulerTimer !== undefined) window.clearTimeout(session.renderSchedulerTimer);
+  if (session.llmSchedulerTimer !== undefined) window.clearTimeout(session.llmSchedulerTimer);
+  for (const task of session.renderTasks) {
+    task.cancel();
+  }
+  const cleanup: Promise<unknown>[] = [];
+  if (session.loadingTask) cleanup.push(session.loadingTask.destroy());
+  else if (session.document) cleanup.push(session.document.cleanup());
+  await Promise.allSettled(cleanup);
+}
+
+function isCurrentSession(session: PdfRenderSession): boolean {
+  return isPdfSessionCurrent(activeSession, session);
+}
+
+function createPagePlaceholder(session: PdfRenderSession, pdf: pdfjsLib.PDFDocumentProxy, pageNumber: number): PdfPageState {
   const pageEl = document.createElement("section");
   pageEl.className = "pdf-page";
   pageEl.dataset.pageNumber = String(pageNumber);
@@ -172,6 +217,7 @@ function createPagePlaceholder(pdf: pdfjsLib.PDFDocumentProxy, pageNumber: numbe
   root?.append(pageEl);
 
   const state: PdfPageState = {
+    session,
     pageNumber,
     pdf,
     pageEl,
@@ -182,21 +228,26 @@ function createPagePlaceholder(pdf: pdfjsLib.PDFDocumentProxy, pageNumber: numbe
     llmAdded: 0
   };
   pageStateByElement.set(pageEl, state);
-  pageObserver?.observe(pageEl);
+  session.observer?.observe(pageEl);
   return state;
 }
 
 async function renderPageState(state: PdfPageState): Promise<void> {
+  const { session } = state;
+  if (!isCurrentSession(session)) {
+    return;
+  }
   if (state.renderState !== "placeholder") {
     return;
   }
 
   state.renderState = "rendering";
   state.primaryState = "running";
-  setStatus(buildPdfStatus(format(pdfCopy[uiLocale].renderingPage, { page: state.pageNumber })));
+  setSessionStatus(session, buildPdfStatus(session, format(pdfCopy[uiLocale].renderingPage, { page: state.pageNumber })));
 
   try {
     const page = await loadPage(state);
+    if (!isCurrentSession(session)) return;
     const viewport = page.getViewport({ scale: renderScale });
     state.pageEl.style.width = `${viewport.width}px`;
     state.pageEl.style.height = `${viewport.height}px`;
@@ -223,17 +274,28 @@ async function renderPageState(state: PdfPageState): Promise<void> {
       throw new Error(pdfCopy[uiLocale].canvasFailed);
     }
 
-    await page.render({ canvas, canvasContext: context, viewport }).promise;
+    const renderTask = page.render({ canvas, canvasContext: context, viewport });
+    session.renderTasks.add(renderTask);
+    try {
+      await renderTask.promise;
+    } finally {
+      session.renderTasks.delete(renderTask);
+    }
+    if (!isCurrentSession(session)) return;
     const textContent = await page.getTextContent();
+    if (!isCurrentSession(session)) return;
     const textLayer = new pdfjsLib.TextLayer({
       textContentSource: textContent,
       container: textLayerEl,
       viewport
     });
     await textLayer.render();
+    if (!isCurrentSession(session)) return;
     const textItems = buildTextLayerItems(textContent.items as TextItem[], textLayer.textDivs);
     const pageText = textItems.map((item) => item.text).join(" ");
-    const primaryTerms = filterAllowedDetectedTerms(pageText, await detectTerms(pageText, "primary"));
+    const primaryDetection = await detectTerms(pageText, "primary");
+    if (!isCurrentSession(session)) return;
+    const primaryTerms = filterAllowedDetectedTerms(pageText, primaryDetection.terms);
     const primaryCount = drawHighlights(state.pageEl, highlightLayer, textItems, primaryTerms, pageText, state.pageNumber);
 
     state.renderState = "rendered";
@@ -243,15 +305,16 @@ async function renderPageState(state: PdfPageState): Promise<void> {
     state.pageText = pageText;
     state.primaryTerms = primaryTerms;
     state.primaryCount = primaryCount;
-    renderedPageCount += 1;
-    activePrimaryCount += primaryCount;
-    setStatus(buildPdfStatus(format(pdfCopy[uiLocale].pagePrimaryDone, { page: state.pageNumber, count: primaryCount })));
-    scheduleViewportLlmDetection();
+    session.renderedPageCount += 1;
+    session.primaryCount += primaryCount;
+    setSessionStatus(session, buildPdfStatus(session, format(pdfCopy[uiLocale].pagePrimaryDone, { page: state.pageNumber, count: primaryCount })));
+    scheduleViewportLlmDetection(session);
   } catch (error) {
+    if (!isCurrentSession(session)) return;
     state.renderState = "failed";
     state.primaryState = "failed";
     console.warn("TermPop PDF page render failed", sanitizeForLog(error, 300));
-    setStatus(buildPdfStatus(format(pdfCopy[uiLocale].pageRenderFailed, { page: state.pageNumber, error: truncateStatus(error instanceof Error ? error.message : String(error)) })));
+    setSessionStatus(session, buildPdfStatus(session, format(pdfCopy[uiLocale].pageRenderFailed, { page: state.pageNumber, error: truncateStatus(error instanceof Error ? error.message : String(error)) })));
   }
 }
 
@@ -264,7 +327,8 @@ async function loadPage(state: PdfPageState): Promise<pdfjsLib.PDFPageProxy> {
   return state.page;
 }
 
-function handlePageIntersections(entries: IntersectionObserverEntry[]): void {
+function handlePageIntersections(session: PdfRenderSession, entries: IntersectionObserverEntry[]): void {
+  if (!isCurrentSession(session)) return;
   for (const entry of entries) {
     if (!entry.isIntersecting) {
       continue;
@@ -276,28 +340,32 @@ function handlePageIntersections(entries: IntersectionObserverEntry[]): void {
   }
 }
 
-function scheduleViewportPageRendering(): void {
-  if (renderSchedulerTimer !== undefined) {
-    window.clearTimeout(renderSchedulerTimer);
+function scheduleViewportPageRendering(session: PdfRenderSession): void {
+  if (!isCurrentSession(session)) return;
+  if (session.renderSchedulerTimer !== undefined) {
+    window.clearTimeout(session.renderSchedulerTimer);
   }
-  renderSchedulerTimer = window.setTimeout(() => {
-    renderSchedulerTimer = undefined;
-    for (const state of getViewportNearbyPages()) {
+  session.renderSchedulerTimer = window.setTimeout(() => {
+    session.renderSchedulerTimer = undefined;
+    if (!isCurrentSession(session)) return;
+    for (const state of getViewportNearbyPages(session)) {
       void renderPageState(state);
     }
   }, 80);
 }
 
-function getViewportNearbyPages(): PdfPageState[] {
+function getViewportNearbyPages(session: PdfRenderSession): PdfPageState[] {
   const viewportTop = -window.innerHeight;
   const viewportBottom = window.innerHeight * 2;
-  return activePdfPageStates.filter((state) => {
+  return session.pageStates.filter((state) => {
     const rect = state.pageEl.getBoundingClientRect();
     return rect.bottom >= viewportTop && rect.top <= viewportBottom;
   });
 }
 
 async function runLlmForPage(pageState: PdfPageState): Promise<LlmPageResult> {
+  const { session } = pageState;
+  if (!isCurrentSession(session)) return { renderedCount: 0 };
   if (
     pageState.renderState !== "rendered"
     || !pageState.pageText
@@ -308,69 +376,71 @@ async function runLlmForPage(pageState: PdfPageState): Promise<LlmPageResult> {
     return { renderedCount: 0 };
   }
 
-  const terms = await detectTerms(pageState.pageText, "llm");
-  const llmTerms = filterNonOverlappingTerms(filterAllowedDetectedTerms(pageState.pageText, terms), pageState.primaryTerms);
+  const detection = await detectTerms(pageState.pageText, "llm");
+  if (!isCurrentSession(session)) return { renderedCount: 0, debug: detection.debug };
+  const llmTerms = filterNonOverlappingTerms(filterAllowedDetectedTerms(pageState.pageText, detection.terms), pageState.primaryTerms);
   return {
     renderedCount: drawHighlights(pageState.pageEl, pageState.highlightLayer, pageState.textItems, llmTerms, pageState.pageText, pageState.pageNumber),
-    debug: lastDetectionDebug
+    debug: detection.debug
   };
 }
 
-function scheduleViewportLlmDetection(): void {
-  if (activePdfPageStates.length === 0) {
+function scheduleViewportLlmDetection(session: PdfRenderSession): void {
+  if (!isCurrentSession(session) || session.pageStates.length === 0) {
     return;
   }
 
-  if (llmSchedulerTimer !== undefined) {
-    window.clearTimeout(llmSchedulerTimer);
+  if (session.llmQueueRunning) {
+    session.llmQueueDirty = true;
+    return;
   }
 
-  llmSchedulerTimer = window.setTimeout(() => {
-    llmSchedulerTimer = undefined;
-    void runViewportLlmQueue();
+  if (session.llmSchedulerTimer !== undefined) {
+    window.clearTimeout(session.llmSchedulerTimer);
+  }
+
+  session.llmSchedulerTimer = window.setTimeout(() => {
+    session.llmSchedulerTimer = undefined;
+    if (!isCurrentSession(session)) return;
+    void runViewportLlmQueue(session);
   }, LLM_VIEWPORT_SCHEDULE_DELAY_MS);
 }
 
-async function runViewportLlmQueue(): Promise<void> {
-  if (llmQueueRunning) {
-    return;
-  }
-
-  const queue = getViewportNearbyPendingPages();
-  if (queue.length === 0) {
-    return;
-  }
-
-  llmQueueRunning = true;
-  try {
-    for (const pageState of queue) {
+async function runViewportLlmQueue(session: PdfRenderSession): Promise<void> {
+  await drainPdfLlmQueue(
+    session,
+    () => isCurrentSession(session),
+    () => getViewportNearbyPendingPages(session),
+    async (pageState) => {
       if (pageState.llmState !== "pending") {
-        continue;
+        return;
       }
       pageState.llmState = "running";
-      setStatus(buildPdfStatus(format(pdfCopy[uiLocale].llmRunning, { page: pageState.pageNumber })));
+      setSessionStatus(session, buildPdfStatus(session, format(pdfCopy[uiLocale].llmRunning, { page: pageState.pageNumber })));
       try {
         const result = await runLlmForPage(pageState);
+        if (!isCurrentSession(session)) return;
         pageState.llmState = "done";
         pageState.llmAdded = result.renderedCount;
-        mergeDetectionDebug(lastDetectionDebug ?? {}, result.debug);
-        setStatus(buildPdfStatus(format(pdfCopy[uiLocale].llmDone, { page: pageState.pageNumber, count: result.renderedCount })));
+        session.detectionDebug ??= {};
+        mergeDetectionDebug(session.detectionDebug, result.debug);
+        setSessionStatus(session, buildPdfStatus(session, format(pdfCopy[uiLocale].llmDone, { page: pageState.pageNumber, count: result.renderedCount })));
       } catch (error) {
+        if (!isCurrentSession(session)) return;
         pageState.llmState = "failed";
         pageState.llmError = error instanceof Error ? error.message : String(error);
         console.warn("TermPop PDF LLM detection failed", sanitizeForLog(error, 300));
-        setStatus(buildPdfStatus(format(pdfCopy[uiLocale].llmFailed, { page: pageState.pageNumber, error: truncateStatus(pageState.llmError) })));
+        setSessionStatus(session, buildPdfStatus(session, format(pdfCopy[uiLocale].llmFailed, { page: pageState.pageNumber, error: truncateStatus(pageState.llmError) })));
       }
       await sleep(LLM_PAGE_DELAY_MS);
     }
-  } finally {
-    llmQueueRunning = false;
-  }
+  );
 }
 
-function getViewportNearbyPendingPages(): PdfPageState[] {
-  const visiblePages = getVisiblePdfPages();
-  const anchorPages = visiblePages.length > 0 ? visiblePages : getClosestPdfPage() ? [getClosestPdfPage() as PdfPageState] : [];
+function getViewportNearbyPendingPages(session: PdfRenderSession): PdfPageState[] {
+  const visiblePages = getVisiblePdfPages(session);
+  const closestPage = getClosestPdfPage(session);
+  const anchorPages = visiblePages.length > 0 ? visiblePages : closestPage ? [closestPage] : [];
   const wantedNumbers = new Set<number>();
 
   for (const page of anchorPages) {
@@ -380,21 +450,21 @@ function getViewportNearbyPendingPages(): PdfPageState[] {
   }
 
   const viewportCenter = window.innerHeight / 2;
-  return activePdfPageStates
+  return session.pageStates
     .filter((page) => page.renderState === "rendered" && page.llmState === "pending" && wantedNumbers.has(page.pageNumber))
     .sort((left, right) => distanceToViewportCenter(left.pageEl, viewportCenter) - distanceToViewportCenter(right.pageEl, viewportCenter));
 }
 
-function getVisiblePdfPages(): PdfPageState[] {
-  return activePdfPageStates.filter((page) => {
+function getVisiblePdfPages(session: PdfRenderSession): PdfPageState[] {
+  return session.pageStates.filter((page) => {
     const rect = page.pageEl.getBoundingClientRect();
     return rect.bottom >= 0 && rect.top <= window.innerHeight;
   });
 }
 
-function getClosestPdfPage(): PdfPageState | undefined {
+function getClosestPdfPage(session: PdfRenderSession): PdfPageState | undefined {
   const viewportCenter = window.innerHeight / 2;
-  return [...activePdfPageStates].sort((left, right) => distanceToViewportCenter(left.pageEl, viewportCenter) - distanceToViewportCenter(right.pageEl, viewportCenter))[0];
+  return [...session.pageStates].sort((left, right) => distanceToViewportCenter(left.pageEl, viewportCenter) - distanceToViewportCenter(right.pageEl, viewportCenter))[0];
 }
 
 function distanceToViewportCenter(element: HTMLElement, viewportCenter: number): number {
@@ -402,20 +472,25 @@ function distanceToViewportCenter(element: HTMLElement, viewportCenter: number):
   return Math.abs((rect.top + rect.bottom) / 2 - viewportCenter);
 }
 
-function buildPdfStatus(detail: string): string {
-  const total = activePdfPageStates.length;
-  const rendered = activePdfPageStates.filter((page) => page.renderState === "rendered").length;
-  const done = activePdfPageStates.filter((page) => page.llmState === "done").length;
-  const failed = activePdfPageStates.filter((page) => page.llmState === "failed").length;
-  const added = activePdfPageStates.reduce((sum, page) => sum + page.llmAdded, 0);
+function buildPdfStatus(session: PdfRenderSession, detail: string): string {
+  const total = session.pageStates.length;
+  const rendered = session.pageStates.filter((page) => page.renderState === "rendered").length;
+  const done = session.pageStates.filter((page) => page.llmState === "done").length;
+  const failed = session.pageStates.filter((page) => page.llmState === "failed").length;
+  const added = session.pageStates.reduce((sum, page) => sum + page.llmAdded, 0);
+  const failedChunks = session.detectionDebug?.failedChunkCount ?? 0;
+  const failureParts = [
+    failed ? format(pdfCopy[uiLocale].failedSuffix, { failed }) : "",
+    failedChunks ? format(pdfCopy[uiLocale].failedChunkSuffix, { failed: failedChunks }) : ""
+  ];
   return format(pdfCopy[uiLocale].statusSummary, {
     total,
-    rendered: renderedPageCount || rendered,
-    primary: activePrimaryCount,
+    rendered: session.renderedPageCount || rendered,
+    primary: session.primaryCount,
     done,
     renderedMax: Math.max(rendered, 1),
     added,
-    failedText: failed ? format(pdfCopy[uiLocale].failedSuffix, { failed }) : "",
+    failedText: failureParts.join(""),
     detail
   });
 }
@@ -472,9 +547,12 @@ function isRotatedTextElement(element: HTMLElement): boolean {
   return Math.abs(Math.atan2(skewY, scaleX)) > 0.25;
 }
 
-async function detectTerms(text: string, detectionMode: DetectTermsRequest["detectionMode"] = "all"): Promise<DetectedTerm[]> {
+async function detectTerms(
+  text: string,
+  detectionMode: DetectTermsRequest["detectionMode"] = "all"
+): Promise<{ terms: DetectedTerm[]; debug?: DetectTermsDebug }> {
   if (!text.trim()) {
-    return [];
+    return { terms: [] };
   }
   const response = await chrome.runtime.sendMessage({
     type: "TERMPOP_DETECT_TERMS",
@@ -487,8 +565,7 @@ async function detectTerms(text: string, detectionMode: DetectTermsRequest["dete
   if (!response.ok) {
     throw new Error(response.error || pdfCopy[uiLocale].detectFailed);
   }
-  lastDetectionDebug = response.debug;
-  return response.terms ?? [];
+  return { terms: response.terms ?? [], debug: response.debug };
 }
 
 function filterNonOverlappingTerms(terms: DetectedTerm[], existingTerms: DetectedTerm[]): DetectedTerm[] {
@@ -682,6 +759,8 @@ function mergeDetectionDebug(target: DetectTermsDebug, source: DetectTermsDebug 
   target.rejectedCount = (target.rejectedCount ?? 0) + (source.rejectedCount ?? 0);
   target.unmatchedCount = (target.unmatchedCount ?? 0) + (source.unmatchedCount ?? 0);
   target.chunkCount = (target.chunkCount ?? 0) + (source.chunkCount ?? 0);
+  target.failedChunkCount = (target.failedChunkCount ?? 0) + (source.failedChunkCount ?? 0);
+  target.failedChunkIndexes = [...target.failedChunkIndexes ?? [], ...source.failedChunkIndexes ?? []];
   target.sampleCandidates = [...target.sampleCandidates ?? [], ...source.sampleCandidates ?? []].slice(0, 12);
   target.sampleMatchedTerms = [...target.sampleMatchedTerms ?? [], ...source.sampleMatchedTerms ?? []].slice(0, 12);
 }
@@ -692,6 +771,12 @@ function truncateStatus(value: string): string {
 
 function setStatus(message: string): void {
   if (status) status.textContent = message;
+}
+
+function setSessionStatus(session: PdfRenderSession, message: string): void {
+  if (isCurrentSession(session)) {
+    setStatus(message);
+  }
 }
 
 const pdfCopy = {
@@ -711,6 +796,7 @@ const pdfCopy = {
     llmFailed: "LLM 第 {page} 页失败：{error}",
     statusSummary: "已加载 {total} 页，已渲染 {rendered}/{total} 页，词表高亮 {primary} 处；LLM 补词 {done}/{renderedMax} 页，新增 {added} 处{failedText}。{detail}",
     failedSuffix: "，失败 {failed} 页",
+    failedChunkSuffix: "，跳过异常分段 {failed} 个",
     detectFailed: "术语识别失败",
     explainFailed: "解释生成失败"
   },
@@ -730,6 +816,7 @@ const pdfCopy = {
     llmFailed: "LLM failed on page {page}: {error}",
     statusSummary: "Loaded {total} pages, rendered {rendered}/{total}, dictionary highlights {primary}; LLM pages {done}/{renderedMax}, added {added}{failedText}. {detail}",
     failedSuffix: ", failed {failed}",
+    failedChunkSuffix: ", skipped {failed} malformed chunks",
     detectFailed: "Term detection failed",
     explainFailed: "Explanation generation failed"
   }

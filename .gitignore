@@ -18,3 +18,18 @@ release/
 *.log
 *.tmp
 *.bak
+
+# Local browser and visual-production scratch output
+.tmp-*/
+**/.browser-profile*/
+**/browser-profile*/
+artifacts/**/frames/
+artifacts/**/stills/
+artifacts/**/preview/
+artifacts/**/previews/
+**/*.pid
+**/*.pid.lock
+**/*-preview.mp4
+**/*-preview.webm
+**/*-temp-audio.*
+**/*-tmp-audio.*

@@ -3,14 +3,17 @@ import { byteOffsetToJsIndex } from "../shared/byte-offset";
 import { normalizeTermType } from "../shared/types";
 import type { DetectTermsDebug, DetectedTerm, LlmSettings } from "../shared/types";
 import { addCachedTerms, detectCachedTerms } from "./cache";
+import { buildDetectionCacheKey, TimedLruCache } from "./detection-cache";
 import { extractJsonPayload } from "./json";
 import { createLlmProvider } from "./llm-provider";
+import { assertPartialBatchSuccess, PartialBatchAllFailedError, runPartialBatch } from "./partial-batch";
 import { assertLlmProviderAuthorized } from "./provider-access";
 import { buildTermExtractionPrompt, buildTermExtractionSystemPrompt } from "./prompts";
 import { debugLog, defaultBaseUrl, defaultModel, sanitizeForLog } from "./utils";
 import { detectWithWasm } from "./wasm-runtime";
 
-const detectionCache = new Map<string, DetectedTerm[]>();
+const detectionCache = new TimedLruCache<DetectionResult>(128, 30 * 60 * 1000);
+const detectionInFlight = new Map<string, Promise<DetectionResult>>();
 const LLM_DETECTION_TIMEOUT_MS = 120000;
 const LLM_DETECTION_CHUNK_SIZE = 3000;
 const LLM_DETECTION_CHUNK_OVERLAP = 80;
@@ -59,29 +62,58 @@ export async function detectTerms(
     return { terms: [] };
   }
 
-  const cacheKey = [
+  const cacheKey = buildDetectionCacheKey({
     detectionMode,
-    settings.llm.provider,
-    settings.llm.baseUrl || defaultBaseUrl(settings.llm.provider),
-    settings.llm.model || defaultModel(settings.llm.provider),
-    settings.llm.language,
-    settings.dictionaryJson ?? "",
-    cacheContext.url ?? "",
-    cacheContext.pageFingerprint ?? "",
+    provider: settings.llm.provider,
+    apiKey: settings.llm.apiKey,
+    baseUrl: settings.llm.baseUrl || defaultBaseUrl(settings.llm.provider),
+    model: settings.llm.model || defaultModel(settings.llm.provider),
+    language: settings.llm.language,
+    temperature: settings.llm.temperature,
+    maxTokens: settings.llm.maxTokens,
+    dictionaryJson: settings.dictionaryJson,
+    url: cacheContext.url,
+    pageFingerprint: cacheContext.pageFingerprint,
     text
-  ].join("\n");
+  });
   const cached = detectionCache.get(cacheKey);
   if (cached) {
-    return { terms: cached };
+    return cached;
   }
 
+  const existingRequest = detectionInFlight.get(cacheKey);
+  if (existingRequest) {
+    return existingRequest;
+  }
+
+  const pendingRequest = detectTermsUncached(text, detectionMode, settings, cacheContext, cacheKey);
+  detectionInFlight.set(cacheKey, pendingRequest);
+  try {
+    return await pendingRequest;
+  } finally {
+    if (detectionInFlight.get(cacheKey) === pendingRequest) {
+      detectionInFlight.delete(cacheKey);
+    }
+  }
+}
+
+class LlmChunkParseError extends Error {}
+
+async function detectTermsUncached(
+  text: string,
+  detectionMode: "primary" | "llm" | "all",
+  settings: { llm: LlmSettings; dictionaryJson?: string },
+  cacheContext: { url?: string; pageFingerprint?: string },
+  cacheKey: string
+): Promise<DetectionResult> {
   const primaryTerms = dedupeDetectedTerms(filterAllowedDetectedTerms(text, [
     ...(await rustDetect(text, settings.dictionaryJson)),
     ...(await detectCachedTerms(text, cacheContext))
   ]));
   if (detectionMode === "primary") {
-    detectionCache.set(cacheKey, primaryTerms);
-    return { terms: primaryTerms };
+    const result = { terms: primaryTerms };
+    detectionCache.set(cacheKey, result);
+    return result;
   }
 
   let llmTerms: DetectedTerm[] = [];
@@ -93,7 +125,7 @@ export async function detectTerms(
       llmTerms = result.terms;
       llmDebug = result.debug;
     } catch (error) {
-      if (detectionMode === "llm") {
+      if (detectionMode === "llm" || error instanceof PartialBatchAllFailedError) {
         throw error;
       }
     }
@@ -101,18 +133,20 @@ export async function detectTerms(
 
   if (detectionMode === "llm") {
     llmTerms = dedupeDetectedTerms(filterAllowedDetectedTerms(text, llmTerms));
-    detectionCache.set(cacheKey, llmTerms);
-    void addCachedTerms(llmTerms, cacheContext);
-    return { terms: llmTerms, debug: { ...llmDebug, matchedCount: llmTerms.length } };
+    await addCachedTerms(llmTerms, cacheContext);
+    const result = { terms: llmTerms, debug: { ...llmDebug, matchedCount: llmTerms.length } };
+    detectionCache.set(cacheKey, result);
+    return result;
   }
 
   const terms = mergePrimaryThenLlmTerms(
     primaryTerms,
     dedupeDetectedTerms(filterAllowedDetectedTerms(text, llmTerms))
   );
-  void addCachedTerms(terms, cacheContext);
-  detectionCache.set(cacheKey, terms);
-  return { terms, debug: llmDebug };
+  await addCachedTerms(terms, cacheContext);
+  const result = { terms, debug: llmDebug };
+  detectionCache.set(cacheKey, result);
+  return result;
 }
 
 async function fetchLlmDetectedTerms(text: string, settings: LlmSettings, primaryTerms: DetectedTerm[]): Promise<DetectionResult> {
@@ -124,13 +158,15 @@ async function fetchLlmDetectedTerms(text: string, settings: LlmSettings, primar
     rejectedCount: 0,
     unmatchedCount: 0,
     chunkCount: chunks.length,
+    failedChunkCount: 0,
+    failedChunkIndexes: [],
     sampleCandidates: [],
     sampleMatchedTerms: []
   };
   const provider = createLlmProvider(settings);
   const system = buildTermExtractionSystemPrompt(settings.language);
 
-  for (const chunk of chunks) {
+  const batch = await runPartialBatch(chunks, async (chunk) => {
     const prompt = buildTermExtractionPrompt(chunk.text, settings.language, chunk.index + 1, chunks.length);
     const content = await provider.detectTerms(prompt, system, settings, LLM_DETECTION_TIMEOUT_MS);
 
@@ -142,20 +178,16 @@ async function fetchLlmDetectedTerms(text: string, settings: LlmSettings, primar
       rawPreview: sanitizeForLog(content, 500)
     });
 
-    let parsed: ParsedDetectedTerms;
     try {
-      parsed = parseDetectedTerms(content, chunk.text, chunk.start, text, primaryTerms);
+      return parseDetectedTerms(content, chunk.text, chunk.start, text, primaryTerms);
     } catch (error) {
-      debugLog(`TermPop LLM detection parse failed ${chunk.index + 1}/${chunks.length}`, {
-        error: error instanceof Error ? error.message : String(error),
-        provider: settings.provider,
-        model: settings.model || defaultModel(settings.provider),
-        chunkStart: chunk.start,
-        inputPreview: sanitizeForLog(chunk.text, 500),
-        rawPreview: sanitizeForLog(content, 500)
-      });
-      throw new Error("LLM response was not valid JSON.");
+      throw new LlmChunkParseError(error instanceof Error ? error.message : String(error));
     }
+  }, {
+    continueOnError: (error) => error instanceof LlmChunkParseError
+  });
+
+  for (const { item: chunk, value: parsed } of batch.successes) {
     const parsedTerms = parsed.terms;
     debug.rawCandidateCount = (debug.rawCandidateCount ?? 0) + parsed.debug.rawCandidateCount;
     debug.matchedCount = (debug.matchedCount ?? 0) + parsed.debug.matchedCount;
@@ -169,6 +201,22 @@ async function fetchLlmDetectedTerms(text: string, settings: LlmSettings, primar
     );
     terms.push(...parsedTerms);
   }
+
+  for (const { item: chunk, error } of batch.failures) {
+    const message = error instanceof Error ? error.message : String(error);
+    debugLog(`TermPop LLM detection parse failed ${chunk.index + 1}/${chunks.length}`, {
+      error: sanitizeForLog(message, 300),
+      provider: settings.provider,
+      model: settings.model || defaultModel(settings.provider),
+      chunkStart: chunk.start,
+      inputPreview: sanitizeForLog(chunk.text, 500),
+      failedChunk: chunk.index + 1
+    });
+  }
+  debug.failedChunkCount = batch.failures.length;
+  debug.failedChunkIndexes = batch.failures.map(({ item }) => item.index + 1);
+
+  assertPartialBatchSuccess(batch, "LLM detection");
 
   const dedupedTerms = dedupeDetectedTerms(terms);
   debug.matchedCount = dedupedTerms.length;

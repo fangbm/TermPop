@@ -132,6 +132,8 @@ export interface DetectTermsDebug {
   rejectedCount?: number;
   unmatchedCount?: number;
   chunkCount?: number;
+  failedChunkCount?: number;
+  failedChunkIndexes?: number[];
   sampleCandidates?: string[];
   sampleMatchedTerms?: string[];
 }

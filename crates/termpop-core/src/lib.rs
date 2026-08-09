@@ -680,13 +680,21 @@ mod tests {
         )
         .expect("valid scoped user dictionary");
 
-        let rust = terms.iter().find(|term| term.term == "Rust").expect("Rust matched");
+        let rust = terms
+            .iter()
+            .find(|term| term.term == "Rust")
+            .expect("Rust matched");
         assert_eq!(rust.source, DetectionSource::User);
         assert_eq!(rust.term_type, TermType::Custom);
-        assert_eq!(terms.iter().filter(|term| term.term == "星穹检索").count(), 2);
-        assert!(terms
-            .iter()
-            .filter(|term| term.term == "星穹检索")
-            .all(|term| term.source == DetectionSource::User));
+        assert_eq!(
+            terms.iter().filter(|term| term.term == "星穹检索").count(),
+            2
+        );
+        assert!(
+            terms
+                .iter()
+                .filter(|term| term.term == "星穹检索")
+                .all(|term| term.source == DetectionSource::User)
+        );
     }
 }

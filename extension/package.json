@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --experimental-strip-types tests/run-tests.ts",
+    "test": "node --experimental-strip-types tests/run-tests.ts && node --experimental-strip-types tests/cache-dictionary-tests.ts",
     "typecheck": "tsc --noEmit",
     "build": "vite build"
   },
@@ -14,6 +14,6 @@
     "vite": "^6.3.5"
   },
   "dependencies": {
-    "pdfjs-dist": "^6.0.227"
+    "pdfjs-dist": "^6.2.108"
   }
 }

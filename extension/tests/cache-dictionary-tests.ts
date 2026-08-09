@@ -4,6 +4,7 @@ import { getSettings } from "../src/shared/settings.ts";
 import type { DetectedTerm, Explanation, LlmSettings } from "../src/shared/types.ts";
 
 const now = Date.now();
+let completedStorageWrites = 0;
 const storage: Record<string, unknown> = {
   "termpop.explanationCache": [
     explanationEntry("fresh", now - 1_000),
@@ -26,7 +27,9 @@ const storage: Record<string, unknown> = {
         return Object.fromEntries(wanted.map((key) => [key, storage[key]]));
       },
       async set(values: Record<string, unknown>) {
+        await delay(2);
         Object.assign(storage, values);
+        completedStorageWrites += 1;
       }
     }
   }
@@ -45,6 +48,8 @@ async function testTermCacheScopes(): Promise<void> {
     term("DomainWidget", "Ner", 0.91),
     term("PageWidget", "Ner", 0.7)
   ], context);
+
+  ok(completedStorageWrites > 0);
 
   equal(labels(await getCachedTerms(context)), "DomainWidget:domain|GlobalWidget:global|PageWidget:pageFingerprint");
   equal(labels(await getCachedTerms({ url: "https://docs.example.com/b", pageFingerprint: "page-b" })), "DomainWidget:domain|GlobalWidget:global");
@@ -136,4 +141,8 @@ function ok(value: unknown): asserts value {
   if (!value) {
     throw new Error("Expected value to be truthy.");
   }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
