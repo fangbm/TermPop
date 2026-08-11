@@ -1,4 +1,19 @@
 .termpop-highlight {
+  display: inline !important;
+  position: static !important;
+  float: none !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: auto !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  font: inherit !important;
+  line-height: inherit !important;
+  letter-spacing: inherit !important;
+  word-spacing: inherit !important;
+  white-space: inherit !important;
+  vertical-align: baseline !important;
   border-bottom: 2px dotted #2563eb;
   cursor: help;
   transition: background-color 120ms ease, border-bottom-color 120ms ease;

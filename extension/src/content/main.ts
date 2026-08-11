@@ -1221,7 +1221,23 @@ function isHighlightableTextNode(node: Node): boolean {
   }
 
   const style = window.getComputedStyle(parent);
-  return style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0";
+  if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") {
+    return false;
+  }
+
+  // Splitting a direct text child creates separate flex/grid items and can
+  // change line breaks even when the inserted highlight itself is inline.
+  // Ruby and display:contents have similar anonymous-box behavior.
+  return !isLayoutSensitiveTextContainer(style.display);
+}
+
+function isLayoutSensitiveTextContainer(display: string): boolean {
+  return display === "flex"
+    || display === "inline-flex"
+    || display === "grid"
+    || display === "inline-grid"
+    || display === "contents"
+    || display.startsWith("ruby");
 }
 
 function isTextNodeNearViewport(node: Text): boolean {
@@ -1277,6 +1293,7 @@ function highlightTextNode(node: Text, terms: DetectedTerm[]): number {
     wrapper.dataset.termType = term.term_type;
     wrapper.dataset.confidence = String(term.confidence);
     wrapper.textContent = text.slice(term.start, term.end);
+    stabilizeHighlightLayout(wrapper);
     fragment.append(wrapper);
 
     cursor = term.end;
@@ -1289,6 +1306,42 @@ function highlightTextNode(node: Text, terms: DetectedTerm[]): number {
 
   node.parentNode.replaceChild(fragment, node);
   return count;
+}
+
+function stabilizeHighlightLayout(wrapper: HTMLElement): void {
+  // Page styles frequently target every span. Inline !important declarations
+  // keep the wrapper typographically equivalent to the text node it replaces,
+  // while the class remains responsible only for highlight paint and events.
+  const properties: Record<string, string> = {
+    display: "inline",
+    position: "static",
+    float: "none",
+    flex: "none",
+    width: "auto",
+    "min-width": "0",
+    "max-width": "none",
+    height: "auto",
+    "min-height": "0",
+    "max-height": "none",
+    margin: "0",
+    padding: "0",
+    font: "inherit",
+    "line-height": "inherit",
+    "letter-spacing": "inherit",
+    "word-spacing": "inherit",
+    "text-transform": "inherit",
+    "white-space": "inherit",
+    "vertical-align": "baseline",
+    "box-sizing": "content-box",
+    contain: "none",
+    transform: "none",
+    inset: "auto",
+    overflow: "visible",
+    "z-index": "auto"
+  };
+  for (const [property, value] of Object.entries(properties)) {
+    wrapper.style.setProperty(property, value, "important");
+  }
 }
 
 interface ShowExplanationOptions {
