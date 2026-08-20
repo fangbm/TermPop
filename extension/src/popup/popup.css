@@ -229,3 +229,29 @@ button.is-active {
   white-space: nowrap;
   padding-inline: 10px;
 }
+
+.site-resources {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  background: #ffffff;
+}
+
+.site-resources strong {
+  display: block;
+  color: #172033;
+  font-size: 12px;
+}
+
+.site-resources p {
+  margin-top: 3px;
+  line-height: 1.45;
+}
+
+.site-resources-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}

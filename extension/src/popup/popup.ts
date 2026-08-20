@@ -1,6 +1,7 @@
 import { getSettings, setLlmSettings, setMode } from "../shared/settings";
 import { defaultBaseUrl, defaultModel, normalizeBaseUrl } from "../shared/llm-defaults";
 import { ALL_SITES_ORIGIN_PATTERNS, FILE_ORIGIN_PATTERN, providerOriginPatternFromBaseUrl } from "../shared/browser-utils";
+import { termpopWebsiteUrl } from "../shared/website";
 import type {
   ExplanationLanguage,
   GetSiteAccessResponse,
@@ -31,6 +32,8 @@ const screenshotRecognitionEnabledInput = document.querySelector<HTMLInputElemen
 const screenshotRecognitionModeInput = document.querySelector<HTMLSelectElement>("#screenshot-recognition-mode");
 const screenshotShortcut = document.querySelector<HTMLElement>("#screenshot-shortcut");
 const customizeShortcutButton = document.querySelector<HTMLButtonElement>("#customize-shortcut");
+const openGuideButton = document.querySelector<HTMLButtonElement>("#open-guide");
+const openDocsButton = document.querySelector<HTMLButtonElement>("#open-docs");
 const temperatureInput = document.querySelector<HTMLInputElement>("#temperature");
 const maxTokensInput = document.querySelector<HTMLInputElement>("#max-tokens");
 const maxConcurrencyInput = document.querySelector<HTMLInputElement>("#max-concurrency");
@@ -93,6 +96,10 @@ const t = {
     screenshotModeOcr: "本地 OCR",
     screenshotShortcutLabel: "截图快捷键",
     customizeShortcut: "自定义快捷键",
+    resourcesLabel: "指南与文档",
+    resourcesNote: "首次使用或遇到问题时，可打开官网新手向导和文档。",
+    openGuide: "打开新手向导",
+    openDocs: "打开文档",
     shortcutUnassigned: "未设置",
     advancedSettings: "高级设置",
     collapseAdvancedSettings: "收起高级设置",
@@ -156,6 +163,10 @@ const t = {
     screenshotModeOcr: "Local OCR",
     screenshotShortcutLabel: "Screenshot shortcut",
     customizeShortcut: "Customize shortcut",
+    resourcesLabel: "Guides and docs",
+    resourcesNote: "Open the website guide or documentation for first-time setup and troubleshooting.",
+    openGuide: "Open guide",
+    openDocs: "Open docs",
     shortcutUnassigned: "Not assigned",
     advancedSettings: "Advanced settings",
     collapseAdvancedSettings: "Collapse advanced settings",
@@ -258,6 +269,14 @@ async function init(): Promise<void> {
 
   customizeShortcutButton?.addEventListener("click", () => {
     void openShortcutSettings();
+  });
+
+  openGuideButton?.addEventListener("click", () => {
+    void openWebsitePage("/guide");
+  });
+
+  openDocsButton?.addEventListener("click", () => {
+    void openWebsitePage("/docs");
   });
 
   advancedToggle?.addEventListener("click", () => {
@@ -642,6 +661,11 @@ async function renderScreenshotShortcut(): Promise<void> {
 async function openShortcutSettings(): Promise<void> {
   const scheme = navigator.userAgent.includes("Edg/") ? "edge" : "chrome";
   await chrome.tabs.create({ url: `${scheme}://extensions/shortcuts` });
+  window.close();
+}
+
+async function openWebsitePage(path: "/guide" | "/docs"): Promise<void> {
+  await chrome.tabs.create({ url: termpopWebsiteUrl(path, "extension") });
   window.close();
 }
 

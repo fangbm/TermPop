@@ -39,6 +39,7 @@ import {
 import { assertLlmProviderAuthorized } from "./provider-access";
 import { createLlmProvider } from "./llm-provider";
 import { captureVisibleSenderTab, recognizeScreenshot, setupScreenshotCommand } from "./screenshot";
+import { setupOnboarding } from "./onboarding";
 
 type RuntimeMessage =
   | ExplainRequest
@@ -60,6 +61,7 @@ interface CacheContextMessage {
 setupContextMenus();
 setupDynamicInjection();
 setupScreenshotCommand();
+setupOnboarding();
 
 chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendResponse) => {
   if (message.type === "TERMPOP_GET_SITE_ACCESS") {

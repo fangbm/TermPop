@@ -9,6 +9,7 @@ const DOWNLOAD_TARGET = getDownloadTarget(typeof navigator === "undefined" ? "" 
 
 type Language = "en" | "zh";
 type Accent = "blue" | "violet" | "green" | "amber" | "cyan" | "rose";
+type SiteRoute = "home" | "guide" | "docs";
 
 type Feature = {
   title: string;
@@ -31,6 +32,8 @@ type Copy = {
     features: string;
     download: string;
     github: string;
+    guide: string;
+    docs: string;
     languageLabel: string;
     homeLabel: string;
   };
@@ -157,6 +160,8 @@ const copy: Record<Language, Copy> = {
       features: "Features",
       download: "Download",
       github: "GitHub",
+      guide: "Guide",
+      docs: "Docs",
       languageLabel: "Choose language",
       homeLabel: "TermPop home"
     },
@@ -233,6 +238,8 @@ const copy: Record<Language, Copy> = {
       features: "功能",
       download: "下载",
       github: "GitHub",
+      guide: "新手向导",
+      docs: "文档",
       languageLabel: "选择语言",
       homeLabel: "TermPop 首页"
     },
@@ -315,8 +322,30 @@ function initialLanguage(): Language {
   return navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en";
 }
 
+function currentRoute(): SiteRoute {
+  const path = window.location.pathname.replace(/\/+$/, "") || "/";
+  if (path === "/guide") {
+    return "guide";
+  }
+  if (path === "/docs") {
+    return "docs";
+  }
+  return "home";
+}
+
+function routePath(route: SiteRoute): string {
+  if (route === "guide") {
+    return "/guide";
+  }
+  if (route === "docs") {
+    return "/docs";
+  }
+  return "/";
+}
+
 function App(): React.ReactElement {
   const [language, setLanguage] = useState<Language>(initialLanguage);
+  const [route, setRoute] = useState<SiteRoute>(currentRoute);
   const t = copy[language];
 
   useEffect(() => {
@@ -326,38 +355,93 @@ function App(): React.ReactElement {
       language === "zh" ? "TermPop - 不离开页面，也能看懂术语" : "TermPop - Explain terms without leaving the page";
   }, [language]);
 
+  useEffect(() => {
+    const handlePopState = () => setRoute(currentRoute());
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const navigate = (nextRoute: SiteRoute) => {
+    const nextPath = routePath(nextRoute);
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState({}, "", `${nextPath}${nextRoute === "guide" ? window.location.search : ""}`);
+    }
+    setRoute(nextRoute);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   return (
     <main>
-      <Nav language={language} setLanguage={setLanguage} t={t} />
-      <Hero t={t} />
-      <ProductShowcase language={language} t={t} />
-      <FeatureGrid t={t} />
-      <DownloadSection downloadTarget={DOWNLOAD_TARGET} t={t} />
-      <Footer downloadTarget={DOWNLOAD_TARGET} t={t} />
+      <Nav language={language} navigate={navigate} route={route} setLanguage={setLanguage} t={t} />
+      {route === "home" ? (
+        <>
+          <Hero t={t} />
+          <ProductShowcase language={language} t={t} />
+          <FeatureGrid t={t} />
+          <DownloadSection downloadTarget={DOWNLOAD_TARGET} t={t} />
+        </>
+      ) : route === "guide" ? (
+        <GuidePage language={language} navigate={navigate} />
+      ) : (
+        <DocsPage language={language} navigate={navigate} />
+      )}
+      <Footer downloadTarget={DOWNLOAD_TARGET} navigate={navigate} t={t} />
     </main>
   );
 }
 
 function Nav({
   language,
+  navigate,
+  route,
   setLanguage,
   t
 }: {
   language: Language;
+  navigate: (route: SiteRoute) => void;
+  route: SiteRoute;
   setLanguage: (language: Language) => void;
   t: Copy;
 }): React.ReactElement {
   return (
     <header className="nav-shell">
       <nav className="nav" aria-label="Primary navigation">
-        <a className="brand" href="#top" aria-label={t.nav.homeLabel}>
+        <a
+          className="brand"
+          href="/"
+          aria-label={t.nav.homeLabel}
+          onClick={(event) => {
+            event.preventDefault();
+            navigate("home");
+          }}
+        >
           <img className="brand-mark" src="/termpop-icon.png" alt="" aria-hidden="true" />
           <span>TermPop</span>
         </a>
         <div className="nav-right">
           <div className="nav-links">
-            <a href="#features">{t.nav.features}</a>
-            <a href="#download">{t.nav.download}</a>
+            <a href="/#features" onClick={() => route !== "home" && navigate("home")}>{t.nav.features}</a>
+            <a
+              className={route === "guide" ? "is-current" : ""}
+              href="/guide"
+              onClick={(event) => {
+                event.preventDefault();
+                navigate("guide");
+              }}
+            >
+              {t.nav.guide}
+            </a>
+            <a
+              className={route === "docs" ? "is-current" : ""}
+              href="/docs"
+              onClick={(event) => {
+                event.preventDefault();
+                navigate("docs");
+              }}
+            >
+              {t.nav.docs}
+            </a>
+            <a href="/#download" onClick={() => route !== "home" && navigate("home")}>{t.nav.download}</a>
             <a href={GITHUB_URL}>{t.nav.github}</a>
           </div>
           <div className="language-switch" aria-label={t.nav.languageLabel}>
@@ -820,6 +904,155 @@ function FeatureGrid({ t }: { t: Copy }): React.ReactElement {
   );
 }
 
+function GuidePage({
+  language,
+  navigate
+}: {
+  language: Language;
+  navigate: (route: SiteRoute) => void;
+}): React.ReactElement {
+  const zh = language === "zh";
+  const installed = new URLSearchParams(window.location.search).get("source") === "install";
+  const steps = zh
+    ? [
+        {
+          number: "01",
+          title: "启用你要阅读的网站",
+          text: "点击浏览器工具栏中的 TermPop 图标，确认一次“在所有网站启用”。之后无需逐站授权；也可以把邮箱、银行等敏感网站加入黑名单。",
+          detail: "本地文件需要在浏览器的扩展详情中单独允许访问。"
+        },
+        {
+          number: "02",
+          title: "选择适合你的阅读方式",
+          text: "悬停会自动高亮并显示释义；划词仅在你选中文本后从右键菜单解释；混合模式同时开启两种方式。",
+          detail: "设置会立即应用到当前已打开的页面。"
+        },
+        {
+          number: "03",
+          title: "配置解释与截图功能",
+          text: "在插件设置中填写兼容的 LLM API Key，选择释义语言、例句和截图识别方式。默认快捷键为 Alt+Shift+S，可在浏览器扩展快捷键页修改。",
+          detail: "没有 API Key 时，基础本地词表高亮仍可使用。"
+        }
+      ]
+    : [
+        {
+          number: "01",
+          title: "Enable the websites you read",
+          text: "Open TermPop from the browser toolbar and grant website access once. You will not need to authorize every site. Add mail, banking, or other sensitive sites to the blocklist when needed.",
+          detail: "Local files require separate access in your browser's extension details."
+        },
+        {
+          number: "02",
+          title: "Choose a reading mode",
+          text: "Hover highlights terms and opens explanations automatically. Selection only explains text you choose from the context menu. Hybrid enables both.",
+          detail: "Changes apply to pages that are already open."
+        },
+        {
+          number: "03",
+          title: "Configure explanations and screenshots",
+          text: "Enter a compatible LLM API key in the extension settings, then choose language, usage examples, and screenshot recognition. The default shortcut is Alt+Shift+S.",
+          detail: "Local dictionary highlights continue to work without an API key."
+        }
+      ];
+
+  return (
+    <section className="guide-page">
+      <div className="page-intro">
+        {installed ? (
+          <p className="install-notice">
+            {zh ? "TermPop 已安装。花一分钟完成下面三步，就可以开始阅读。" : "TermPop is installed. Complete these three short steps to start reading."}
+          </p>
+        ) : null}
+        <p className="eyebrow">{zh ? "新手向导" : "Getting started"}</p>
+        <h1>{zh ? "从安装到第一次解释。" : "From install to your first explanation."}</h1>
+        <p>
+          {zh
+            ? "TermPop 不会替代你的阅读节奏。完成下面的设置后，它会在你需要的地方提供术语解释。"
+            : "TermPop stays out of the way until you need it. Set it up once, then keep your reading flow."}
+        </p>
+      </div>
+      <div className="guide-steps">
+        {steps.map((step) => (
+          <article className="guide-step" key={step.number}>
+            <span>{step.number}</span>
+            <h2>{step.title}</h2>
+            <p>{step.text}</p>
+            <small>{step.detail}</small>
+          </article>
+        ))}
+      </div>
+      <div className="guide-callout">
+        <div>
+          <p className="eyebrow">{zh ? "下一步" : "Next"}</p>
+          <h2>{zh ? "有任何问题，先从文档开始。" : "Need a hand? Start with the documentation."}</h2>
+        </div>
+        <button className="button button-primary" type="button" onClick={() => navigate("docs")}>
+          {zh ? "查看使用文档" : "Read the docs"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function DocsPage({
+  language,
+  navigate
+}: {
+  language: Language;
+  navigate: (route: SiteRoute) => void;
+}): React.ReactElement {
+  const zh = language === "zh";
+  const sections = zh
+    ? [
+        ["modes", "阅读模式", "悬停：自动识别并在术语上停留时打开解释。划词：选中短语后使用右键菜单。混合：同时启用两种方式。"],
+        ["access", "网站权限与黑名单", "首次点击“在所有网站启用 TermPop”后即可用于普通 HTTP/HTTPS 页面。可在插件设置中为当前站点停用，适合银行、邮箱和其他敏感页面。file:// 本地文件需要在浏览器扩展详情中单独开启。"],
+        ["llm", "LLM 与隐私", "TermPop 支持本地 BYOK。API Key 保存在浏览器本地存储中，不是 hardened secret storage。释义和 LLM 补词会发送给你在设置中选定的服务商；基础 Rust/WASM 规则检测在本地运行。"],
+        ["screenshot", "截图解释", "启用截图解释后，按 Alt+Shift+S 可截取当前可见区域。自动模式会优先使用具备视觉输入能力的模型，否则使用本地 OCR；快捷键可在浏览器的扩展快捷键页修改。"],
+        ["cache", "缓存与用户词库", "术语和释义分别缓存。释义缓存会区分术语、语言、模型、例句开关和上下文，减少重复请求；用户词库优先于通用规则。"],
+        ["pdf", "PDF", "TermPop 支持用自己的 PDF 阅读器打开网页或本地 PDF。Edge/Chrome 内置 PDF 阅读器不支持原位注入，请从插件弹窗选择“用 TermPop 打开当前 PDF”。"],
+        ["troubleshooting", "常见问题", "没有高亮：确认已启用全站权限且当前站点不在黑名单，随后刷新页面。没有释义：检查 API Key、模型和 Base URL，并用“测试连接”验证。链接、代码块和输入框默认不会渲染高亮，以避免破坏页面交互。"]
+      ]
+    : [
+        ["modes", "Reading modes", "Hover detects terms and opens an explanation when you pause on one. Selection explains text chosen from the context menu. Hybrid enables both."],
+        ["access", "Website access and blocklist", "After you enable TermPop on all websites once, it can run on normal HTTP and HTTPS pages. Disable the current site in the popup for banking, mail, and other sensitive pages. Local files need separate access in the browser extension details."],
+        ["llm", "LLM and privacy", "TermPop supports local BYOK. Your API key is held in browser local storage and is not hardened secret storage. Explanations and LLM term detection are sent to the provider selected in settings; base Rust/WASM matching runs locally."],
+        ["screenshot", "Screenshot explanations", "With screenshot explanations enabled, Alt+Shift+S captures the visible area. Automatic mode uses a vision-capable model when available and otherwise falls back to local OCR. Change the shortcut in your browser extension shortcuts page."],
+        ["cache", "Cache and personal dictionary", "Terms and explanations use separate caches. Explanation cache keys include the term, language, model, usage-example setting, and context, while your personal dictionary takes priority over general rules."],
+        ["pdf", "PDF", "Open web or local PDFs in TermPop's own PDF viewer. In-place injection into the built-in Edge and Chrome PDF viewers is not supported; select Open current PDF with TermPop from the popup instead."],
+        ["troubleshooting", "Troubleshooting", "No highlights: confirm website access is enabled, the site is not blocked, then refresh. No explanations: verify your API key, model, and base URL with Test connection. Links, code blocks, and inputs are skipped to preserve page interaction."]
+      ];
+
+  return (
+    <section className="docs-page">
+      <div className="page-intro docs-intro">
+        <p className="eyebrow">{zh ? "帮助文档" : "Documentation"}</p>
+        <h1>{zh ? "把 TermPop 用得顺手。" : "Make TermPop feel effortless."}</h1>
+        <p>{zh ? "从权限、阅读模式到截图识别，这里是日常使用中最需要知道的内容。" : "Everything you need for permissions, reading modes, screenshot recognition, and daily use."}</p>
+      </div>
+      <div className="docs-layout">
+        <aside className="docs-nav" aria-label={zh ? "文档目录" : "Documentation sections"}>
+          {sections.map(([id, title]) => <a href={`#${id}`} key={id}>{title}</a>)}
+        </aside>
+        <div className="docs-content">
+          {sections.map(([id, title, content]) => (
+            <article id={id} key={id}>
+              <h2>{title}</h2>
+              <p>{content}</p>
+            </article>
+          ))}
+          <div className="docs-end">
+            <h2>{zh ? "准备好开始了吗？" : "Ready to begin?"}</h2>
+            <p>{zh ? "打开新手向导，按三步完成首次设置。" : "Open the guide and complete the three first-time setup steps."}</p>
+            <button className="button button-primary" type="button" onClick={() => navigate("guide")}>
+              {zh ? "打开新手向导" : "Open the guide"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function DownloadSection({
   downloadTarget,
   t
@@ -846,10 +1079,36 @@ function DownloadSection({
   );
 }
 
-function Footer({ downloadTarget, t }: { downloadTarget: DownloadTarget; t: Copy }): React.ReactElement {
+function Footer({
+  downloadTarget,
+  navigate,
+  t
+}: {
+  downloadTarget: DownloadTarget;
+  navigate: (route: SiteRoute) => void;
+  t: Copy;
+}): React.ReactElement {
   return (
     <footer className="footer">
       <span>TermPop</span>
+      <a
+        href="/guide"
+        onClick={(event) => {
+          event.preventDefault();
+          navigate("guide");
+        }}
+      >
+        {t.nav.guide}
+      </a>
+      <a
+        href="/docs"
+        onClick={(event) => {
+          event.preventDefault();
+          navigate("docs");
+        }}
+      >
+        {t.nav.docs}
+      </a>
       <a href={GITHUB_URL}>GitHub</a>
       <a data-download-kind={downloadTarget.kind} href={downloadTarget.url}>
         {downloadTarget.kind === "edge" ? t.download.edgeAddons : t.footer.releases}
