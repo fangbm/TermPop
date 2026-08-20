@@ -1,61 +1,84 @@
 # TermPop
 
-TermPop is a Chrome/Edge Manifest V3 browser extension that detects technical terms on web pages and explains them in a small hover card.
+[简体中文](README.zh-CN.md) | English
 
-It combines a Rust detection core compiled to WebAssembly with a TypeScript browser extension. The current public build focuses on local browser usage: scan page text, highlight terms, and show contextual explanations through either a mock provider or a user-configured LLM provider.
+**Understand technical terms without leaving the page.**
 
-## Features
+TermPop is an open-source browser extension for Chrome and Microsoft Edge. It highlights technical vocabulary while you read, then shows concise, context-aware explanations where the term appears. The extension uses a Rust core compiled to WebAssembly for local matching and can optionally use your own LLM provider for richer detection and explanations.
 
-- Page text scanning and safe text-node highlighting.
-- Rust/WASM term detection for programming languages, frameworks, cloud services, AI products, common acronyms, Minecraft/server terms, and custom user terms.
-- Hover explanation cards with refresh support.
-- Selection mode: select text and use the context menu to request an explanation.
-- Screenshot recognition: press `Alt+Shift+E` (`Command+Shift+X` on macOS), drag around a term, and use a configured multimodal model to recognize and explain it.
-- Hybrid mode: automatic highlights plus selection-based explanations.
-- Local explanation and term caches to reduce repeated requests.
-- Optional host permissions: page scanning is only injected after the user enables a site.
-- Built-in PDF viewer for TermPop-managed PDF reading and highlighting.
-- Chrome/Edge Manifest V3 extension build.
+> The public release is local-first and BYOK (bring your own key). TermPop does not provide an account service, hosted LLM proxy, or payment system.
 
-## Project Layout
+## Install
 
-```text
-TermPop/
-├── crates/
-│   └── termpop-core/       # Rust detection core and WASM exports
-├── apps/
-│   └── termpop-site/       # React product website for Cloudflare Pages
-├── extension/              # Browser extension source
-│   ├── src/background/     # MV3 service worker
-│   ├── src/content/        # Page scanning and highlights
-│   ├── src/pdf-viewer/     # TermPop PDF viewer
-│   ├── src/popup/          # Extension popup UI
-│   └── src/shared/         # Shared settings, overlay, and types
-├── docs/                   # Development notes
-└── .github/workflows/      # Extension release automation
-```
+### Microsoft Edge
 
-## Quick Install
+Install directly from the [Microsoft Edge Add-ons store](https://microsoftedge.microsoft.com/addons/detail/termpop/blphbffphknkkblackimhnjbckegnchn).
 
-The easiest way to try TermPop is to download the latest extension zip from GitHub Releases:
+### Chrome or manual installation
 
-[Latest releases](https://github.com/fangbm/TermPop/releases)
+1. Download the latest package from [GitHub Releases](https://github.com/fangbm/TermPop/releases).
+2. Extract the ZIP file.
+3. Open `chrome://extensions` or `edge://extensions`.
+4. Enable **Developer mode**.
+5. Choose **Load unpacked**, then select the extracted extension directory.
 
-Then:
+## What TermPop Does
 
-1. Unzip the downloaded package.
-2. Open Chrome or Edge extension management.
-3. Enable developer mode.
-4. Choose "Load unpacked".
-5. Select the unzipped extension directory.
+- **Hover mode** scans readable page text and highlights recognized technical terms.
+- **Selection mode** lets you select text and choose the TermPop explanation action from the browser context menu.
+- **Hybrid mode** enables both workflows.
+- **Contextual explanation cards** support pinning, refresh, placement that adapts to available viewport space, and local caching.
+- **Rust + WASM matching** keeps rule and dictionary matching inside the browser.
+- **LLM enrichment** can add domain-specific terms and generate explanations through a provider you configure.
+- **Screenshot explanation** lets you capture a word or short phrase that is not available as normal DOM text.
+- **TermPop PDF Viewer** renders and annotates PDFs opened through TermPop. Direct injection into Chrome or Edge's built-in PDF viewer is intentionally not supported.
 
-## Build Locally
+## First Use
 
-Requirements:
+1. Open the TermPop popup.
+2. Choose **Hover**, **Selection**, or **Hybrid**.
+3. Select **Enable TermPop on all websites** once to grant access to normal HTTP and HTTPS pages.
+4. Use **Disable on this site** whenever you want to exclude a sensitive site, such as banking or email. The exclusion is stored locally as a blacklist.
+
+Local `file://` pages are a separate browser permission and must be enabled separately in the extension details page.
+
+TermPop deliberately does not request broad page access during installation. The first all-sites permission request is initiated from the popup, after you choose to enable it.
+
+## Screenshot Explanation
+
+Enable **Screenshot explanations** in the popup, then press `Alt+Shift+S` to draw around a word or short phrase on the active page. You can change the shortcut in `chrome://extensions/shortcuts` or `edge://extensions/shortcuts`.
+
+Choose one of three recognition modes:
+
+- **Automatic** uses a configured image-capable model when TermPop can identify it; otherwise it starts with local OCR. If a vision request explicitly reports that image input is unsupported, it falls back to local OCR.
+- **Multimodal LLM** sends the selected image and a small surrounding-context image to your configured provider.
+- **Local OCR** uses the bundled Tesseract engine to read the image locally, then requests an explanation for the recognized text.
+
+Screenshots are captured only after you begin a selection. They are not written to TermPop's term or explanation cache. When multimodal mode is used, the selected image is sent directly to the provider configured by you, so that provider's data policy applies.
+
+## LLM and Privacy
+
+TermPop supports Mock, OpenAI, Kimi, OpenAI-compatible, and Anthropic-style providers. Enter your provider, API key, model, and base URL in the popup. The connection test reuses the extension's existing page-access setup and does not ask for an additional provider permission.
+
+The open-source build stores its settings, API key, blacklist, dictionaries, and caches in browser extension storage on your machine. API keys are not injected into website content scripts, but browser extension storage is **not hardened secret storage**. Use a restricted key where your provider supports it, and do not treat this build as a secure multi-user or commercial deployment.
+
+TermPop does not include built-in telemetry or a TermPop-operated backend. Normal LLM requests send the requested term and its surrounding context to the provider you configure. Do not enable the extension on pages whose content you do not want your selected provider to receive.
+
+## Dictionaries and Caches
+
+The Rust matching engine supports base, domain, and user dictionary entries. User dictionary entries take precedence over generic rules. The extension keeps separate term and explanation caches to avoid unnecessary repeat work:
+
+- Term entries can be reused globally, per domain, or for a single page context.
+- Explanation entries are keyed by the term, language, model/provider, example setting, and context fingerprint.
+- Cache data is local to the browser profile. Clear extension storage to remove it.
+
+## Development
+
+### Requirements
 
 - Rust stable
 - Node.js 22 or newer
-- `wasm-pack`
+- [`wasm-pack`](https://github.com/rustwasm/wasm-pack)
 
 Install `wasm-pack` if needed:
 
@@ -63,106 +86,56 @@ Install `wasm-pack` if needed:
 cargo install wasm-pack --locked
 ```
 
-Build and test:
+Build the Rust core, then the extension:
 
 ```powershell
 cargo test --workspace
 wasm-pack build crates/termpop-core --target web --out-dir ../../extension/src/wasm -- --features wasm
+
 cd extension
-npm install
+npm ci
 npm run typecheck
+npm test
 npm run build
 ```
 
-Load the generated extension from:
+Load [`extension/dist`](extension/dist) as an unpacked extension.
 
-```text
-extension/dist
-```
-
-## Usage
-
-TermPop does not ask for broad page access at install time. On first use, open the popup and click "Enable TermPop on all websites" to grant HTTP/HTTPS access once. After that, TermPop works across normal websites without per-site prompts. Use "Disable on this site" to add sensitive sites such as banking or email pages to the local blacklist. Access to local `file://` pages remains a separate optional permission.
-
-Open the extension popup to choose a mode:
-
-- Hover: automatically scan the page, highlight detected terms, and show explanations on hover.
-- Selection: select text, then use the browser context menu explanation action.
-- Hybrid: enable both hover highlights and selection explanations.
-
-For text that is rendered without usable DOM text, press `Alt+Shift+E` (`Command+Shift+X` on macOS) and drag around the word or short phrase. On first use, TermPop asks before sending the selected area and a small surrounding context image to the configured multimodal LLM. Screenshots remain in memory only and are not added to TermPop's local caches. The configured model must support image input, and the provider's own data policy still applies.
-
-The public build still stores local LLM settings in browser extension storage. For private testing this is convenient, but it is not hardened secret storage and is not a final security model for hosted or commercial use.
-
-## LLM Providers
-
-TermPop can use:
-
-- Mock explanations for local testing.
-- OpenAI-compatible chat completions endpoints.
-- Kimi/OpenAI-compatible providers.
-- Anthropic-style message endpoints.
-
-If no usable provider key is configured, TermPop falls back to the Rust mock explanation flow.
-The provider connection test uses the existing all-sites permission and does not request a separate provider-host permission.
-
-The extension declares host permissions for the built-in provider endpoints (`api.openai.com`, `api.moonshot.cn`, `api.anthropic.com`) so requests to them do not depend on the provider's CORS policy. Custom base URLs are still fetched directly and therefore rely on the endpoint allowing cross-origin requests from the extension.
-
-## CI and Release Automation
-
-Every push to `main` and every pull request runs the CI workflow:
-
-```text
-.github/workflows/ci.yml
-```
-
-It runs Rust tests and lints, rebuilds the WASM core and fails if the committed artifact drifts from the Rust sources, and typechecks/builds both the extension and the website.
-
-Tag pushes matching `v*` (or a manual dispatch) run the release workflow:
-
-```text
-.github/workflows/extension-release.yml
-```
-
-The release workflow:
-
-1. Runs Rust tests.
-2. Builds the WASM core.
-3. Installs extension dependencies.
-4. Runs TypeScript typecheck.
-5. Builds the extension.
-6. Packages `extension/dist` as a zip.
-7. Creates a GitHub Release with commit-log release notes.
-
-## Product Website
-
-The product website lives in `apps/termpop-site` and is built with React 19 and Vite.
+The product site is a separate React 19 application:
 
 ```powershell
 cd apps/termpop-site
-npm install
+npm ci
 npm run typecheck
 npm run build
 ```
 
-Cloudflare Pages settings:
+Cloudflare Pages uses `apps/termpop-site` as its root, `npm ci && npm run build` as its build command, and `dist` as its output directory.
 
-- Root directory: `apps/termpop-site`
-- Build command: `npm ci && npm run build`
-- Build output directory: `dist`
+## Project Structure
 
-Optional store-link environment variables:
+```text
+TermPop/
+├── crates/termpop-core/    Rust detection engine and WASM exports
+├── extension/              Manifest V3 browser extension
+│   ├── src/background/     Service worker, LLM, cache, OCR, permissions
+│   ├── src/content/        Incremental page scanning, highlights, overlays
+│   ├── src/pdf-viewer/     TermPop-managed PDF reader
+│   ├── src/popup/          Extension settings UI
+│   └── tests/              Extension regression tests
+├── apps/termpop-site/      React 19 product site
+├── docs/                   Design and development documentation
+└── .github/workflows/      CI and release automation
+```
 
-- `VITE_CHROME_STORE_URL`
-- `VITE_EDGE_ADDONS_URL`
+## Limitations
 
-## Current Limitations
-
-- Direct injection into the browser's built-in PDF viewer is not supported reliably; use the TermPop PDF viewer instead.
-- Native desktop overlays are not part of the public mainline.
-- API keys in the public extension are local development settings, not hardened secret storage.
-- Detection is intentionally conservative in some contexts to avoid breaking page layout or links.
+- Direct annotation of Chrome or Edge's built-in PDF viewer is not supported. Use the TermPop PDF Viewer.
+- TermPop skips links, code blocks, form controls, content-editable areas, and layout-sensitive text containers when automatic highlighting could change a page's layout.
+- Screenshot recognition depends on the active page being capturable by the browser. Browser internal pages and protected pages cannot be captured.
+- Local OCR recognizes text locally, but an explanation still needs the configured explanation provider or the mock fallback.
+- The public build is not a hosted account, billing, or team product.
 
 ## License
 
-MIT
+MIT, as declared by the Rust workspace. A repository-wide `LICENSE` file has not yet been added.
