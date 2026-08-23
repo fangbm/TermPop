@@ -28,7 +28,7 @@ Install directly from the [Microsoft Edge Add-ons store](https://microsoftedge.m
 - **Selection mode** lets you select text and choose the TermPop explanation action from the browser context menu.
 - **Hybrid mode** enables both workflows.
 - **Contextual explanation cards** support pinning, refresh, placement that adapts to available viewport space, and local caching.
-- **Rust + WASM matching** keeps rule and dictionary matching inside the browser.
+- **Rust + WASM matching** checks locally cached terms inside the browser.
 - **LLM enrichment** can add domain-specific terms and generate explanations through a provider you configure.
 - **Screenshot explanation** lets you capture a word or short phrase that is not available as normal DOM text.
 - **TermPop PDF Viewer** renders and annotates PDFs opened through TermPop. Direct injection into Chrome or Edge's built-in PDF viewer is intentionally not supported.
@@ -58,7 +58,7 @@ Screenshots are captured only after you begin a selection. They are not written 
 
 ## LLM and Privacy
 
-TermPop supports Mock, OpenAI, Kimi, OpenAI-compatible, and Anthropic-style providers. Enter your provider, API key, model, and base URL in the popup. The connection test reuses the extension's existing page-access setup and does not ask for an additional provider permission.
+TermPop supports OpenAI, Kimi, OpenAI-compatible, and Anthropic-style providers. Enter your provider, API key, model, and base URL in the popup. The connection test reuses the extension's existing page-access setup and does not ask for an additional provider permission.
 
 The open-source build stores its settings, API key, blacklist, dictionaries, and caches in browser extension storage on your machine. API keys are not injected into website content scripts, but browser extension storage is **not hardened secret storage**. Use a restricted key where your provider supports it, and do not treat this build as a secure multi-user or commercial deployment.
 
@@ -66,7 +66,7 @@ TermPop does not include built-in telemetry or a TermPop-operated backend. Norma
 
 ## Dictionaries and Caches
 
-The Rust matching engine supports base, domain, and user dictionary entries. User dictionary entries take precedence over generic rules. The extension keeps separate term and explanation caches to avoid unnecessary repeat work:
+The public build ships without a hardcoded default term list. LLM detection gradually builds a local, per-user term cache from the pages you choose to process. The extension keeps separate term and explanation caches to avoid unnecessary repeat work:
 
 - Term entries can be reused globally, per domain, or for a single page context.
 - Explanation entries are keyed by the term, language, model/provider, example setting, and context fingerprint.

@@ -1,4 +1,3 @@
-use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -100,26 +99,7 @@ impl TermDetector {
             return Vec::new();
         }
 
-        let mut terms = Vec::new();
-
-        for rule in RULES.iter() {
-            for mat in rule.regex.find_iter(text) {
-                if !has_allowed_boundaries(text, mat.start(), mat.end()) {
-                    continue;
-                }
-                terms.push(DetectedTerm {
-                    term: mat.as_str().to_string(),
-                    start: mat.start(),
-                    end: mat.end(),
-                    term_type: rule.term_type.clone(),
-                    confidence: rule.confidence,
-                    source: DetectionSource::Rule,
-                });
-            }
-        }
-
-        terms.extend(self.detect_user_terms(text));
-        deduplicate_and_sort(terms, self.config.min_confidence)
+        deduplicate_and_sort(self.detect_user_terms(text), self.config.min_confidence)
     }
 
     pub fn detect_with_dictionary(
@@ -182,63 +162,6 @@ impl TermDetector {
         results
     }
 }
-
-#[derive(Clone, Debug)]
-struct Rule {
-    regex: Regex,
-    term_type: TermType,
-    confidence: f32,
-}
-
-static RULES: Lazy<Vec<Rule>> = Lazy::new(|| {
-    // Boundary checks are applied post-match by `has_allowed_boundaries` instead of
-    // regex `\b`, because `\b` is Unicode-aware and treats CJK characters as word
-    // characters, which would suppress matches like "使用Rust开发".
-    vec![
-        Rule {
-            regex: Regex::new(
-                r"(React|Vue\.js|Angular|Svelte|Next\.js|Nuxt|Django|Flask|Spring|TensorFlow|PyTorch|WASM|WebAssembly|Fabric|Paper|Minecraft|Bukkit|Spigot)",
-            )
-            .expect("valid framework regex"),
-            term_type: TermType::Tech,
-            confidence: 0.92,
-        },
-        Rule {
-            regex: Regex::new(
-                r"(Rust|Go|Python|TypeScript|JavaScript|Kotlin|Swift|Dart|Elixir|Haskell)",
-            )
-            .expect("valid language regex"),
-            term_type: TermType::Tech,
-            confidence: 0.95,
-        },
-        Rule {
-            regex: Regex::new(r"(AWS|Azure|GCP|Vercel|Cloudflare)|阿里云|腾讯云")
-                .expect("valid cloud regex"),
-            term_type: TermType::Brand,
-            confidence: 0.9,
-        },
-        Rule {
-            regex: Regex::new(
-                r"(API|SDK|CLI|GUI|SQL|NoSQL|CI/CD|GPU|TPU|LLM|NLP|CRUD|REST|GraphQL)|JAR|JVM|TPS|MSPT",
-            )
-                .expect("valid acronym regex"),
-            term_type: TermType::Acronym,
-            confidence: 0.88,
-        },
-        Rule {
-            regex: Regex::new(r"(level\.dat(?:_old)?|region|save-all|server\.jar|paper\.jar|fabric-server-launch\.jar|bash|PowerShell)|\.mca")
-                .expect("valid file and command regex"),
-            term_type: TermType::Tech,
-            confidence: 0.86,
-        },
-        Rule {
-            regex: Regex::new(r"(Kimi|ChatGPT|Claude|Copilot|Notion|Figma|Linear|Raycast)")
-                .expect("valid product regex"),
-            term_type: TermType::Brand,
-            confidence: 0.9,
-        },
-    ]
-});
 
 fn detect_dictionary_terms(
     text: &str,
@@ -476,11 +399,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn detects_phase_one_seed_terms() {
-        let terms = detect_terms("Rust React AWS LLM ChatGPT");
-        let labels: Vec<_> = terms.iter().map(|term| term.term.as_str()).collect();
-
-        assert_eq!(labels, vec!["Rust", "React", "AWS", "LLM", "ChatGPT"]);
+    fn default_detector_has_no_built_in_terms() {
+        assert!(detect_terms("Rust React AWS LLM ChatGPT").is_empty());
     }
 
     #[test]
@@ -498,39 +418,8 @@ mod tests {
     }
 
     #[test]
-    fn detects_chinese_cloud_terms() {
-        let terms = detect_terms("我们使用阿里云和腾讯云部署服务。");
-        let labels: Vec<_> = terms.iter().map(|term| term.term.as_str()).collect();
-
-        assert_eq!(labels, vec!["阿里云", "腾讯云"]);
-    }
-
-    #[test]
-    fn detects_minecraft_server_terms() {
-        let terms = detect_terms("JAR Paper Fabric level.dat region .mca save-all bash");
-        let labels: Vec<_> = terms.iter().map(|term| term.term.as_str()).collect();
-
-        assert_eq!(
-            labels,
-            vec![
-                "JAR",
-                "Paper",
-                "Fabric",
-                "level.dat",
-                "region",
-                ".mca",
-                "save-all",
-                "bash"
-            ]
-        );
-    }
-
-    #[test]
-    fn detects_minecraft_terms_next_to_chinese_text() {
-        let terms = detect_terms("JAR缺失导致崩溃，region 目录里的 .mca 文件");
-        let labels: Vec<_> = terms.iter().map(|term| term.term.as_str()).collect();
-
-        assert_eq!(labels, vec!["JAR", "region", ".mca"]);
+    fn default_detector_does_not_match_legacy_rule_terms() {
+        assert!(detect_terms("我们使用阿里云和腾讯云部署服务。JAR Paper Fabric").is_empty());
     }
 
     #[test]
@@ -547,11 +436,11 @@ mod tests {
     }
 
     #[test]
-    fn mock_explanation_has_stable_fields() {
+    fn local_explanation_has_stable_fields() {
         let explanation = explain_term("Rust", Some("Rust and WASM"));
 
         assert_eq!(explanation.term, "Rust");
-        assert_eq!(explanation.category, "Technology");
+        assert_eq!(explanation.category, "General concept");
         assert!(explanation.definition.contains("Rust"));
         assert!(explanation.usage_example.is_some());
         assert!(explanation.source_url.is_none());
@@ -579,33 +468,41 @@ mod tests {
     }
 
     #[test]
-    fn detects_ascii_terms_adjacent_to_cjk_text() {
-        let terms = detect_terms("使用Rust开发很方便");
+    fn detects_dictionary_terms_adjacent_to_cjk_text() {
+        let terms = detect_terms_with_dictionary_json_result(
+            "使用Rust开发很方便",
+            r#"[{"term":"Rust","term_type":"Tech"}]"#,
+        )
+        .expect("valid dictionary");
         let labels: Vec<_> = terms.iter().map(|term| term.term.as_str()).collect();
         assert_eq!(labels, vec!["Rust"]);
-
-        let terms = detect_terms("用Python写脚本。");
-        let labels: Vec<_> = terms.iter().map(|term| term.term.as_str()).collect();
-        assert_eq!(labels, vec!["Python"]);
-
-        let terms = detect_terms("在AWS上部署Kubernetes风格的React应用");
-        let labels: Vec<_> = terms.iter().map(|term| term.term.as_str()).collect();
-        assert_eq!(labels, vec!["AWS", "React"]);
     }
 
     #[test]
     fn detects_terms_at_string_edges_and_before_cjk() {
-        let terms = detect_terms("Rust语言值得学习");
+        let terms = detect_terms_with_dictionary_json_result(
+            "Rust语言值得学习",
+            r#"[{"term":"Rust"}]"#,
+        )
+        .expect("valid dictionary");
         let labels: Vec<_> = terms.iter().map(|term| term.term.as_str()).collect();
         assert_eq!(labels, vec!["Rust"]);
     }
 
     #[test]
     fn rejects_ascii_terms_embedded_in_longer_words() {
-        let terms = detect_terms("RustLang 和 xReact 都不是术语");
+        let terms = detect_terms_with_dictionary_json_result(
+            "RustLang 和 xReact 都不是术语",
+            r#"[{"term":"Rust"},{"term":"React"}]"#,
+        )
+        .expect("valid dictionary");
         assert!(terms.is_empty());
 
-        let terms = detect_terms("JARVIS 不是 JAR");
+        let terms = detect_terms_with_dictionary_json_result(
+            "JARVIS 不是 JAR",
+            r#"[{"term":"JAR"}]"#,
+        )
+        .expect("valid dictionary");
         let labels: Vec<_> = terms.iter().map(|term| term.term.as_str()).collect();
         assert_eq!(labels, vec!["JAR"]);
     }
@@ -624,7 +521,7 @@ mod tests {
     }
 
     #[test]
-    fn detects_dictionary_terms_adjacent_to_cjk_text() {
+    fn detects_custom_dictionary_terms_adjacent_to_cjk_text() {
         let terms = detect_terms_with_dictionary_json_result(
             "学习RustFerris进行中",
             r#"[{"term":"RustFerris","term_type":"Custom","confidence":0.9}]"#,
@@ -673,7 +570,7 @@ mod tests {
     }
 
     #[test]
-    fn scoped_user_dictionary_overrides_rules_and_matches_unicode() {
+    fn scoped_user_dictionary_matches_unicode() {
         let terms = detect_terms_with_dictionary_json_result(
             "Rust 使用星穹检索，星穹检索再次出现。",
             r#"{"base":[],"domain":[],"user":[{"term":"Rust","term_type":"Custom","confidence":0.99},{"term":"星穹检索","term_type":"Custom","confidence":1.0}]}"#,

@@ -85,10 +85,16 @@ function normalizeLlmSettings(stored: Partial<LlmSettings> | undefined): LlmSett
  * Settings available to content scripts. Intentionally excludes LLM settings
  * so the API key is never loaded into per-page script contexts.
  */
-export async function getContentSettings(): Promise<Pick<ExtensionSettings, "mode">> {
+export async function getContentSettings(): Promise<Pick<ExtensionSettings, "mode" | "dictionary">> {
   const stored = await chrome.storage.local.get(SETTINGS_KEY);
   const general = stored[SETTINGS_KEY] as StoredGeneralSettings | undefined;
-  return { mode: normalizeMode(general?.mode) };
+  return {
+    mode: normalizeMode(general?.mode),
+    dictionary: {
+      ...DEFAULT_SETTINGS.dictionary,
+      ...general?.dictionary
+    }
+  };
 }
 
 function normalizeMode(mode: string | undefined): TermPopMode {

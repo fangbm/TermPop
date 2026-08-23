@@ -1,4 +1,4 @@
-import initWasm, { detect_terms_json } from "../wasm/termpop_core.js";
+import initWasm, { detect_terms_with_dictionary_json } from "../wasm/termpop_core.js";
 import { getContentSettings } from "../shared/settings";
 import type {
   AddCachedTermsRequest,
@@ -20,6 +20,7 @@ import type {
   GetSiteAccessResponse,
   RecognizeScreenshotRequest,
   RecognizeScreenshotResponse,
+  TermDictionarySettings,
   TermPopMode
 } from "../shared/types";
 import { TermPopOverlayController } from "../shared/overlay";
@@ -69,6 +70,7 @@ let explanationRequestSeq = 0;
 const debugOptions = readDebugOptions();
 const runtimeState = globalThis as typeof globalThis & { __termpopBooted?: boolean };
 let cachedPageFingerprint: { value: string; at: number; url: string } | undefined;
+let dictionaryJson: string | undefined;
 
 type DetectionModeOverride = "primary" | "llm" | "all";
 type TextNodeSpan = {
@@ -97,7 +99,8 @@ async function boot(): Promise<void> {
   });
   screenshotSelection = new ScreenshotSelectionController(uiLocale());
 
-  const { mode } = await getContentSettings();
+  const { mode, dictionary } = await getContentSettings();
+  dictionaryJson = serializeDictionary(dictionary);
   globalCachedTerms = debugOptions.disableCache ? [] : await loadGlobalCachedTerms();
   activeMode = debugOptions.detectionMode ? "hover" : mode;
   debugLog("TermPop content boot", {
@@ -420,7 +423,8 @@ function setupModeChangeListener(): void {
     const previousDictionary = changes[SETTINGS_KEY].oldValue?.dictionary;
     const nextDictionary = changes[SETTINGS_KEY].newValue?.dictionary;
     const dictionaryChanged = JSON.stringify(previousDictionary ?? {}) !== JSON.stringify(nextDictionary ?? {});
-    void getContentSettings().then(({ mode }) => {
+    void getContentSettings().then(({ mode, dictionary }) => {
+      dictionaryJson = serializeDictionary(dictionary);
       pageExplanationCache.clear();
       const previousMode = activeMode;
       if (dictionaryChanged) {
@@ -1050,7 +1054,7 @@ async function detectTerms(text: string): Promise<DetectedTerm[]> {
 }
 
 function detectTermsLocally(text: string): DetectedTerm[] {
-  const raw = detect_terms_json(text);
+  const raw = dictionaryJson ? detect_terms_with_dictionary_json(text, dictionaryJson) : "[]";
   const rustTerms = (JSON.parse(raw) as DetectedTerm[]).map((term) => ({
     ...term,
     start: byteOffsetToJsIndex(text, term.start),
@@ -1229,6 +1233,13 @@ function isHighlightableTextNode(node: Node): boolean {
   // change line breaks even when the inserted highlight itself is inline.
   // Ruby and display:contents have similar anonymous-box behavior.
   return !isLayoutSensitiveTextContainer(style.display);
+}
+
+function serializeDictionary(dictionary: TermDictionarySettings): string | undefined {
+  if (!dictionary.base.length && !dictionary.domain.length && !dictionary.user.length) {
+    return undefined;
+  }
+  return JSON.stringify(dictionary);
 }
 
 function isLayoutSensitiveTextContainer(display: string): boolean {
