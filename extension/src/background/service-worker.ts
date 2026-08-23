@@ -25,7 +25,7 @@ import type {
   SetSiteAccessResponse
 } from "../shared/types";
 import { ALL_SITES_ORIGIN_PATTERNS, BLOCKED_SITES_STORAGE_KEY, FILE_ORIGIN_PATTERN } from "../shared/browser-utils";
-import { addCachedTerms, getCachedTerms, removeCachedTermsByTerm } from "./cache";
+import { addCachedTerms, getCachedTerms } from "./cache";
 import { addIgnoredTerm } from "../shared/ignored-terms";
 import { detectTerms } from "./detection";
 import { explain } from "./explanations";
@@ -137,7 +137,6 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
           throw new Error("A term is required.");
         }
         await addIgnoredTerm(message.term);
-        await removeCachedTermsByTerm(message.term);
       })
       .then(() => sendResponse({ ok: true } satisfies IgnoreTermResponse))
       .catch((error: unknown) => sendResponse({ ok: false, error: errorMessage(error) } satisfies IgnoreTermResponse));

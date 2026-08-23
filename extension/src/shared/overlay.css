@@ -63,6 +63,43 @@
   background: #fef2f2;
 }
 
+#termpop-overlay-root .termpop-delete-confirmation p {
+  margin: 8px 0 12px;
+  color: #475569;
+}
+
+#termpop-overlay-root .termpop-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+#termpop-overlay-root .termpop-confirm-actions button {
+  min-height: 28px;
+  padding: 0 9px;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#termpop-overlay-root .termpop-cancel-delete-button {
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #475569;
+}
+
+#termpop-overlay-root .termpop-confirm-delete-button {
+  border: 1px solid #dc2626;
+  background: #dc2626;
+  color: #ffffff;
+}
+
+#termpop-overlay-root .termpop-confirm-delete-button:hover {
+  background: #b91c1c;
+}
+
 #termpop-overlay-root .termpop-refresh-button {
   width: 24px;
   height: 24px;

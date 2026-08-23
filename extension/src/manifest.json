@@ -47,11 +47,6 @@
     {
       "resources": [
         "assets/content.js",
-        "assets/browser-utils.js",
-        "assets/overlay.js",
-        "assets/settings.js",
-        "assets/term-matching.js",
-        "assets/termpop_core.js",
         "assets/termpop_core_bg.wasm"
       ],
       "matches": ["<all_urls>"]

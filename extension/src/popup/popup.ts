@@ -2,6 +2,7 @@ import { getSettings, setLlmSettings, setMode } from "../shared/settings";
 import { defaultBaseUrl, defaultModel, normalizeBaseUrl } from "../shared/llm-defaults";
 import { ALL_SITES_ORIGIN_PATTERNS, FILE_ORIGIN_PATTERN, providerOriginPatternFromBaseUrl } from "../shared/browser-utils";
 import { termpopWebsiteUrl } from "../shared/website";
+import { clearIgnoredTerms, IGNORED_TERMS_STORAGE_KEY, parseIgnoredTerms, removeIgnoredTerm } from "../shared/ignored-terms";
 import type {
   ExplanationLanguage,
   GetSiteAccessResponse,
@@ -45,6 +46,8 @@ const siteAccessStatus = document.querySelector<HTMLParagraphElement>("#site-acc
 const siteAccessToggle = document.querySelector<HTMLButtonElement>("#site-access-toggle");
 const pdfTools = document.querySelector<HTMLElement>(".pdf-tools");
 const openPdfViewerButton = document.querySelector<HTMLButtonElement>("#open-pdf-viewer");
+const ignoredTermsList = document.querySelector<HTMLElement>("#ignored-terms-list");
+const restoreAllIgnoredTermsButton = document.querySelector<HTMLButtonElement>("#restore-all-ignored-terms");
 const AUTO_SAVE_DELAY_MS = 400;
 let autoSaveTimer: number | undefined;
 let settingsWriteChain: Promise<void> = Promise.resolve();
@@ -115,6 +118,11 @@ const t = {
     providerApiKeyRequired: "LLM 未配置，请先填写 API Key。",
     providerBaseUrlInvalid: "Base URL 必须是 HTTP 或 HTTPS 地址。",
     providerTestFailed: "服务商测试失败",
+    ignoredTerms: "已忽略词",
+    ignoredTermsNote: "这些词不会再自动高亮。划词和截图解释不受影响。",
+    ignoredTermsEmpty: "暂无已忽略词。",
+    restoreTerm: "恢复",
+    restoreAll: "全部恢复",
     modes: {
       hover: "悬停",
       selection: "划词",
@@ -181,6 +189,11 @@ const t = {
     providerApiKeyRequired: "LLM is not configured. Enter an API key first.",
     providerBaseUrlInvalid: "Base URL must use an HTTP or HTTPS origin.",
     providerTestFailed: "Provider test failed",
+    ignoredTerms: "Ignored terms",
+    ignoredTermsNote: "These terms are not highlighted automatically. Selection and screenshot explanations are unchanged.",
+    ignoredTermsEmpty: "No ignored terms.",
+    restoreTerm: "Restore",
+    restoreAll: "Restore all",
     modes: {
       hover: "Hover",
       selection: "Selection",
@@ -202,6 +215,7 @@ async function init(): Promise<void> {
   await renderSiteAccess();
   await renderPdfToolsVisibility();
   await renderScreenshotShortcut();
+  await renderIgnoredTerms();
 
   for (const button of buttons) {
     button.addEventListener("click", () => {
@@ -275,6 +289,16 @@ async function init(): Promise<void> {
 
   openDocsButton?.addEventListener("click", () => {
     void openWebsitePage("/docs");
+  });
+
+  restoreAllIgnoredTermsButton?.addEventListener("click", () => {
+    void restoreAllIgnoredTerms();
+  });
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === "local" && changes[IGNORED_TERMS_STORAGE_KEY]) {
+      void renderIgnoredTerms();
+    }
   });
 
   advancedToggle?.addEventListener("click", () => {
@@ -668,6 +692,49 @@ function renderAdvancedSettings(llm: LlmSettings): void {
   if (advancedToggle) {
     advancedToggle.textContent = llm.advancedVisible ? t[uiLocale].collapseAdvancedSettings : t[uiLocale].advancedSettings;
   }
+}
+
+async function renderIgnoredTerms(): Promise<void> {
+  if (!ignoredTermsList) {
+    return;
+  }
+  const stored = await chrome.storage.local.get(IGNORED_TERMS_STORAGE_KEY);
+  const terms = parseIgnoredTerms(stored[IGNORED_TERMS_STORAGE_KEY]);
+  ignoredTermsList.replaceChildren();
+  if (restoreAllIgnoredTermsButton) {
+    restoreAllIgnoredTermsButton.hidden = terms.length === 0;
+  }
+  if (terms.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "ignored-terms-empty";
+    empty.textContent = t[uiLocale].ignoredTermsEmpty;
+    ignoredTermsList.append(empty);
+    return;
+  }
+  for (const entry of terms.slice().reverse()) {
+    const row = document.createElement("div");
+    row.className = "ignored-term-row";
+    const term = document.createElement("span");
+    term.textContent = entry.term;
+    const restore = document.createElement("button");
+    restore.type = "button";
+    restore.textContent = t[uiLocale].restoreTerm;
+    restore.addEventListener("click", () => {
+      void restoreIgnoredTerm(entry.term);
+    });
+    row.append(term, restore);
+    ignoredTermsList.append(row);
+  }
+}
+
+async function restoreIgnoredTerm(term: string): Promise<void> {
+  await removeIgnoredTerm(term);
+  await renderIgnoredTerms();
+}
+
+async function restoreAllIgnoredTerms(): Promise<void> {
+  await clearIgnoredTerms();
+  await renderIgnoredTerms();
 }
 
 function applyUiLocale(): void {

@@ -92,6 +92,16 @@
             <button id="open-docs" class="secondary-button" type="button" data-i18n="openDocs">打开文档</button>
           </div>
         </section>
+        <section class="ignored-terms" aria-label="Ignored automatic highlights" data-i18n-attr="aria-label:ignoredTerms">
+          <div class="ignored-terms-header">
+            <div>
+              <strong data-i18n="ignoredTerms">已忽略词</strong>
+              <p data-i18n="ignoredTermsNote">这些词不会再自动高亮。划词和截图解释不受影响。</p>
+            </div>
+            <button id="restore-all-ignored-terms" class="secondary-button" type="button" data-i18n="restoreAll">全部恢复</button>
+          </div>
+          <div id="ignored-terms-list" class="ignored-terms-list"></div>
+        </section>
         <button id="advanced-toggle" class="secondary-button" type="button">高级设置</button>
         <section id="advanced-settings" class="advanced-settings" hidden>
           <div class="inline-fields">

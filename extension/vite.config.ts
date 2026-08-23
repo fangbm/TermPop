@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, posix, resolve } from "node:path";
 import { defineConfig } from "vite";
 
@@ -31,6 +31,7 @@ export default defineConfig({
         mkdirSync(resolve(__dirname, "dist/assets"), { recursive: true });
         mkdirSync(resolve(__dirname, "dist/assets/icons"), { recursive: true });
         copyFileSync(resolve(__dirname, "src/manifest.json"), resolve(__dirname, "dist/manifest.json"));
+        syncWebAccessibleResources();
         copyFileSync(resolve(__dirname, "src/content/loader.js"), resolve(__dirname, "dist/content-loader.js"));
         copyFileSync(resolve(__dirname, "dist/src/popup/popup.html"), resolve(__dirname, "dist/assets/popup.html"));
         copyFileSync(resolve(__dirname, "dist/src/ocr/ocr.html"), resolve(__dirname, "dist/assets/ocr.html"));
@@ -127,6 +128,51 @@ function validateManifestResources(): void {
         .join("\n")}`
     );
   }
+}
+
+function syncWebAccessibleResources(): void {
+  const distDir = resolve(__dirname, "dist");
+  const manifestPath = resolve(distDir, "manifest.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+    web_accessible_resources?: Array<{ resources?: string[] }>;
+  };
+  const group = manifest.web_accessible_resources?.[0];
+  if (!group) {
+    return;
+  }
+
+  const declaredNonScripts = (group.resources ?? []).filter((resource) => !resource.endsWith(".js"));
+  const scripts = collectStaticModuleDependencies(distDir, ["assets/content.js"]);
+  group.resources = [...new Set([...scripts, ...declaredNonScripts])];
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+}
+
+function collectStaticModuleDependencies(distDir: string, roots: string[]): string[] {
+  const pending = [...roots];
+  const discovered = new Set<string>();
+
+  while (pending.length > 0) {
+    const importer = pending.pop();
+    if (!importer || discovered.has(importer) || !importer.endsWith(".js")) {
+      continue;
+    }
+    discovered.add(importer);
+    const importerPath = resolve(distDir, importer);
+    if (!existsSync(importerPath)) {
+      continue;
+    }
+    for (const specifier of readStaticImportSpecifiers(readFileSync(importerPath, "utf8"))) {
+      if (!specifier.startsWith(".")) {
+        continue;
+      }
+      const dependency = posix.normalize(posix.join(posix.dirname(importer), specifier));
+      if (!discovered.has(dependency)) {
+        pending.push(dependency);
+      }
+    }
+  }
+
+  return [...discovered].sort();
 }
 
 function findMissingWebAccessibleImports(

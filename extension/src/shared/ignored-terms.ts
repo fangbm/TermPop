@@ -77,3 +77,22 @@ export async function addIgnoredTerm(term: string): Promise<boolean> {
   await chrome.storage.local.set({ [IGNORED_TERMS_STORAGE_KEY]: entries.slice(-MAX_IGNORED_TERMS) });
   return true;
 }
+
+export async function removeIgnoredTerm(term: string): Promise<boolean> {
+  const normalized = normalizeIgnoredTerm(term);
+  if (!normalized) {
+    return false;
+  }
+  const stored = await chrome.storage.local.get(IGNORED_TERMS_STORAGE_KEY);
+  const entries = parseIgnoredTerms(stored[IGNORED_TERMS_STORAGE_KEY]);
+  const nextEntries = entries.filter((entry) => entry.normalized !== normalized);
+  if (nextEntries.length === entries.length) {
+    return false;
+  }
+  await chrome.storage.local.set({ [IGNORED_TERMS_STORAGE_KEY]: nextEntries });
+  return true;
+}
+
+export async function clearIgnoredTerms(): Promise<void> {
+  await chrome.storage.local.remove(IGNORED_TERMS_STORAGE_KEY);
+}

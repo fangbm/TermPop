@@ -2,7 +2,7 @@ import { addCachedTerms, buildExplanationCacheKey, detectCachedTerms, getCachedT
 import { isCachedTermAvailable, mergeCachedTermView } from "../src/content/cache-view.ts";
 import { getSettings } from "../src/shared/settings.ts";
 import type { DetectedTerm, Explanation, LlmSettings } from "../src/shared/types.ts";
-import { filterIgnoredCachedTerms, filterIgnoredDetectedTerms, ignoredTermSet, normalizeIgnoredTerm, parseIgnoredTerms } from "../src/shared/ignored-terms.ts";
+import { addIgnoredTerm, clearIgnoredTerms, filterIgnoredCachedTerms, filterIgnoredDetectedTerms, ignoredTermSet, normalizeIgnoredTerm, parseIgnoredTerms, removeIgnoredTerm } from "../src/shared/ignored-terms.ts";
 
 const now = Date.now();
 let completedStorageWrites = 0;
@@ -31,6 +31,11 @@ const storage: Record<string, unknown> = {
         await delay(2);
         Object.assign(storage, values);
         completedStorageWrites += 1;
+      },
+      async remove(key: string) {
+        await delay(2);
+        delete storage[key];
+        completedStorageWrites += 1;
       }
     }
   }
@@ -40,7 +45,7 @@ await testTermCacheScopes();
 await testExplanationCache();
 await testUserDictionarySettings();
 testContentCacheView();
-testIgnoredTerms();
+await testIgnoredTerms();
 console.log("ok - cache scopes, explanation persistence, user dictionary settings, and ignored terms");
 
 async function testTermCacheScopes(): Promise<void> {
@@ -105,7 +110,7 @@ function testContentCacheView(): void {
   equal(preserved[0].page_fingerprint, "server-page");
 }
 
-function testIgnoredTerms(): void {
+async function testIgnoredTerms(): Promise<void> {
   const stored = parseIgnoredTerms(["Task", { term: "multi-head   attention", created_at: 1 }, { term: "task" }]);
   equal(stored.length, 2);
   const ignored = ignoredTermSet(stored);
@@ -121,6 +126,13 @@ function testIgnoredTerms(): void {
     page_fingerprint: null,
     last_seen_at: now
   }], ignored).length, 0);
+
+  await addIgnoredTerm("Transformer");
+  ok(await removeIgnoredTerm("transformer"));
+  ok(!(await removeIgnoredTerm("Transformer")));
+  await addIgnoredTerm("WASM");
+  await clearIgnoredTerms();
+  equal(parseIgnoredTerms(storage["termpop.ignoredTerms"]).length, 0);
 }
 
 function term(value: string, source: DetectedTerm["source"], confidence: number): DetectedTerm {

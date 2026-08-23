@@ -4,7 +4,7 @@ import { normalizeTermType } from "../shared/types.ts";
 import { domainFromUrl } from "../shared/browser-utils.ts";
 import { debugLog, defaultBaseUrl, defaultModel, hashString, isExplanation, normalizeBaseUrl, normalizeCacheContext, normalizeCacheTerm } from "./utils.ts";
 import { pruneEntriesToByteBudget, serializedEntriesByteSize } from "./cache-helpers.ts";
-import { filterIgnoredCachedTerms, isIgnoredTerm, loadIgnoredTermSet, normalizeIgnoredTerm } from "../shared/ignored-terms.ts";
+import { filterIgnoredCachedTerms, isIgnoredTerm, loadIgnoredTermSet } from "../shared/ignored-terms.ts";
 
 const TERM_CACHE_KEY = "termpop.termCache";
 const LEGACY_GLOBAL_TERM_CACHE_KEY = "termpop.globalTermCache";
@@ -126,25 +126,6 @@ export async function addCachedTerms(terms: DetectedTerm[], context: TermCacheCo
     });
   } catch (error) {
     debugLog("TermPop term cache write failed", error);
-  }
-}
-
-export async function removeCachedTermsByTerm(term: string): Promise<void> {
-  const normalized = normalizeIgnoredTerm(term);
-  if (!normalized) {
-    return;
-  }
-
-  const cache = await loadTermCache();
-  let changed = false;
-  for (const [key, entry] of cache) {
-    if (normalizeIgnoredTerm(entry.term) === normalized) {
-      cache.delete(key);
-      changed = true;
-    }
-  }
-  if (changed) {
-    await chrome.storage.local.set({ [TERM_CACHE_KEY]: [...cache.values()] });
   }
 }
 

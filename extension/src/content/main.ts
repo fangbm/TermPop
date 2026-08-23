@@ -471,10 +471,20 @@ function setupIgnoredTermsChangeListener(): void {
     if (areaName !== "local" || !changes[IGNORED_TERMS_STORAGE_KEY]) {
       return;
     }
+    const previousIgnoredTerms = ignoredTerms;
     ignoredTerms = ignoredTermSet(changes[IGNORED_TERMS_STORAGE_KEY].newValue);
     globalCachedTerms = filterIgnoredCachedTerms(globalCachedTerms, ignoredTerms);
     for (const normalizedTerm of ignoredTerms) {
-      removeHighlightsForIgnoredTerm(normalizedTerm);
+      if (!previousIgnoredTerms.has(normalizedTerm)) {
+        removeHighlightsForIgnoredTerm(normalizedTerm);
+      }
+    }
+    const restoredTerm = [...previousIgnoredTerms].some((normalizedTerm) => !ignoredTerms.has(normalizedTerm));
+    if (restoredTerm && !debugOptions.disableCache && activeMode !== "selection" && !siteDisabled) {
+      void loadGlobalCachedTerms().then((terms) => {
+        globalCachedTerms = terms;
+        scheduleScan([document.body]);
+      });
     }
   });
 }

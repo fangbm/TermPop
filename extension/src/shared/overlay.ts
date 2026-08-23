@@ -105,7 +105,42 @@ export class TermPopOverlayController {
     this.root.querySelector<HTMLButtonElement>(".termpop-delete-button")?.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      onDelete?.();
+      if (onDelete) {
+        this.showDeleteConfirmation(anchor, explanation, onRefresh, onDelete, pointer);
+      }
+    });
+  }
+
+  private showDeleteConfirmation(
+    anchor: HTMLElement,
+    explanation: Explanation,
+    onRefresh: () => void,
+    onDelete: () => void,
+    pointer?: OverlayPointer
+  ): void {
+    this.render(
+      anchor,
+      `<div class="termpop-card-title">${escapeHtml(explanation.term)}</div>
+       <div class="termpop-delete-confirmation">
+         <p>${escapeHtml(copy[this.locale].deleteConfirmation(explanation.term))}</p>
+         <div class="termpop-confirm-actions">
+           <button class="termpop-cancel-delete-button" type="button">${escapeHtml(copy[this.locale].cancel)}</button>
+           <button class="termpop-confirm-delete-button" type="button">${escapeHtml(copy[this.locale].confirmDelete)}</button>
+         </div>
+       </div>`,
+      true,
+      false,
+      pointer
+    );
+    this.root.querySelector<HTMLButtonElement>(".termpop-cancel-delete-button")?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.showExplanation(anchor, explanation, onRefresh, true, false, pointer, onDelete);
+    });
+    this.root.querySelector<HTMLButtonElement>(".termpop-confirm-delete-button")?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onDelete();
     });
   }
 
@@ -302,12 +337,18 @@ const copy = {
   zh: {
     loading: "正在生成解释...",
     refresh: "重新生成解释",
-    delete: "删除"
+    delete: "删除",
+    cancel: "取消",
+    confirmDelete: "确认删除",
+    deleteConfirmation: (term: string) => `“${term}” 不会再次自动高亮。如有需要，可在设置中恢复。`
   },
   en: {
     loading: "Generating explanation...",
     refresh: "Regenerate explanation",
-    delete: "Remove"
+    delete: "Remove",
+    cancel: "Cancel",
+    confirmDelete: "Remove",
+    deleteConfirmation: (term: string) => `“${term}” will no longer be highlighted automatically. You can restore it in Settings.`
   }
 } as const;
 
