@@ -17,9 +17,6 @@ export function defaultModel(provider: LlmProvider): string {
   if (provider === "anthropic") {
     return "claude-3-5-haiku-latest";
   }
-  if (provider === "mock") {
-    return "mock";
-  }
   return "gpt-4.1-mini";
 }
 

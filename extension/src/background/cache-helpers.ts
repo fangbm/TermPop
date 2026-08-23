@@ -1,4 +1,4 @@
-import type { Explanation, LlmProvider } from "../shared/types";
+import type { Explanation } from "../shared/types";
 
 export interface ExplanationCacheEntryLike {
   key: string;
@@ -13,8 +13,8 @@ export function serializedEntriesByteSize<T>(entries: T[]): number {
   return utf8ByteSize(entries);
 }
 
-export function canUseCachedExplanation(provider: LlmProvider, explanation: Explanation): boolean {
-  return provider === "mock" || explanation.provider_status === "llm";
+export function canUseCachedExplanation(explanation: Explanation): boolean {
+  return explanation.provider_status === "llm";
 }
 
 export function pruneEntriesToByteBudget<T extends ExplanationCacheEntryLike>(entries: T[], maxEntries: number, maxBytes: number): T[] {

@@ -1,7 +1,7 @@
 export type TermType = "Tech" | "Brand" | "Person" | "Place" | "Acronym" | "Custom";
 export type DetectionSource = "Rule" | "Dictionary" | "Ner" | "User";
 export type TermPopMode = "hover" | "selection" | "hybrid";
-export type LlmProvider = "mock" | "openai" | "kimi" | "openai-compatible" | "anthropic";
+export type LlmProvider = "openai" | "kimi" | "openai-compatible" | "anthropic";
 export type ExplanationLanguage = "auto" | "zh-CN" | "en";
 export type CacheScope = "global" | "domain" | "pageFingerprint";
 export type ScreenshotRecognitionMode = "auto" | "multimodal" | "ocr";
@@ -34,8 +34,7 @@ export interface Explanation {
   related_terms: string[];
   usage_example?: string | null;
   source_url?: string | null;
-  provider_status?: "mock" | "llm";
-  fallback_reason?: "missing-api-key";
+  provider_status?: "llm";
 }
 
 export interface ExtensionSettings {

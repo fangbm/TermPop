@@ -47,16 +47,10 @@ export async function recognizeScreenshot(request: RecognizeScreenshotRequest): 
   if (!settings.llm.screenshotRecognitionEnabled) {
     throw new Error(screenshotCopy[uiLocale()].disabled);
   }
+  await assertLlmProviderAuthorized(settings.llm);
   if (shouldStartWithOcr(settings.llm)) {
     return recognizeAndExplainWithOcr(request, settings.llm);
   }
-  if (settings.llm.provider === "mock" || !settings.llm.apiKey.trim()) {
-    if (settings.llm.screenshotRecognitionMode === "multimodal") {
-      throw new Error(screenshotCopy[uiLocale()].providerRequired);
-    }
-    return recognizeAndExplainWithOcr(request, settings.llm);
-  }
-  await assertLlmProviderAuthorized(settings.llm);
   try {
     const recognition = await createLlmProvider(settings.llm).recognizeSelection(
       request.termImageDataUrl,
@@ -139,11 +133,9 @@ function delay(ms: number): Promise<void> {
 
 const screenshotCopy = {
   zh: {
-    providerRequired: "多模态截图解释需要配置支持图片输入的 LLM 和 API Key。",
     disabled: "截图解释已在插件设置中关闭。"
   },
   en: {
-    providerRequired: "Multimodal screenshot explanations require an image-capable LLM and API key.",
     disabled: "Screenshot explanations are disabled in extension settings."
   }
 } as const;

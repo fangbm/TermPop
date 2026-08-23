@@ -3,7 +3,7 @@ import type { LlmSettings } from "../shared/types";
 export type ImageInputCapability = "supported" | "unsupported" | "unknown";
 
 export function inferImageInputCapability(settings: LlmSettings): ImageInputCapability {
-  if (settings.provider === "mock" || !settings.apiKey.trim()) {
+  if (!settings.apiKey.trim()) {
     return "unsupported";
   }
 

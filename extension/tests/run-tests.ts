@@ -21,7 +21,7 @@ const tests: TestCase[] = [
       equal(inferImageInputCapability({ ...base, provider: "openai", apiKey: "secret", model: "text-embedding-3-small" }), "unsupported");
       equal(inferImageInputCapability({ ...base, provider: "openai-compatible", apiKey: "secret", model: "custom-model" }), "unknown");
       ok(shouldStartWithOcr({ ...base, screenshotRecognitionMode: "ocr" }));
-      ok(shouldStartWithOcr({ ...base, provider: "mock", screenshotRecognitionMode: "auto" }));
+      ok(shouldStartWithOcr({ ...base, apiKey: "", screenshotRecognitionMode: "auto" }));
       ok(!shouldStartWithOcr({ ...base, provider: "openai", apiKey: "secret", model: "gpt-4o", screenshotRecognitionMode: "auto" }));
       ok(isImageInputUnsupportedError(new Error("This model does not support image_url content.")));
       ok(!isImageInputUnsupportedError(new Error("Request timed out.")));
@@ -41,10 +41,10 @@ const tests: TestCase[] = [
 
       const key = buildDetectionCacheKey({
         detectionMode: "all",
-        provider: "mock",
+        provider: "openai-compatible",
         apiKey: "first-secret",
         baseUrl: "https://api.example/v1",
-        model: "mock",
+        model: "gpt-4.1-mini",
         language: "en",
         temperature: 0.2,
         maxTokens: 450,
@@ -54,10 +54,10 @@ const tests: TestCase[] = [
       ok(!key.includes("first-secret"));
       const changedKey = buildDetectionCacheKey({
         detectionMode: "all",
-        provider: "mock",
+        provider: "openai-compatible",
         apiKey: "second-secret",
         baseUrl: "https://api.example/v1",
-        model: "mock",
+        model: "gpt-4.1-mini",
         language: "en",
         temperature: 0.2,
         maxTokens: 450,
@@ -66,10 +66,10 @@ const tests: TestCase[] = [
       ok(changedKey !== key);
       const changedConfigKey = buildDetectionCacheKey({
         detectionMode: "all",
-        provider: "mock",
+        provider: "openai-compatible",
         apiKey: "first-secret",
         baseUrl: "https://api.example/v1",
-        model: "mock",
+        model: "gpt-4.1-mini",
         language: "en",
         temperature: 0.7,
         maxTokens: 900,
@@ -234,12 +234,11 @@ const tests: TestCase[] = [
     }
   },
   {
-    name: "real providers reject ambiguous legacy cache entries",
+    name: "only LLM explanations can be reused from cache",
     run: () => {
       const legacy = testExplanation("legacy");
-      equal(canUseCachedExplanation("openai", legacy), false);
-      equal(canUseCachedExplanation("openai", { ...legacy, provider_status: "llm" }), true);
-      equal(canUseCachedExplanation("mock", legacy), true);
+      equal(canUseCachedExplanation(legacy), false);
+      equal(canUseCachedExplanation({ ...legacy, provider_status: "llm" }), true);
     }
   },
   {
@@ -360,9 +359,9 @@ for (const test of tests) {
 
 function testSettings(maxConcurrency: number) {
   return {
-    provider: "mock" as const,
+    provider: "openai" as const,
     apiKey: "",
-    model: "mock",
+    model: "gpt-4.1-mini",
     baseUrl: "https://api.openai.com/v1",
     language: "en" as const,
     includeUsageExample: false,

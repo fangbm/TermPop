@@ -133,7 +133,7 @@ TermPop/
 - Direct annotation of Chrome or Edge's built-in PDF viewer is not supported. Use the TermPop PDF Viewer.
 - TermPop skips links, code blocks, form controls, content-editable areas, and layout-sensitive text containers when automatic highlighting could change a page's layout.
 - Screenshot recognition depends on the active page being capturable by the browser. Browser internal pages and protected pages cannot be captured.
-- Local OCR recognizes text locally, but an explanation still needs the configured explanation provider or the mock fallback.
+- Local OCR recognizes text locally, but an explanation still needs a configured LLM provider.
 - The public build is not a hosted account, billing, or team product.
 
 ## License

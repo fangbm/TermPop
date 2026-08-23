@@ -3,7 +3,7 @@ import type { ExtensionSettings, LlmSettings, TermPopMode } from "./types";
 export const DEFAULT_SETTINGS: ExtensionSettings = {
   mode: "hover",
   llm: {
-    provider: "mock",
+    provider: "openai",
     apiKey: "",
     model: "gpt-4.1-mini",
     baseUrl: "https://api.openai.com/v1",
@@ -51,17 +51,33 @@ export async function getSettings(): Promise<ExtensionSettings> {
     });
   }
 
+  const normalizedLlm = normalizeLlmSettings(llm);
   return {
     ...DEFAULT_SETTINGS,
     mode: normalizeMode(general?.mode),
-    llm: {
-      ...DEFAULT_SETTINGS.llm,
-      ...llm
-    },
+    llm: normalizedLlm,
     dictionary: {
       ...DEFAULT_SETTINGS.dictionary,
       ...general?.dictionary
     }
+  };
+}
+
+function normalizeLlmSettings(stored: Partial<LlmSettings> | undefined): LlmSettings {
+  const legacyProvider = (stored as { provider?: unknown } | undefined)?.provider;
+  const wasLegacyMock = legacyProvider === "mock";
+  const provider = legacyProvider === "openai" || legacyProvider === "kimi" || legacyProvider === "openai-compatible" || legacyProvider === "anthropic"
+    ? legacyProvider
+    : DEFAULT_SETTINGS.llm.provider;
+
+  return {
+    ...DEFAULT_SETTINGS.llm,
+    ...stored,
+    provider,
+    // A mock profile cannot make real requests. Reset it to an explicit, unconfigured OpenAI profile.
+    apiKey: wasLegacyMock ? "" : stored?.apiKey?.trim() ?? "",
+    model: wasLegacyMock ? DEFAULT_SETTINGS.llm.model : stored?.model?.trim() || DEFAULT_SETTINGS.llm.model,
+    baseUrl: wasLegacyMock ? DEFAULT_SETTINGS.llm.baseUrl : stored?.baseUrl?.trim() || DEFAULT_SETTINGS.llm.baseUrl
   };
 }
 

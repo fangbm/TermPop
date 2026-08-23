@@ -106,14 +106,13 @@ const t = {
     temperature: "温度",
     maxConcurrency: "并发限制",
     saving: "正在自动保存...",
-    savedMock: "已自动保存。当前使用本地 Mock 解释。",
     savedLlm: "已自动保存。当前使用 LLM 解释。",
-    savedFallback: "已自动保存。未填写 API Key，当前使用本地 Mock 解释。",
+    savedUnconfigured: "已自动保存。LLM 未配置，释义与 LLM 摘词不可用。",
     testProvider: "测试连接",
     testingProvider: "正在测试连接...",
     providerTestSucceeded: "连接测试成功。",
     providerNeedsAllSites: "请先点击“在所有网站启用 TermPop”，再测试服务商连接。",
-    providerApiKeyRequired: "请先填写 API Key。",
+    providerApiKeyRequired: "LLM 未配置，请先填写 API Key。",
     providerBaseUrlInvalid: "Base URL 必须是 HTTP 或 HTTPS 地址。",
     providerTestFailed: "服务商测试失败",
     modes: {
@@ -173,14 +172,13 @@ const t = {
     temperature: "Temperature",
     maxConcurrency: "Concurrency limit",
     saving: "Saving automatically...",
-    savedMock: "Saved automatically. Local Mock explanations are active.",
     savedLlm: "Saved automatically. LLM explanations are active.",
-    savedFallback: "Saved automatically. No API key is configured; local Mock explanations are active.",
+    savedUnconfigured: "Saved automatically. LLM is not configured, so explanations and LLM detection are unavailable.",
     testProvider: "Test connection",
     testingProvider: "Testing connection...",
     providerTestSucceeded: "Connection test succeeded.",
     providerNeedsAllSites: "Enable TermPop on all websites before testing the provider connection.",
-    providerApiKeyRequired: "Enter an API key first.",
+    providerApiKeyRequired: "LLM is not configured. Enter an API key first.",
     providerBaseUrlInvalid: "Base URL must use an HTTP or HTTPS origin.",
     providerTestFailed: "Provider test failed",
     modes: {
@@ -511,18 +509,12 @@ async function saveLlm(): Promise<void> {
   renderModeLabels();
   renderProviderTest();
   if (status) {
-    status.textContent = llm.provider === "mock"
-      ? t[uiLocale].savedMock
-      : llm.apiKey ? t[uiLocale].savedLlm : t[uiLocale].savedFallback;
+    status.textContent = llm.apiKey ? t[uiLocale].savedLlm : t[uiLocale].savedUnconfigured;
   }
 }
 
 async function testProviderConnection(): Promise<void> {
   const settings = collectLlmSettings();
-  if (settings.provider === "mock") {
-    if (status) status.textContent = t[uiLocale].savedMock;
-    return;
-  }
   if (!settings.apiKey) {
     if (status) status.textContent = t[uiLocale].providerApiKeyRequired;
     return;
@@ -587,10 +579,10 @@ function enqueueSettingsWrite(write: () => Promise<void>): Promise<void> {
 
 function collectLlmSettings(): LlmSettings {
   const llm: LlmSettings = {
-    provider: (providerInput?.value || "mock") as LlmProvider,
+    provider: (providerInput?.value || "openai") as LlmProvider,
     apiKey: apiKeyInput?.value.trim() || "",
-    model: modelInput?.value.trim() || defaultModel((providerInput?.value || "mock") as LlmProvider),
-    baseUrl: normalizeBaseUrl(baseUrlInput?.value.trim() || defaultBaseUrl((providerInput?.value || "mock") as LlmProvider)),
+    model: modelInput?.value.trim() || defaultModel((providerInput?.value || "openai") as LlmProvider),
+    baseUrl: normalizeBaseUrl(baseUrlInput?.value.trim() || defaultBaseUrl((providerInput?.value || "openai") as LlmProvider)),
     language: (languageInput?.value || "auto") as ExplanationLanguage,
     includeUsageExample: includeUsageExampleInput?.checked ?? false,
     screenshotRecognitionEnabled: screenshotRecognitionEnabledInput?.checked ?? true,
@@ -631,7 +623,7 @@ function renderProviderTest(): void {
   if (!providerTestButton || !providerInput) {
     return;
   }
-  providerTestButton.disabled = providerInput.value === "mock";
+  providerTestButton.disabled = false;
   providerTestButton.textContent = t[uiLocale].testProvider;
 }
 

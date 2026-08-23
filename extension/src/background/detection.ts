@@ -118,7 +118,11 @@ async function detectTermsUncached(
 
   let llmTerms: DetectedTerm[] = [];
   let llmDebug: DetectTermsDebug | undefined;
-  if (settings.llm.provider !== "mock" && settings.llm.apiKey.trim()) {
+  if (detectionMode === "llm") {
+    await assertLlmProviderAuthorized(settings.llm);
+  }
+
+  if (settings.llm.apiKey.trim()) {
     try {
       await assertLlmProviderAuthorized(settings.llm);
       const result = await fetchLlmDetectedTerms(text, settings.llm, primaryTerms);
