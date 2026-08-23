@@ -69,13 +69,24 @@ export class TermPopOverlayController {
     );
   }
 
-  showExplanation(anchor: HTMLElement, explanation: Explanation, onRefresh: () => void, keepVisible = false, resetPlacement = false, pointer?: OverlayPointer): void {
+  showExplanation(
+    anchor: HTMLElement,
+    explanation: Explanation,
+    onRefresh: () => void,
+    keepVisible = false,
+    resetPlacement = false,
+    pointer?: OverlayPointer,
+    onDelete?: () => void
+  ): void {
     const related = explanation.related_terms.map((term) => `<span>${escapeHtml(term)}</span>`).join("");
     this.render(
       anchor,
       `<div class="termpop-card-header">
          <div class="termpop-card-title">${escapeHtml(explanation.term)}</div>
-         <button class="termpop-refresh-button" type="button" title="${escapeHtml(copy[this.locale].refresh)}" aria-label="${escapeHtml(copy[this.locale].refresh)}">↻</button>
+         <div class="termpop-card-actions">
+           ${onDelete ? `<button class="termpop-delete-button" type="button" title="${escapeHtml(copy[this.locale].delete)}" aria-label="${escapeHtml(copy[this.locale].delete)}">${escapeHtml(copy[this.locale].delete)}</button>` : ""}
+           <button class="termpop-refresh-button" type="button" title="${escapeHtml(copy[this.locale].refresh)}" aria-label="${escapeHtml(copy[this.locale].refresh)}">↻</button>
+         </div>
        </div>
         <div class="termpop-category">${escapeHtml(explanation.category)}</div>
         <div class="termpop-definition">${escapeHtml(explanation.definition)}</div>
@@ -90,6 +101,11 @@ export class TermPopOverlayController {
       event.stopPropagation();
       this.pin();
       onRefresh();
+    });
+    this.root.querySelector<HTMLButtonElement>(".termpop-delete-button")?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onDelete?.();
     });
   }
 
@@ -285,11 +301,13 @@ function clamp(value: number, min: number, max: number): number {
 const copy = {
   zh: {
     loading: "正在生成解释...",
-    refresh: "重新生成解释"
+    refresh: "重新生成解释",
+    delete: "删除"
   },
   en: {
     loading: "Generating explanation...",
-    refresh: "Regenerate explanation"
+    refresh: "Regenerate explanation",
+    delete: "Remove"
   }
 } as const;
 

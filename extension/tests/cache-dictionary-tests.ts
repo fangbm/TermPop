@@ -2,6 +2,7 @@ import { addCachedTerms, buildExplanationCacheKey, detectCachedTerms, getCachedT
 import { isCachedTermAvailable, mergeCachedTermView } from "../src/content/cache-view.ts";
 import { getSettings } from "../src/shared/settings.ts";
 import type { DetectedTerm, Explanation, LlmSettings } from "../src/shared/types.ts";
+import { filterIgnoredCachedTerms, filterIgnoredDetectedTerms, ignoredTermSet, normalizeIgnoredTerm, parseIgnoredTerms } from "../src/shared/ignored-terms.ts";
 
 const now = Date.now();
 let completedStorageWrites = 0;
@@ -39,7 +40,8 @@ await testTermCacheScopes();
 await testExplanationCache();
 await testUserDictionarySettings();
 testContentCacheView();
-console.log("ok - cache scopes, explanation persistence, and user dictionary settings");
+testIgnoredTerms();
+console.log("ok - cache scopes, explanation persistence, user dictionary settings, and ignored terms");
 
 async function testTermCacheScopes(): Promise<void> {
   const context = { url: "https://docs.example.com/a", pageFingerprint: "page-a" };
@@ -101,6 +103,24 @@ function testContentCacheView(): void {
     last_seen_at: now
   }], pageA, now);
   equal(preserved[0].page_fingerprint, "server-page");
+}
+
+function testIgnoredTerms(): void {
+  const stored = parseIgnoredTerms(["Task", { term: "multi-head   attention", created_at: 1 }, { term: "task" }]);
+  equal(stored.length, 2);
+  const ignored = ignoredTermSet(stored);
+  ok(ignored.has(normalizeIgnoredTerm("MULTI-HEAD attention")));
+  equal(
+    filterIgnoredDetectedTerms([term("Task", "Ner", 0.9), term("Transformer", "Ner", 0.9)], ignored).map((item) => item.term).join(","),
+    "Transformer"
+  );
+  equal(filterIgnoredCachedTerms([{
+    ...term("Task", "Ner", 0.9),
+    scope: "global",
+    domain: null,
+    page_fingerprint: null,
+    last_seen_at: now
+  }], ignored).length, 0);
 }
 
 function term(value: string, source: DetectedTerm["source"], confidence: number): DetectedTerm {

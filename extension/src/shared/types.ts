@@ -218,6 +218,16 @@ export interface DisableSiteResponse {
   error?: string;
 }
 
+export interface IgnoreTermRequest {
+  type: "TERMPOP_IGNORE_TERM";
+  term: string;
+}
+
+export interface IgnoreTermResponse {
+  ok: boolean;
+  error?: string;
+}
+
 export interface BeginScreenshotSelectionRequest {
   type: "TERMPOP_BEGIN_SCREENSHOT_SELECTION";
 }

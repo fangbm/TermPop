@@ -18,6 +18,8 @@ import type {
   GetCachedTermsRequest,
   GetCachedTermsResponse,
   GetSiteAccessResponse,
+  IgnoreTermRequest,
+  IgnoreTermResponse,
   RecognizeScreenshotRequest,
   RecognizeScreenshotResponse,
   TermDictionarySettings,
@@ -33,6 +35,7 @@ import overlayStyles from "../shared/overlay.css?inline";
 import screenshotSelectionStyles from "./screenshot-selection.css?inline";
 import { isCachedTermAvailable, mergeCachedTermView } from "./cache-view";
 import { ScreenshotSelectionController, type ScreenshotSelectionResult } from "./screenshot-selection";
+import { filterIgnoredCachedTerms, filterIgnoredDetectedTerms, IGNORED_TERMS_STORAGE_KEY, ignoredTermSet, isIgnoredTerm, normalizeIgnoredTerm } from "../shared/ignored-terms";
 
 const MAX_HIGHLIGHTS_AUTO = 80;
 const MAX_HIGHLIGHTS_HYBRID = 40;
@@ -71,6 +74,7 @@ const debugOptions = readDebugOptions();
 const runtimeState = globalThis as typeof globalThis & { __termpopBooted?: boolean };
 let cachedPageFingerprint: { value: string; at: number; url: string } | undefined;
 let dictionaryJson: string | undefined;
+let ignoredTerms = new Set<string>();
 
 type DetectionModeOverride = "primary" | "llm" | "all";
 type TextNodeSpan = {
@@ -101,6 +105,7 @@ async function boot(): Promise<void> {
 
   const { mode, dictionary } = await getContentSettings();
   dictionaryJson = serializeDictionary(dictionary);
+  ignoredTerms = ignoredTermSet((await chrome.storage.local.get(IGNORED_TERMS_STORAGE_KEY))[IGNORED_TERMS_STORAGE_KEY]);
   globalCachedTerms = debugOptions.disableCache ? [] : await loadGlobalCachedTerms();
   activeMode = debugOptions.detectionMode ? "hover" : mode;
   debugLog("TermPop content boot", {
@@ -113,6 +118,7 @@ async function boot(): Promise<void> {
   setupSelectionPointerTracking();
   setupHighlightEventDelegation();
   setupModeChangeListener();
+  setupIgnoredTermsChangeListener();
   if (activeMode === "selection" && !debugOptions.detectionMode) {
     return;
   }
@@ -460,6 +466,19 @@ function setupSiteAccessChangeListener(): void {
   });
 }
 
+function setupIgnoredTermsChangeListener(): void {
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== "local" || !changes[IGNORED_TERMS_STORAGE_KEY]) {
+      return;
+    }
+    ignoredTerms = ignoredTermSet(changes[IGNORED_TERMS_STORAGE_KEY].newValue);
+    globalCachedTerms = filterIgnoredCachedTerms(globalCachedTerms, ignoredTerms);
+    for (const normalizedTerm of ignoredTerms) {
+      removeHighlightsForIgnoredTerm(normalizedTerm);
+    }
+  });
+}
+
 async function enableSite(): Promise<void> {
   if (!siteDisabled) {
     return;
@@ -539,6 +558,23 @@ function stopAutomaticHighlighting(): void {
 function removeAllHighlights(): void {
   scanGeneration += 1;
   const highlights = Array.from(document.querySelectorAll<HTMLElement>(`.${HIGHLIGHT_CLASS}`));
+  for (const highlight of highlights) {
+    const parent = highlight.parentNode;
+    if (!parent) {
+      continue;
+    }
+    parent.replaceChild(document.createTextNode(highlight.textContent ?? ""), highlight);
+    parent.normalize();
+  }
+}
+
+function removeHighlightsForIgnoredTerm(normalizedTerm: string): void {
+  const highlights = Array.from(document.querySelectorAll<HTMLElement>(`.${HIGHLIGHT_CLASS}`))
+    .filter((highlight) => normalizeIgnoredTerm(highlight.dataset.term ?? highlight.textContent ?? "") === normalizedTerm);
+  if (highlights.length === 0) {
+    return;
+  }
+  scanGeneration += 1;
   for (const highlight of highlights) {
     const parent = highlight.parentNode;
     if (!parent) {
@@ -1038,7 +1074,7 @@ async function detectTerms(text: string): Promise<DetectedTerm[]> {
       if (!debugOptions.disableCache) {
         mergeGlobalCachedTerms(response.terms);
       }
-      return response.terms;
+      return filterIgnoredDetectedTerms(response.terms, ignoredTerms);
     }
     console.warn("TermPop detect terms failed response", sanitizeForLog(response, 300));
   } catch (error) {
@@ -1061,7 +1097,7 @@ function detectTermsLocally(text: string): DetectedTerm[] {
     end: byteOffsetToJsIndex(text, term.end)
   }));
   const cachedTerms = debugOptions.disableCache ? [] : detectCachedTermsLocally(text);
-  return dedupeDetectedTerms(filterAllowedDetectedTerms(text, [...rustTerms, ...cachedTerms]));
+  return dedupeDetectedTerms(filterAllowedDetectedTerms(text, filterIgnoredDetectedTerms([...rustTerms, ...cachedTerms], ignoredTerms)));
 }
 
 async function loadGlobalCachedTerms(): Promise<CachedTermEntry[]> {
@@ -1073,7 +1109,7 @@ async function loadGlobalCachedTerms(): Promise<CachedTermEntry[]> {
     } satisfies GetCachedTermsRequest) as GetCachedTermsResponse;
 
     if (response.ok && response.terms) {
-      return response.terms;
+      return filterIgnoredCachedTerms(response.terms, ignoredTerms);
     }
   } catch {
     // The extension still works with Rust-only local detection if the service worker is unavailable.
@@ -1085,7 +1121,7 @@ async function loadGlobalCachedTerms(): Promise<CachedTermEntry[]> {
 function detectCachedTermsLocally(text: string): DetectedTerm[] {
   const terms: DetectedTerm[] = [];
   for (const entry of globalCachedTerms) {
-    if (!isCachedTermAvailable(entry, {
+    if (isIgnoredTerm(entry.term, ignoredTerms) || !isCachedTermAvailable(entry, {
       url: location.href,
       pageFingerprint: currentPageFingerprint()
     })) {
@@ -1130,7 +1166,7 @@ function rememberDetectedTerms(terms: DetectedTerm[]): void {
 
   cacheFlushTimer = window.setTimeout(() => {
     cacheFlushTimer = undefined;
-    const termsToFlush = [...pendingCachedTerms.values()];
+    const termsToFlush = filterIgnoredDetectedTerms([...pendingCachedTerms.values()], ignoredTerms);
     pendingCachedTerms.clear();
     mergeGlobalCachedTerms(termsToFlush);
     void chrome.runtime.sendMessage({
@@ -1151,7 +1187,7 @@ function mergeGlobalCachedTerms(terms: Array<DetectedTerm | CachedTermEntry>): v
     return;
   }
 
-  globalCachedTerms = mergeCachedTermView(globalCachedTerms, terms, {
+  globalCachedTerms = mergeCachedTermView(globalCachedTerms, terms.filter((term) => !isIgnoredTerm(term.term, ignoredTerms)), {
     url: location.href,
     pageFingerprint: currentPageFingerprint()
   });
@@ -1402,7 +1438,7 @@ async function showExplanation(anchor: HTMLElement, term: DetectedTerm, context:
     }
     overlay?.showExplanation(anchor, cached, () => {
       void showExplanation(anchor, term, context, { refresh: true, pin: true });
-    }, options.pin, true, options.pointer);
+    }, options.pin, true, options.pointer, deleteCallbackForHighlight(anchor, term.term));
     return;
   }
 
@@ -1436,7 +1472,28 @@ async function showExplanation(anchor: HTMLElement, term: DetectedTerm, context:
 
   overlay?.showExplanation(anchor, response.explanation, () => {
     void showExplanation(anchor, term, context, { refresh: true, pin: true });
-  }, options.pin, !options.refresh, options.pointer);
+  }, options.pin, !options.refresh, options.pointer, deleteCallbackForHighlight(anchor, term.term));
+}
+
+function deleteCallbackForHighlight(anchor: HTMLElement, term: string): (() => void) | undefined {
+  if (!anchor.classList.contains(HIGHLIGHT_CLASS)) {
+    return undefined;
+  }
+  return () => { void ignoreAutomaticTerm(term); };
+}
+
+async function ignoreAutomaticTerm(term: string): Promise<void> {
+  const response = await chrome.runtime.sendMessage({ type: "TERMPOP_IGNORE_TERM", term } satisfies IgnoreTermRequest) as IgnoreTermResponse;
+  if (!response.ok) {
+    console.warn("TermPop failed to ignore term", sanitizeForLog(response.error, 180));
+    return;
+  }
+
+  const normalized = normalizeIgnoredTerm(term);
+  ignoredTerms.add(normalized);
+  globalCachedTerms = filterIgnoredCachedTerms(globalCachedTerms, ignoredTerms);
+  removeHighlightsForIgnoredTerm(normalized);
+  overlay?.hide();
 }
 
 function isLatestExplanationRequest(anchor: HTMLElement, requestId: number): boolean {

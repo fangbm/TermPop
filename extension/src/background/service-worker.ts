@@ -15,6 +15,8 @@ import type {
   InjectActiveTabRequest,
   InjectActiveTabResponse,
   DisableSiteRequest,
+  IgnoreTermRequest,
+  IgnoreTermResponse,
   RecognizeScreenshotRequest,
   RecognizeScreenshotResponse,
   TestLlmProviderRequest,
@@ -23,7 +25,8 @@ import type {
   SetSiteAccessResponse
 } from "../shared/types";
 import { ALL_SITES_ORIGIN_PATTERNS, BLOCKED_SITES_STORAGE_KEY, FILE_ORIGIN_PATTERN } from "../shared/browser-utils";
-import { addCachedTerms, getCachedTerms } from "./cache";
+import { addCachedTerms, getCachedTerms, removeCachedTermsByTerm } from "./cache";
+import { addIgnoredTerm } from "../shared/ignored-terms";
 import { detectTerms } from "./detection";
 import { explain } from "./explanations";
 import { setupContextMenus } from "./menus";
@@ -46,6 +49,7 @@ type RuntimeMessage =
   | DetectTermsRequest
   | GetCachedTermsRequest
   | AddCachedTermsRequest
+  | IgnoreTermRequest
   | GetSiteAccessRequest
   | SetSiteAccessRequest
   | InjectActiveTabRequest
@@ -123,6 +127,20 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
       .then(() => addCachedTerms(message.terms, cacheContextFromMessage(message, sender), message.scope))
       .then(() => sendResponse({ ok: true } satisfies AddCachedTermsResponse))
       .catch((error: unknown) => sendResponse({ ok: false, error: errorMessage(error) } satisfies AddCachedTermsResponse));
+    return true;
+  }
+
+  if (message.type === "TERMPOP_IGNORE_TERM") {
+    ensureSenderCanUsePageServices(sender)
+      .then(async () => {
+        if (!message.term.trim()) {
+          throw new Error("A term is required.");
+        }
+        await addIgnoredTerm(message.term);
+        await removeCachedTermsByTerm(message.term);
+      })
+      .then(() => sendResponse({ ok: true } satisfies IgnoreTermResponse))
+      .catch((error: unknown) => sendResponse({ ok: false, error: errorMessage(error) } satisfies IgnoreTermResponse));
     return true;
   }
 

@@ -23,30 +23,17 @@ function check(name, actual, expected) {
 }
 const labels = (text) => JSON.parse(detect_terms_json(text)).map((t) => t.term);
 
-// ASCII terms next to CJK text must be detected (regex \b treats CJK
-// characters as word characters and would suppress these matches).
-check("CJK: 使用Rust开发很方便", labels("使用Rust开发很方便"), ["Rust"]);
-check("CJK: 用Python写脚本", labels("用Python写脚本"), ["Python"]);
-check("CJK: 用 Python 写脚本", labels("用 Python 写脚本"), ["Python"]);
-check("CJK: mixed", labels("在AWS上部署Kubernetes风格的React应用"), ["AWS", "React"]);
-check("edge: Rust语言值得学习", labels("Rust语言值得学习"), ["Rust"]);
-
-// Partial matches inside longer ASCII words stay rejected.
-check("reject: RustLang / xReact", labels("RustLang 和 xReact 都不是术语"), []);
-check("reject: JARVIS vs JAR", labels("JARVIS 不是 JAR"), ["JAR"]);
-
-// Baseline rule behavior.
-check("seed terms", labels("Rust React AWS LLM ChatGPT"), ["Rust", "React", "AWS", "LLM", "ChatGPT"]);
-check("chinese cloud", labels("我们使用阿里云和腾讯云部署服务。"), ["阿里云", "腾讯云"]);
-check("minecraft", labels("JAR Paper Fabric level.dat region .mca save-all bash"),
-  ["JAR", "Paper", "Fabric", "level.dat", "region", ".mca", "save-all", "bash"]);
-check("minecraft next to CJK", labels("JAR缺失导致崩溃，region 目录里的 .mca 文件"), ["JAR", "region", ".mca"]);
+// The public build deliberately ships without a fixed default list. Terms come
+// from the user's local cache or an explicitly configured dictionary.
+check("default detector is empty", labels("Rust React AWS LLM ChatGPT"), []);
+check("default detector remains empty next to CJK", labels("使用Rust开发很方便"), []);
 
 // Dictionary and user terms: boundaries and case-insensitive matching.
 {
-  const dict = JSON.stringify([{ term: "TermPop" }]);
+  const dict = JSON.stringify([{ term: "TermPop" }, { term: "Rust" }]);
   check("dict: adjacent CJK", JSON.parse(detect_terms_with_dictionary_json("我喜欢TermPop这个工具", dict)).map((t) => t.term), ["TermPop"]);
   check("dict: embedded rejected", JSON.parse(detect_terms_with_dictionary_json("xTermPop 和 TermPopX", dict)), []);
+  check("dict: Rust adjacent CJK", JSON.parse(detect_terms_with_dictionary_json("使用Rust开发很方便", dict)).map((t) => t.term), ["Rust"]);
 }
 {
   const dict = JSON.stringify([{ term: "kubernetes" }]);
@@ -58,14 +45,14 @@ check("minecraft next to CJK", labels("JAR缺失导致崩溃，region 目录里�
 // Reported start/end must be correct UTF-8 byte offsets on non-ASCII text.
 {
   const text = "😀 Rust"; // emoji = 4 UTF-8 bytes, 2 UTF-16 code units
-  const terms = JSON.parse(detect_terms_json(text));
+  const terms = JSON.parse(detect_terms_with_dictionary_json(text, JSON.stringify([{ term: "Rust" }])));
   check("emoji text detects Rust", terms.map((t) => t.term), ["Rust"]);
   const bytes = new TextEncoder().encode(text);
   check("emoji byte slice roundtrip", new TextDecoder().decode(bytes.slice(terms[0].start, terms[0].end)), "Rust");
 }
 {
   const text = "使用Rust开发很方便";
-  const terms = JSON.parse(detect_terms_json(text));
+  const terms = JSON.parse(detect_terms_with_dictionary_json(text, JSON.stringify([{ term: "Rust" }])));
   const bytes = new TextEncoder().encode(text);
   check("CJK byte slice roundtrip", new TextDecoder().decode(bytes.slice(terms[0].start, terms[0].end)), "Rust");
 }
@@ -74,4 +61,4 @@ if (failures > 0) {
   console.error(`\n${failures} FAILURES`);
   process.exit(1);
 }
-console.log(`\nALL PASS (18 assertions)`);
+console.log("\nALL PASS");

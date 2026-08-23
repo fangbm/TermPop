@@ -4,6 +4,7 @@ import { normalizeTermType } from "../shared/types.ts";
 import { domainFromUrl } from "../shared/browser-utils.ts";
 import { debugLog, defaultBaseUrl, defaultModel, hashString, isExplanation, normalizeBaseUrl, normalizeCacheContext, normalizeCacheTerm } from "./utils.ts";
 import { pruneEntriesToByteBudget, serializedEntriesByteSize } from "./cache-helpers.ts";
+import { filterIgnoredCachedTerms, isIgnoredTerm, loadIgnoredTermSet, normalizeIgnoredTerm } from "../shared/ignored-terms.ts";
 
 const TERM_CACHE_KEY = "termpop.termCache";
 const LEGACY_GLOBAL_TERM_CACHE_KEY = "termpop.globalTermCache";
@@ -39,15 +40,20 @@ interface CachedExplanationEntry {
 
 export async function getCachedTerms(context: TermCacheContext = {}): Promise<CachedTermEntry[]> {
   const cache = await loadTermCache();
-  return [...cache.values()].filter((entry) => isEntryInScope(entry, context));
+  const ignoredTerms = await loadIgnoredTermSet();
+  return filterIgnoredCachedTerms([...cache.values()].filter((entry) => isEntryInScope(entry, context)), ignoredTerms);
 }
 
 export async function detectCachedTerms(text: string, context: TermCacheContext = {}): Promise<DetectedTerm[]> {
   const cache = await loadTermCache();
+  const ignoredTerms = await loadIgnoredTermSet();
   const terms: DetectedTerm[] = [];
 
   for (const entry of cache.values()) {
     if (!isEntryInScope(entry, context)) {
+      continue;
+    }
+    if (isIgnoredTerm(entry.term, ignoredTerms)) {
       continue;
     }
     if (!shouldCacheTerm(entry.term, normalizeCacheTerm(entry.term))) {
@@ -74,12 +80,13 @@ export async function addCachedTerms(terms: DetectedTerm[], context: TermCacheCo
   }
 
   const cache = await loadTermCache();
+  const ignoredTerms = await loadIgnoredTermSet();
   const now = Date.now();
   let changed = false;
 
   for (const term of terms) {
     const normalized = normalizeCacheTerm(term.term);
-    if (!shouldCacheTerm(term.term, normalized)) {
+    if (!shouldCacheTerm(term.term, normalized) || isIgnoredTerm(term.term, ignoredTerms)) {
       continue;
     }
 
@@ -119,6 +126,25 @@ export async function addCachedTerms(terms: DetectedTerm[], context: TermCacheCo
     });
   } catch (error) {
     debugLog("TermPop term cache write failed", error);
+  }
+}
+
+export async function removeCachedTermsByTerm(term: string): Promise<void> {
+  const normalized = normalizeIgnoredTerm(term);
+  if (!normalized) {
+    return;
+  }
+
+  const cache = await loadTermCache();
+  let changed = false;
+  for (const [key, entry] of cache) {
+    if (normalizeIgnoredTerm(entry.term) === normalized) {
+      cache.delete(key);
+      changed = true;
+    }
+  }
+  if (changed) {
+    await chrome.storage.local.set({ [TERM_CACHE_KEY]: [...cache.values()] });
   }
 }
 

@@ -11,6 +11,7 @@ import { assertLlmProviderAuthorized } from "./provider-access";
 import { buildTermExtractionPrompt, buildTermExtractionSystemPrompt } from "./prompts";
 import { debugLog, defaultBaseUrl, defaultModel, sanitizeForLog } from "./utils";
 import { detectWithWasm } from "./wasm-runtime";
+import { filterIgnoredDetectedTerms, loadIgnoredTermSet } from "../shared/ignored-terms";
 
 const detectionCache = new TimedLruCache<DetectionResult>(128, 30 * 60 * 1000);
 const detectionInFlight = new Map<string, Promise<DetectionResult>>();
@@ -78,7 +79,8 @@ export async function detectTerms(
   });
   const cached = detectionCache.get(cacheKey);
   if (cached) {
-    return cached;
+    const ignoredTerms = await loadIgnoredTermSet();
+    return { ...cached, terms: filterIgnoredDetectedTerms(cached.terms, ignoredTerms) };
   }
 
   const existingRequest = detectionInFlight.get(cacheKey);
@@ -106,10 +108,11 @@ async function detectTermsUncached(
   cacheContext: { url?: string; pageFingerprint?: string },
   cacheKey: string
 ): Promise<DetectionResult> {
-  const primaryTerms = dedupeDetectedTerms(filterAllowedDetectedTerms(text, [
+  const ignoredTerms = await loadIgnoredTermSet();
+  const primaryTerms = dedupeDetectedTerms(filterAllowedDetectedTerms(text, filterIgnoredDetectedTerms([
     ...(await rustDetect(text, settings.dictionaryJson)),
     ...(await detectCachedTerms(text, cacheContext))
-  ]));
+  ], ignoredTerms)));
   if (detectionMode === "primary") {
     const result = { terms: primaryTerms };
     detectionCache.set(cacheKey, result);
@@ -136,7 +139,7 @@ async function detectTermsUncached(
   }
 
   if (detectionMode === "llm") {
-    llmTerms = dedupeDetectedTerms(filterAllowedDetectedTerms(text, llmTerms));
+    llmTerms = dedupeDetectedTerms(filterAllowedDetectedTerms(text, filterIgnoredDetectedTerms(llmTerms, ignoredTerms)));
     await addCachedTerms(llmTerms, cacheContext);
     const result = { terms: llmTerms, debug: { ...llmDebug, matchedCount: llmTerms.length } };
     detectionCache.set(cacheKey, result);
@@ -145,7 +148,7 @@ async function detectTermsUncached(
 
   const terms = mergePrimaryThenLlmTerms(
     primaryTerms,
-    dedupeDetectedTerms(filterAllowedDetectedTerms(text, llmTerms))
+    dedupeDetectedTerms(filterAllowedDetectedTerms(text, filterIgnoredDetectedTerms(llmTerms, ignoredTerms)))
   );
   await addCachedTerms(terms, cacheContext);
   const result = { terms, debug: llmDebug };

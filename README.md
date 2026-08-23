@@ -70,6 +70,7 @@ The public build ships without a hardcoded default term list. LLM detection grad
 
 - Term entries can be reused globally, per domain, or for a single page context.
 - Explanation entries are keyed by the term, language, model/provider, example setting, and context fingerprint.
+- Use **Remove** on an automatic term card to put that term in a local ignore list. It is immediately unhighlighted and filtered from cached and new LLM results.
 - Cache data is local to the browser profile. Clear extension storage to remove it.
 
 ## Development
