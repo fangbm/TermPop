@@ -87,6 +87,28 @@ export interface ExplainResponse {
   error?: string;
 }
 
+export interface FollowUpTurn {
+  question: string;
+  answer: string;
+}
+
+export interface FollowUpRequest {
+  type: "TERMPOP_FOLLOW_UP";
+  term: string;
+  context?: string;
+  explanation: Explanation;
+  history: FollowUpTurn[];
+  question: string;
+  termImageDataUrl?: string;
+  contextImageDataUrl?: string;
+}
+
+export interface FollowUpResponse {
+  ok: boolean;
+  answer?: string;
+  error?: string;
+}
+
 export interface ScreenshotRecognition {
   term: string;
   context: string;

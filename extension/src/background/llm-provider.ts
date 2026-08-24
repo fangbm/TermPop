@@ -1,9 +1,11 @@
-import type { Explanation, LlmSettings, ScreenshotRecognition } from "../shared/types";
+import type { Explanation, FollowUpTurn, LlmSettings, ScreenshotRecognition } from "../shared/types";
 import { extractJsonObject } from "./json";
 import { runWithLlmConcurrency } from "./llm-queue";
 import {
   buildExplanationPrompt,
   buildExplanationSystemPrompt,
+  buildFollowUpPrompt,
+  buildFollowUpSystemPrompt,
   buildScreenshotRecognitionPrompt,
   buildScreenshotRecognitionSystemPrompt
 } from "./prompts";
@@ -13,8 +15,14 @@ import { parseScreenshotRecognition, splitImageDataUrl } from "./vision";
 export interface TermPopLlmProvider {
   detectTerms(prompt: string, system: string, settings: LlmSettings, timeoutMs: number): Promise<string>;
   explain(term: string, context: string | undefined, settings: LlmSettings): Promise<Explanation>;
+  followUp(term: string, context: string | undefined, explanation: Explanation, history: FollowUpTurn[], question: string, images: ScreenshotImages | undefined, settings: LlmSettings): Promise<string>;
   recognizeSelection(termImageDataUrl: string, contextImageDataUrl: string, settings: LlmSettings): Promise<ScreenshotRecognition>;
   test(settings: LlmSettings): Promise<void>;
+}
+
+export interface ScreenshotImages {
+  termImageDataUrl: string;
+  contextImageDataUrl: string;
 }
 
 export function createLlmProvider(settings: LlmSettings): TermPopLlmProvider {
@@ -30,6 +38,11 @@ const openAiCompatibleProvider: TermPopLlmProvider = {
   explain(term, context, settings) {
     return runWithLlmConcurrency(settings, { priority: "explanation" }, (signal) =>
       fetchOpenAiCompatibleExplanation(term, context, settings, signal)
+    );
+  },
+  followUp(term, context, explanation, history, question, images, settings) {
+    return runWithLlmConcurrency(settings, { priority: "explanation" }, (signal) =>
+      fetchOpenAiCompatibleFollowUp(term, context, explanation, history, question, images, settings, signal)
     );
   },
   recognizeSelection(termImageDataUrl, contextImageDataUrl, settings) {
@@ -53,6 +66,11 @@ const anthropicProvider: TermPopLlmProvider = {
       fetchAnthropicExplanation(term, context, settings, signal)
     );
   },
+  followUp(term, context, explanation, history, question, images, settings) {
+    return runWithLlmConcurrency(settings, { priority: "explanation" }, (signal) =>
+      fetchAnthropicFollowUp(term, context, explanation, history, question, images, settings, signal)
+    );
+  },
   recognizeSelection(termImageDataUrl, contextImageDataUrl, settings) {
     return runWithLlmConcurrency(settings, { priority: "explanation" }, (signal) =>
       fetchAnthropicScreenshotRecognition(termImageDataUrl, contextImageDataUrl, settings, signal)
@@ -62,6 +80,97 @@ const anthropicProvider: TermPopLlmProvider = {
     await this.explain("TermPop", undefined, settings);
   }
 };
+
+async function fetchOpenAiCompatibleFollowUp(
+  term: string,
+  context: string | undefined,
+  explanation: Explanation,
+  history: FollowUpTurn[],
+  question: string,
+  images: ScreenshotImages | undefined,
+  settings: LlmSettings,
+  signal?: AbortSignal
+): Promise<string> {
+  const prompt = buildFollowUpPrompt(term, context, explanation, history, question);
+  const content: Array<Record<string, unknown>> = [{ type: "text", text: prompt }];
+  if (images) {
+    content.push(
+      { type: "text", text: "The reader selected this exact area from the original screenshot:" },
+      { type: "image_url", image_url: { url: images.termImageDataUrl, detail: "high" } },
+      { type: "text", text: "Nearby reading context from the original screenshot:" },
+      { type: "image_url", image_url: { url: images.contextImageDataUrl, detail: "high" } }
+    );
+  }
+  const baseUrl = normalizeBaseUrl(settings.baseUrl || defaultBaseUrl(settings.provider));
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${settings.apiKey}` },
+    body: JSON.stringify({
+      model: settings.model || defaultModel(settings.provider),
+      temperature: settings.temperature,
+      max_tokens: settings.maxTokens,
+      messages: [
+        { role: "system", content: buildFollowUpSystemPrompt(settings.language) },
+        { role: "user", content }
+      ]
+    }),
+    signal
+  });
+  if (!response.ok) {
+    throw new Error(await formatProviderError(response));
+  }
+  return extractOpenAiCompatibleText(await response.json()).slice(0, 2_000);
+}
+
+async function fetchAnthropicFollowUp(
+  term: string,
+  context: string | undefined,
+  explanation: Explanation,
+  history: FollowUpTurn[],
+  question: string,
+  images: ScreenshotImages | undefined,
+  settings: LlmSettings,
+  signal?: AbortSignal
+): Promise<string> {
+  const content: Array<Record<string, unknown>> = [{ type: "text", text: buildFollowUpPrompt(term, context, explanation, history, question) }];
+  if (images) {
+    const termImage = splitImageDataUrl(images.termImageDataUrl);
+    const contextImage = splitImageDataUrl(images.contextImageDataUrl);
+    content.push(
+      { type: "text", text: "The reader selected this exact area from the original screenshot:" },
+      { type: "image", source: { type: "base64", media_type: termImage.mediaType, data: termImage.data } },
+      { type: "text", text: "Nearby reading context from the original screenshot:" },
+      { type: "image", source: { type: "base64", media_type: contextImage.mediaType, data: contextImage.data } }
+    );
+  }
+  const baseUrl = normalizeBaseUrl(settings.baseUrl || defaultBaseUrl(settings.provider));
+  const response = await fetch(`${baseUrl}/messages`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": settings.apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    },
+    body: JSON.stringify({
+      model: settings.model || defaultModel(settings.provider),
+      max_tokens: settings.maxTokens,
+      temperature: settings.temperature,
+      system: buildFollowUpSystemPrompt(settings.language),
+      messages: [{ role: "user", content }]
+    }),
+    signal
+  });
+  if (!response.ok) {
+    throw new Error(await formatProviderError(response));
+  }
+  const payload = (await response.json()) as { content?: Array<{ type?: string; text?: string }> };
+  const answer = payload.content?.find((part) => part.type === "text")?.text?.trim();
+  if (!answer) {
+    throw new Error("LLM response did not include text content.");
+  }
+  return answer.slice(0, 2_000);
+}
 
 async function fetchOpenAiCompatibleScreenshotRecognition(
   termImageDataUrl: string,

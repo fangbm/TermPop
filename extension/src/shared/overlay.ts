@@ -1,4 +1,4 @@
-import type { Explanation } from "./types";
+import type { Explanation, FollowUpTurn } from "./types";
 import { resolveOverlayLayer } from "./stacking-layer";
 
 export interface OverlayOptions {
@@ -76,7 +76,8 @@ export class TermPopOverlayController {
     keepVisible = false,
     resetPlacement = false,
     pointer?: OverlayPointer,
-    onDelete?: () => void
+    onDelete?: () => void,
+    onFollowUp?: (question: string, history: FollowUpTurn[]) => Promise<string>
   ): void {
     const related = explanation.related_terms.map((term) => `<span>${escapeHtml(term)}</span>`).join("");
     this.render(
@@ -91,7 +92,8 @@ export class TermPopOverlayController {
         <div class="termpop-category">${escapeHtml(explanation.category)}</div>
         <div class="termpop-definition">${escapeHtml(explanation.definition)}</div>
        ${explanation.usage_example ? `<div class="termpop-example">${escapeHtml(explanation.usage_example)}</div>` : ""}
-       <div class="termpop-related">${related}</div>`,
+       <div class="termpop-related">${related}</div>
+       ${onFollowUp ? this.followUpComposerHtml() : ""}`,
       keepVisible,
       resetPlacement,
       pointer
@@ -109,6 +111,9 @@ export class TermPopOverlayController {
         this.showDeleteConfirmation(anchor, explanation, onRefresh, onDelete, pointer);
       }
     });
+    if (onFollowUp) {
+      this.bindFollowUpComposer(explanation, onFollowUp);
+    }
   }
 
   private showDeleteConfirmation(
@@ -166,6 +171,7 @@ export class TermPopOverlayController {
     this.currentAnchor = undefined;
     this.anchorPoint = undefined;
     this.initialPlacement = undefined;
+    this.unlockFollowUpSize();
     this.restoreDefaultContainer();
   }
 
@@ -207,6 +213,7 @@ export class TermPopOverlayController {
   }
 
   private render(anchor: HTMLElement, html: string, keepVisible = false, resetPlacement = false, pointer?: OverlayPointer): void {
+    this.unlockFollowUpSize();
     this.pinned = keepVisible;
     if (this.currentAnchor !== anchor || resetPlacement) {
       this.initialPlacement = undefined;
@@ -285,6 +292,101 @@ export class TermPopOverlayController {
     this.root.style.zIndex = "1";
   }
 
+  private followUpComposerHtml(): string {
+    return `<div class="termpop-follow-up">
+      <div class="termpop-follow-up-history" aria-live="polite"></div>
+      <div class="termpop-follow-up-error" role="alert"></div>
+      <div class="termpop-follow-up-composer">
+        <textarea class="termpop-follow-up-input" rows="1" placeholder="${escapeHtml(copy[this.locale].followUpPlaceholder)}" aria-label="${escapeHtml(copy[this.locale].followUpPlaceholder)}"></textarea>
+        <button class="termpop-follow-up-send" type="button" disabled>${escapeHtml(copy[this.locale].send)}</button>
+      </div>
+    </div>`;
+  }
+
+  private bindFollowUpComposer(explanation: Explanation, onFollowUp: (question: string, history: FollowUpTurn[]) => Promise<string>): void {
+    const input = this.root.querySelector<HTMLTextAreaElement>(".termpop-follow-up-input");
+    const send = this.root.querySelector<HTMLButtonElement>(".termpop-follow-up-send");
+    const historyNode = this.root.querySelector<HTMLDivElement>(".termpop-follow-up-history");
+    const errorNode = this.root.querySelector<HTMLDivElement>(".termpop-follow-up-error");
+    const composer = this.root.querySelector<HTMLDivElement>(".termpop-follow-up-composer");
+    if (!input || !send || !historyNode || !errorNode || !composer) {
+      return;
+    }
+
+    const history: FollowUpTurn[] = [];
+    let initialExplanationVisible = false;
+    let sending = false;
+    const lockCardSize = () => {
+      if (this.root.classList.contains("is-follow-up")) {
+        return;
+      }
+      const height = Math.ceil(this.root.getBoundingClientRect().height);
+      this.root.style.height = `${height}px`;
+      this.root.classList.add("is-follow-up");
+      this.pin();
+      if (!initialExplanationVisible) {
+        initialExplanationVisible = true;
+        appendTurn("answer", explanation.definition);
+      }
+    };
+    const updateSendState = () => {
+      send.disabled = sending || !input.value.trim();
+    };
+    const appendTurn = (kind: "question" | "answer", text: string) => {
+      const turn = document.createElement("div");
+      turn.className = `termpop-follow-up-turn is-${kind}`;
+      turn.textContent = text;
+      historyNode.append(turn);
+      historyNode.scrollTop = historyNode.scrollHeight;
+    };
+    const submit = async () => {
+      const question = input.value.trim();
+      if (!question || sending) {
+        return;
+      }
+      lockCardSize();
+      sending = true;
+      errorNode.textContent = "";
+      input.value = "";
+      input.disabled = true;
+      updateSendState();
+      appendTurn("question", question);
+      const pending = document.createElement("div");
+      pending.className = "termpop-follow-up-turn is-answer is-pending";
+      pending.textContent = copy[this.locale].answering;
+      historyNode.append(pending);
+      historyNode.scrollTop = historyNode.scrollHeight;
+      try {
+        const answer = await onFollowUp(question, history.slice());
+        pending.remove();
+        history.push({ question, answer });
+        appendTurn("answer", answer);
+      } catch (error) {
+        pending.remove();
+        errorNode.textContent = error instanceof Error ? error.message : copy[this.locale].followUpFailed;
+      } finally {
+        sending = false;
+        input.disabled = false;
+        updateSendState();
+        input.focus();
+      }
+    };
+    input.addEventListener("focus", lockCardSize);
+    input.addEventListener("input", updateSendState);
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        void submit();
+      }
+    });
+    send.addEventListener("click", () => void submit());
+  }
+
+  private unlockFollowUpSize(): void {
+    this.root.classList.remove("is-follow-up");
+    this.root.style.removeProperty("height");
+  }
+
   private resolvePlacement(canFitAbove: boolean, canFitBelow: boolean): "above" | "below" {
     if (this.initialPlacement === "below") {
       return canFitBelow || !canFitAbove ? "below" : "above";
@@ -340,6 +442,10 @@ const copy = {
     delete: "删除",
     cancel: "取消",
     confirmDelete: "确认删除",
+    followUpPlaceholder: "继续提问...",
+    send: "发送",
+    answering: "正在回答...",
+    followUpFailed: "追问失败，请稍后再试。",
     deleteConfirmation: (term: string) => `“${term}” 不会再次自动高亮。如有需要，可在设置中恢复。`
   },
   en: {
@@ -348,6 +454,10 @@ const copy = {
     delete: "Remove",
     cancel: "Cancel",
     confirmDelete: "Remove",
+    followUpPlaceholder: "Ask a follow-up...",
+    send: "Send",
+    answering: "Answering...",
+    followUpFailed: "Follow-up failed. Please try again.",
     deleteConfirmation: (term: string) => `“${term}” will no longer be highlighted automatically. You can restore it in Settings.`
   }
 } as const;

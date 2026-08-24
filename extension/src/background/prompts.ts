@@ -1,4 +1,4 @@
-import type { ExplanationLanguage } from "../shared/types";
+import type { Explanation, ExplanationLanguage, FollowUpTurn } from "../shared/types";
 import { languageInstruction } from "./utils";
 
 export function buildTermExtractionSystemPrompt(language: ExplanationLanguage): string {
@@ -70,6 +70,36 @@ export function buildScreenshotRecognitionPrompt(language: ExplanationLanguage, 
     "If the selected area is ambiguous, choose the most central prominent term and lower confidence.",
     "Return JSON only in this shape:",
     "{\"term\":\"exact visible term\",\"context\":\"nearby context\",\"confidence\":0.0,\"definition\":\"context-appropriate explanation\",\"category\":\"concise category\",\"related_terms\":[\"term\"],\"usage_example\":null,\"source_url\":null}"
+  ].join("\n");
+}
+
+export function buildFollowUpSystemPrompt(language: ExplanationLanguage): string {
+  return [
+    languageInstruction(language),
+    "You answer concise follow-up questions about a vocabulary explanation.",
+    "Use the supplied reading context and earlier answer. Do not invent information.",
+    "Reply with plain text only, without markdown headings or JSON."
+  ].join(" ");
+}
+
+export function buildFollowUpPrompt(
+  term: string,
+  context: string | undefined,
+  explanation: Explanation,
+  history: FollowUpTurn[],
+  question: string
+): string {
+  const recentHistory = history.slice(-8).flatMap((turn) => [
+    `Reader: ${turn.question}`,
+    `Assistant: ${turn.answer}`
+  ]);
+  return [
+    `Term: ${term}`,
+    `Reading context: ${context?.trim() || "(no context provided)"}`,
+    `Initial explanation: ${explanation.definition}`,
+    ...recentHistory,
+    `Reader: ${question.trim()}`,
+    "Answer the reader's latest question in 1-3 concise sentences."
   ].join("\n");
 }
 

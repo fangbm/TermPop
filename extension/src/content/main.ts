@@ -12,6 +12,8 @@ import type {
   DisableSiteResponse,
   ExplainRequest,
   ExplainResponse,
+  FollowUpRequest,
+  FollowUpResponse,
   ExplainSelectionRequest,
   ExplainSelectionResponse,
   Explanation,
@@ -807,7 +809,12 @@ async function requestScreenshotExplanation(
     },
     true,
     !refresh,
-    selection.pointer
+    selection.pointer,
+    undefined,
+    (question, history) => requestFollowUp(recognition.term, recognition.context, recognition.explanation, history, question, {
+      termImageDataUrl: selection.termImageDataUrl,
+      contextImageDataUrl: selection.contextImageDataUrl
+    })
   );
 }
 
@@ -1448,7 +1455,9 @@ async function showExplanation(anchor: HTMLElement, term: DetectedTerm, context:
     }
     overlay?.showExplanation(anchor, cached, () => {
       void showExplanation(anchor, term, context, { refresh: true, pin: true });
-    }, options.pin, true, options.pointer, deleteCallbackForHighlight(anchor, term.term));
+    }, options.pin, true, options.pointer, deleteCallbackForHighlight(anchor, term.term), (question, history) =>
+      requestFollowUp(term.term, context, cached, history, question)
+    );
     return;
   }
 
@@ -1482,7 +1491,9 @@ async function showExplanation(anchor: HTMLElement, term: DetectedTerm, context:
 
   overlay?.showExplanation(anchor, response.explanation, () => {
     void showExplanation(anchor, term, context, { refresh: true, pin: true });
-  }, options.pin, !options.refresh, options.pointer, deleteCallbackForHighlight(anchor, term.term));
+  }, options.pin, !options.refresh, options.pointer, deleteCallbackForHighlight(anchor, term.term), (question, history) =>
+    requestFollowUp(term.term, context, response.explanation!, history, question)
+  );
 }
 
 function deleteCallbackForHighlight(anchor: HTMLElement, term: string): (() => void) | undefined {
@@ -1578,4 +1589,30 @@ function currentPageFingerprint(): string {
     url: location.href
   };
   return cachedPageFingerprint.value;
+}
+
+function requestFollowUp(
+  term: string,
+  context: string,
+  explanation: Explanation,
+  history: Array<{ question: string; answer: string }>,
+  question: string,
+  images?: { termImageDataUrl: string; contextImageDataUrl: string }
+): Promise<string> {
+  return chrome.runtime.sendMessage({
+    type: "TERMPOP_FOLLOW_UP",
+    term,
+    context,
+    explanation,
+    // The card keeps the full conversation visible with no round cap. Only a
+    // compact recent window is sent back to the provider for each request.
+    history: history.slice(-8),
+    question,
+    ...images
+  } satisfies FollowUpRequest).then((response: FollowUpResponse) => {
+    if (!response.ok || !response.answer) {
+      throw new Error(response.error ?? contentCopy[uiLocale()].unavailable);
+    }
+    return response.answer;
+  });
 }

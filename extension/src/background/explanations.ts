@@ -1,4 +1,4 @@
-import type { Explanation, LlmSettings } from "../shared/types";
+import type { Explanation, FollowUpTurn, LlmSettings } from "../shared/types";
 import { buildExplanationCacheKey, getPersistentExplanation, setPersistentExplanation } from "./cache";
 import { createLlmProvider } from "./llm-provider";
 import { assertLlmProviderAuthorized } from "./provider-access";
@@ -44,4 +44,17 @@ export async function explain(
   explanationCache.set(cacheKey, explanation);
   await setPersistentExplanation(cacheKey, explanation);
   return explanation;
+}
+
+export async function followUp(
+  term: string,
+  context: string | undefined,
+  explanation: Explanation,
+  history: FollowUpTurn[],
+  question: string,
+  images: { termImageDataUrl: string; contextImageDataUrl: string } | undefined,
+  settings: LlmSettings
+): Promise<string> {
+  await assertLlmProviderAuthorized(settings);
+  return createLlmProvider(settings).followUp(term, context, explanation, history, question, images, settings);
 }

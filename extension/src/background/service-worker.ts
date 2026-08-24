@@ -8,6 +8,8 @@ import type {
   DetectTermsResponse,
   ExplainRequest,
   ExplainResponse,
+  FollowUpRequest,
+  FollowUpResponse,
   GetCachedTermsRequest,
   GetCachedTermsResponse,
   GetSiteAccessRequest,
@@ -28,7 +30,7 @@ import { ALL_SITES_ORIGIN_PATTERNS, BLOCKED_SITES_STORAGE_KEY, FILE_ORIGIN_PATTE
 import { addCachedTerms, getCachedTerms } from "./cache";
 import { addIgnoredTerm } from "../shared/ignored-terms";
 import { detectTerms } from "./detection";
-import { explain } from "./explanations";
+import { explain, followUp } from "./explanations";
 import { setupContextMenus } from "./menus";
 import {
   getSiteAccessForActiveTab,
@@ -43,9 +45,11 @@ import { assertLlmProviderAuthorized } from "./provider-access";
 import { createLlmProvider } from "./llm-provider";
 import { captureVisibleSenderTab, recognizeScreenshot, setupScreenshotCommand } from "./screenshot";
 import { setupOnboarding } from "./onboarding";
+import { inferImageInputCapability } from "./model-capabilities";
 
 type RuntimeMessage =
   | ExplainRequest
+  | FollowUpRequest
   | DetectTermsRequest
   | GetCachedTermsRequest
   | AddCachedTermsRequest
@@ -177,6 +181,39 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
       .then((settings) => explain(message.term, message.context, message.cacheScope, message.refresh ?? false, settings.llm))
       .then((explanation) => sendResponse({ ok: true, explanation } satisfies ExplainResponse))
       .catch((error: unknown) => sendResponse({ ok: false, error: errorMessage(error) } satisfies ExplainResponse));
+    return true;
+  }
+
+  if (message.type === "TERMPOP_FOLLOW_UP") {
+    ensureSenderCanUsePageServices(sender)
+      .then(() => {
+        if (!consumeRateAllowance(sender, "explain")) {
+          throw new Error("TermPop rate limit reached; try again shortly.");
+        }
+        if (!message.question.trim()) {
+          throw new Error("A follow-up question is required.");
+        }
+      })
+      .then(getSettings)
+      .then((settings) => {
+        const screenshotMode = settings.llm.screenshotRecognitionMode;
+        const useScreenshotContext = settings.llm.screenshotRecognitionEnabled
+          && (screenshotMode === "multimodal" || (screenshotMode === "auto" && inferImageInputCapability(settings.llm) === "supported"))
+          && Boolean(message.termImageDataUrl && message.contextImageDataUrl);
+        return followUp(
+          message.term,
+          message.context,
+          message.explanation,
+          message.history,
+          message.question,
+          useScreenshotContext
+            ? { termImageDataUrl: message.termImageDataUrl!, contextImageDataUrl: message.contextImageDataUrl! }
+            : undefined,
+          settings.llm
+        );
+      })
+      .then((answer) => sendResponse({ ok: true, answer } satisfies FollowUpResponse))
+      .catch((error: unknown) => sendResponse({ ok: false, error: errorMessage(error) } satisfies FollowUpResponse));
     return true;
   }
 
