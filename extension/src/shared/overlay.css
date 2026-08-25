@@ -211,6 +211,32 @@
   color: #64748b;
 }
 
+#termpop-overlay-root .termpop-follow-up-thinking {
+  margin: 0 0 7px;
+  border: 1px solid #dbeafe;
+  border-radius: 6px;
+  background: #f8fbff;
+  color: #475569;
+  font-size: 12px;
+}
+
+#termpop-overlay-root .termpop-follow-up-thinking summary {
+  cursor: pointer;
+  padding: 6px 8px;
+  color: #2563eb;
+  font-weight: 600;
+  user-select: none;
+}
+
+#termpop-overlay-root .termpop-follow-up-thinking-content {
+  max-height: 136px;
+  overflow: auto;
+  border-top: 1px solid #dbeafe;
+  padding: 6px 8px 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 #termpop-overlay-root .termpop-follow-up-error {
   color: #b91c1c;
   font-size: 12px;

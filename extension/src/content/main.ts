@@ -12,8 +12,10 @@ import type {
   DisableSiteResponse,
   ExplainRequest,
   ExplainResponse,
-  FollowUpRequest,
-  FollowUpResponse,
+  FollowUpStreamDone,
+  FollowUpStreamError,
+  FollowUpStreamResult,
+  FollowUpStreamStart,
   ExplainSelectionRequest,
   ExplainSelectionResponse,
   Explanation,
@@ -811,10 +813,10 @@ async function requestScreenshotExplanation(
     !refresh,
     selection.pointer,
     undefined,
-    (question, history) => requestFollowUp(recognition.term, recognition.context, recognition.explanation, history, question, {
+    (question, history, callbacks) => requestFollowUp(recognition.term, recognition.context, recognition.explanation, history, question, {
       termImageDataUrl: selection.termImageDataUrl,
       contextImageDataUrl: selection.contextImageDataUrl
-    })
+    }, callbacks)
   );
 }
 
@@ -1455,8 +1457,8 @@ async function showExplanation(anchor: HTMLElement, term: DetectedTerm, context:
     }
     overlay?.showExplanation(anchor, cached, () => {
       void showExplanation(anchor, term, context, { refresh: true, pin: true });
-    }, options.pin, true, options.pointer, deleteCallbackForHighlight(anchor, term.term), (question, history) =>
-      requestFollowUp(term.term, context, cached, history, question)
+    }, options.pin, true, options.pointer, deleteCallbackForHighlight(anchor, term.term), (question, history, callbacks) =>
+      requestFollowUp(term.term, context, cached, history, question, undefined, callbacks)
     );
     return;
   }
@@ -1491,8 +1493,8 @@ async function showExplanation(anchor: HTMLElement, term: DetectedTerm, context:
 
   overlay?.showExplanation(anchor, response.explanation, () => {
     void showExplanation(anchor, term, context, { refresh: true, pin: true });
-  }, options.pin, !options.refresh, options.pointer, deleteCallbackForHighlight(anchor, term.term), (question, history) =>
-    requestFollowUp(term.term, context, response.explanation!, history, question)
+  }, options.pin, !options.refresh, options.pointer, deleteCallbackForHighlight(anchor, term.term), (question, history, callbacks) =>
+    requestFollowUp(term.term, context, response.explanation!, history, question, undefined, callbacks)
   );
 }
 
@@ -1597,22 +1599,64 @@ function requestFollowUp(
   explanation: Explanation,
   history: Array<{ question: string; answer: string }>,
   question: string,
-  images?: { termImageDataUrl: string; contextImageDataUrl: string }
-): Promise<string> {
-  return chrome.runtime.sendMessage({
-    type: "TERMPOP_FOLLOW_UP",
-    term,
-    context,
-    explanation,
+  images: { termImageDataUrl: string; contextImageDataUrl: string } | undefined,
+  callbacks: {
+    onAnswerDelta: (delta: string) => void;
+    onThinkingDelta: (delta: string) => void;
+  }
+): Promise<FollowUpStreamResult> {
+  const requestId = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const port = chrome.runtime.connect({ name: "termpop-follow-up" });
+  return new Promise<FollowUpStreamResult>((resolve, reject) => {
+    let settled = false;
+    const settle = (callback: () => void) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      try {
+        port.disconnect();
+      } catch {
+        // The background may already have closed the port.
+      }
+      callback();
+    };
+    port.onMessage.addListener((response: FollowUpStreamDone | FollowUpStreamError | { type?: string; requestId?: string; channel?: "answer" | "thinking"; delta?: string }) => {
+      if (response.requestId !== requestId) {
+        return;
+      }
+      if (response.type === "TERMPOP_FOLLOW_UP_DELTA" && typeof response.delta === "string") {
+        if (response.channel === "thinking") {
+          callbacks.onThinkingDelta(response.delta);
+        } else {
+          callbacks.onAnswerDelta(response.delta);
+        }
+        return;
+      }
+      if (response.type === "TERMPOP_FOLLOW_UP_DONE") {
+        settle(() => resolve((response as FollowUpStreamDone).result));
+        return;
+      }
+      if (response.type === "TERMPOP_FOLLOW_UP_ERROR") {
+        settle(() => reject(new Error((response as FollowUpStreamError).error || contentCopy[uiLocale()].unavailable)));
+      }
+    });
+    port.onDisconnect.addListener(() => {
+      if (!settled) {
+        settle(() => reject(new Error(chrome.runtime.lastError?.message ?? contentCopy[uiLocale()].unavailable)));
+      }
+    });
+    port.postMessage({
+      type: "TERMPOP_FOLLOW_UP_STREAM",
+      requestId,
+      term,
+      context,
+      explanation,
     // The card keeps the full conversation visible with no round cap. Only a
     // compact recent window is sent back to the provider for each request.
-    history: history.slice(-8),
-    question,
-    ...images
-  } satisfies FollowUpRequest).then((response: FollowUpResponse) => {
-    if (!response.ok || !response.answer) {
-      throw new Error(response.error ?? contentCopy[uiLocale()].unavailable);
-    }
-    return response.answer;
+      history: history.slice(-8),
+      question,
+      ...images
+    } satisfies FollowUpStreamStart);
   });
 }

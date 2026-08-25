@@ -1,6 +1,6 @@
-import type { Explanation, FollowUpTurn, LlmSettings } from "../shared/types";
+import type { Explanation, FollowUpStreamResult, FollowUpTurn, LlmSettings } from "../shared/types";
 import { buildExplanationCacheKey, getPersistentExplanation, setPersistentExplanation } from "./cache";
-import { createLlmProvider } from "./llm-provider";
+import { createLlmProvider, type FollowUpStreamCallbacks } from "./llm-provider";
 import { assertLlmProviderAuthorized } from "./provider-access";
 import { canUseCachedExplanation } from "./cache-helpers";
 
@@ -57,4 +57,19 @@ export async function followUp(
 ): Promise<string> {
   await assertLlmProviderAuthorized(settings);
   return createLlmProvider(settings).followUp(term, context, explanation, history, question, images, settings);
+}
+
+export async function followUpStream(
+  term: string,
+  context: string | undefined,
+  explanation: Explanation,
+  history: FollowUpTurn[],
+  question: string,
+  images: { termImageDataUrl: string; contextImageDataUrl: string } | undefined,
+  settings: LlmSettings,
+  callbacks: FollowUpStreamCallbacks,
+  signal?: AbortSignal
+): Promise<FollowUpStreamResult> {
+  await assertLlmProviderAuthorized(settings);
+  return createLlmProvider(settings).followUpStream(term, context, explanation, history, question, images, settings, callbacks, signal);
 }

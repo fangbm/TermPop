@@ -1,4 +1,4 @@
-import type { Explanation, FollowUpTurn } from "./types";
+import type { Explanation, FollowUpStreamResult, FollowUpTurn } from "./types";
 import { resolveOverlayLayer } from "./stacking-layer";
 
 export interface OverlayOptions {
@@ -16,6 +16,13 @@ interface Point {
   x: number;
   y: number;
 }
+
+interface FollowUpRenderCallbacks {
+  onAnswerDelta: (delta: string) => void;
+  onThinkingDelta: (delta: string) => void;
+}
+
+type FollowUpHandler = (question: string, history: FollowUpTurn[], callbacks: FollowUpRenderCallbacks) => Promise<FollowUpStreamResult>;
 
 export class TermPopOverlayController {
   private readonly root: HTMLDivElement;
@@ -77,7 +84,7 @@ export class TermPopOverlayController {
     resetPlacement = false,
     pointer?: OverlayPointer,
     onDelete?: () => void,
-    onFollowUp?: (question: string, history: FollowUpTurn[]) => Promise<string>
+    onFollowUp?: FollowUpHandler
   ): void {
     const related = explanation.related_terms.map((term) => `<span>${escapeHtml(term)}</span>`).join("");
     this.render(
@@ -303,7 +310,7 @@ export class TermPopOverlayController {
     </div>`;
   }
 
-  private bindFollowUpComposer(explanation: Explanation, onFollowUp: (question: string, history: FollowUpTurn[]) => Promise<string>): void {
+  private bindFollowUpComposer(explanation: Explanation, onFollowUp: FollowUpHandler): void {
     const input = this.root.querySelector<HTMLTextAreaElement>(".termpop-follow-up-input");
     const send = this.root.querySelector<HTMLButtonElement>(".termpop-follow-up-send");
     const historyNode = this.root.querySelector<HTMLDivElement>(".termpop-follow-up-history");
@@ -332,12 +339,16 @@ export class TermPopOverlayController {
     const updateSendState = () => {
       send.disabled = sending || !input.value.trim();
     };
+    const scrollHistoryToBottom = () => {
+      historyNode.scrollTop = historyNode.scrollHeight;
+    };
     const appendTurn = (kind: "question" | "answer", text: string) => {
       const turn = document.createElement("div");
       turn.className = `termpop-follow-up-turn is-${kind}`;
       turn.textContent = text;
       historyNode.append(turn);
-      historyNode.scrollTop = historyNode.scrollHeight;
+      scrollHistoryToBottom();
+      return turn;
     };
     const submit = async () => {
       const question = input.value.trim();
@@ -355,14 +366,63 @@ export class TermPopOverlayController {
       pending.className = "termpop-follow-up-turn is-answer is-pending";
       pending.textContent = copy[this.locale].answering;
       historyNode.append(pending);
-      historyNode.scrollTop = historyNode.scrollHeight;
+      let answerText = "";
+      let thinkingText = "";
+      let thinkingDetails: HTMLDetailsElement | undefined;
+      let thinkingContent: HTMLDivElement | undefined;
+      const ensureThinkingPanel = () => {
+        if (thinkingDetails && thinkingContent) {
+          return { details: thinkingDetails, content: thinkingContent };
+        }
+        thinkingDetails = document.createElement("details");
+        thinkingDetails.className = "termpop-follow-up-thinking";
+        const summary = document.createElement("summary");
+        summary.textContent = copy[this.locale].thinking;
+        thinkingContent = document.createElement("div");
+        thinkingContent.className = "termpop-follow-up-thinking-content";
+        thinkingDetails.append(summary, thinkingContent);
+        historyNode.insertBefore(thinkingDetails, pending);
+        return { details: thinkingDetails, content: thinkingContent };
+      };
+      scrollHistoryToBottom();
       try {
-        const answer = await onFollowUp(question, history.slice());
-        pending.remove();
-        history.push({ question, answer });
-        appendTurn("answer", answer);
+        const result = await onFollowUp(question, history.slice(), {
+          onAnswerDelta: (delta) => {
+            answerText += delta;
+            pending.classList.remove("is-pending");
+            pending.textContent = answerText;
+            scrollHistoryToBottom();
+          },
+          onThinkingDelta: (delta) => {
+            thinkingText += delta;
+            const panel = ensureThinkingPanel();
+            panel.content.textContent = thinkingText;
+            scrollHistoryToBottom();
+          }
+        });
+        if (!answerText.trim()) {
+          answerText = result.answer;
+          pending.textContent = answerText;
+        }
+        if (result.thinking && !thinkingText.trim()) {
+          thinkingText = result.thinking;
+          const panel = ensureThinkingPanel();
+          panel.content.textContent = thinkingText;
+        }
+        pending.classList.remove("is-pending");
+        if (thinkingDetails) {
+          const summary = thinkingDetails.querySelector("summary");
+          if (summary) {
+            summary.textContent = copy[this.locale].thinkingDuration(result.thinkingDurationMs ?? result.elapsedMs);
+          }
+        }
+        history.push({ question, answer: result.answer });
+        scrollHistoryToBottom();
       } catch (error) {
-        pending.remove();
+        pending.classList.remove("is-pending");
+        if (!pending.textContent?.trim() || pending.textContent === copy[this.locale].answering) {
+          pending.remove();
+        }
         errorNode.textContent = error instanceof Error ? error.message : copy[this.locale].followUpFailed;
       } finally {
         sending = false;
@@ -445,6 +505,8 @@ const copy = {
     followUpPlaceholder: "继续提问...",
     send: "发送",
     answering: "正在回答...",
+    thinking: "思考中...",
+    thinkingDuration: (durationMs: number) => `思考过程（${formatDuration(durationMs)}）`,
     followUpFailed: "追问失败，请稍后再试。",
     deleteConfirmation: (term: string) => `“${term}” 不会再次自动高亮。如有需要，可在设置中恢复。`
   },
@@ -457,10 +519,19 @@ const copy = {
     followUpPlaceholder: "Ask a follow-up...",
     send: "Send",
     answering: "Answering...",
+    thinking: "Thinking...",
+    thinkingDuration: (durationMs: number) => `Thinking (${formatDuration(durationMs)})`,
     followUpFailed: "Follow-up failed. Please try again.",
     deleteConfirmation: (term: string) => `“${term}” will no longer be highlighted automatically. You can restore it in Settings.`
   }
 } as const;
+
+function formatDuration(durationMs: number): string {
+  if (durationMs < 1_000) {
+    return `${Math.max(1, Math.round(durationMs))} ms`;
+  }
+  return `${(durationMs / 1_000).toFixed(durationMs < 10_000 ? 1 : 0)} s`;
+}
 
 function uiLocale(): "zh" | "en" {
   const language = typeof chrome !== "undefined" && chrome.i18n?.getUILanguage

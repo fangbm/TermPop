@@ -10,6 +10,9 @@ import type {
   ExplainResponse,
   FollowUpRequest,
   FollowUpResponse,
+  FollowUpStreamDone,
+  FollowUpStreamError,
+  FollowUpStreamStart,
   GetCachedTermsRequest,
   GetCachedTermsResponse,
   GetSiteAccessRequest,
@@ -30,7 +33,7 @@ import { ALL_SITES_ORIGIN_PATTERNS, BLOCKED_SITES_STORAGE_KEY, FILE_ORIGIN_PATTE
 import { addCachedTerms, getCachedTerms } from "./cache";
 import { addIgnoredTerm } from "../shared/ignored-terms";
 import { detectTerms } from "./detection";
-import { explain, followUp } from "./explanations";
+import { explain, followUp, followUpStream } from "./explanations";
 import { setupContextMenus } from "./menus";
 import {
   getSiteAccessForActiveTab,
@@ -219,6 +222,77 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
 
   return false;
 });
+
+const FOLLOW_UP_STREAM_PORT = "termpop-follow-up";
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== FOLLOW_UP_STREAM_PORT) {
+    return;
+  }
+
+  const controller = new AbortController();
+  port.onDisconnect.addListener(() => controller.abort(new Error("Follow-up stream disconnected.")));
+  port.onMessage.addListener((message: unknown) => {
+    if (!isFollowUpStreamStart(message)) {
+      return;
+    }
+    void handleFollowUpStream(port, message, controller.signal);
+  });
+});
+
+async function handleFollowUpStream(port: chrome.runtime.Port, message: FollowUpStreamStart, signal: AbortSignal): Promise<void> {
+  const post = (payload: FollowUpStreamDone | FollowUpStreamError | { type: "TERMPOP_FOLLOW_UP_DELTA"; requestId: string; channel: "answer" | "thinking"; delta: string }): void => {
+    if (!signal.aborted) {
+      port.postMessage(payload);
+    }
+  };
+
+  try {
+    await ensureSenderCanUsePageServices(port.sender ?? {});
+    if (!consumeRateAllowance(port.sender ?? {}, "explain")) {
+      throw new Error("TermPop rate limit reached; try again shortly.");
+    }
+    if (!message.question.trim()) {
+      throw new Error("A follow-up question is required.");
+    }
+
+    const settings = await getSettings();
+    const screenshotMode = settings.llm.screenshotRecognitionMode;
+    const useScreenshotContext = settings.llm.screenshotRecognitionEnabled
+      && (screenshotMode === "multimodal" || (screenshotMode === "auto" && inferImageInputCapability(settings.llm) === "supported"))
+      && Boolean(message.termImageDataUrl && message.contextImageDataUrl);
+    const result = await followUpStream(
+      message.term,
+      message.context,
+      message.explanation,
+      message.history,
+      message.question,
+      useScreenshotContext
+        ? { termImageDataUrl: message.termImageDataUrl!, contextImageDataUrl: message.contextImageDataUrl! }
+        : undefined,
+      settings.llm,
+      {
+        onAnswerDelta: (delta) => post({ type: "TERMPOP_FOLLOW_UP_DELTA", requestId: message.requestId, channel: "answer", delta }),
+        onThinkingDelta: (delta) => post({ type: "TERMPOP_FOLLOW_UP_DELTA", requestId: message.requestId, channel: "thinking", delta })
+      },
+      signal
+    );
+    post({ type: "TERMPOP_FOLLOW_UP_DONE", requestId: message.requestId, result });
+  } catch (error) {
+    if (!signal.aborted) {
+      post({ type: "TERMPOP_FOLLOW_UP_ERROR", requestId: message.requestId, error: errorMessage(error) });
+    }
+  }
+}
+
+function isFollowUpStreamStart(message: unknown): message is FollowUpStreamStart {
+  return Boolean(
+    message
+    && typeof message === "object"
+    && (message as { type?: unknown }).type === "TERMPOP_FOLLOW_UP_STREAM"
+    && typeof (message as { requestId?: unknown }).requestId === "string"
+  );
+}
 
 type RateLimitKind = "detect" | "explain";
 

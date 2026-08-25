@@ -109,6 +109,40 @@ export interface FollowUpResponse {
   error?: string;
 }
 
+export interface FollowUpStreamResult {
+  answer: string;
+  thinking?: string;
+  /** Time spent receiving reasoning before the first answer token. */
+  thinkingDurationMs?: number;
+  elapsedMs: number;
+}
+
+export interface FollowUpStreamStart extends Omit<FollowUpRequest, "type"> {
+  type: "TERMPOP_FOLLOW_UP_STREAM";
+  requestId: string;
+}
+
+export interface FollowUpStreamDelta {
+  type: "TERMPOP_FOLLOW_UP_DELTA";
+  requestId: string;
+  channel: "answer" | "thinking";
+  delta: string;
+}
+
+export interface FollowUpStreamDone {
+  type: "TERMPOP_FOLLOW_UP_DONE";
+  requestId: string;
+  result: FollowUpStreamResult;
+}
+
+export interface FollowUpStreamError {
+  type: "TERMPOP_FOLLOW_UP_ERROR";
+  requestId: string;
+  error: string;
+}
+
+export type FollowUpStreamMessage = FollowUpStreamStart | FollowUpStreamDelta | FollowUpStreamDone | FollowUpStreamError;
+
 export interface ScreenshotRecognition {
   term: string;
   context: string;
