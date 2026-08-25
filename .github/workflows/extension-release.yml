@@ -10,6 +10,11 @@ on:
         description: "Release version, for example v0.1.0"
         required: true
         type: string
+      publish_edge_addons:
+        description: "Submit the package update to Microsoft Edge Add-ons"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -146,3 +151,94 @@ jobs:
           body_path: release-notes.md
           files: ${{ steps.package.outputs.package_path }}
           make_latest: true
+
+      - name: Submit package to Microsoft Edge Add-ons
+        if: >-
+          vars.EDGE_ADDONS_PUBLISH_ENABLED == 'true' &&
+          (github.event_name == 'push' || inputs.publish_edge_addons)
+        env:
+          EDGE_ADDONS_PRODUCT_ID: ${{ secrets.EDGE_ADDONS_PRODUCT_ID }}
+          EDGE_ADDONS_CLIENT_ID: ${{ secrets.EDGE_ADDONS_CLIENT_ID }}
+          EDGE_ADDONS_API_KEY: ${{ secrets.EDGE_ADDONS_API_KEY }}
+          PACKAGE_PATH: ${{ steps.package.outputs.package_path }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for required in EDGE_ADDONS_PRODUCT_ID EDGE_ADDONS_CLIENT_ID EDGE_ADDONS_API_KEY; do
+            if [ -z "${!required}" ]; then
+              echo "Missing required GitHub secret: ${required}" >&2
+              exit 1
+            fi
+          done
+
+          api_root="https://api.addons.microsoftedge.microsoft.com/v1"
+          headers=(
+            -H "Authorization: ApiKey ${EDGE_ADDONS_API_KEY}"
+            -H "X-ClientID: ${EDGE_ADDONS_CLIENT_ID}"
+          )
+
+          upload_headers="$(mktemp)"
+          trap 'rm -f "${upload_headers}"' EXIT
+          curl --fail-with-body --silent --show-error \
+            "${headers[@]}" \
+            -H "Content-Type: application/zip" \
+            -D "${upload_headers}" \
+            --upload-file "${PACKAGE_PATH}" \
+            "${api_root}/products/${EDGE_ADDONS_PRODUCT_ID}/submissions/draft/package" >/dev/null
+
+          upload_operation="$(awk 'tolower($1) == "location:" { print $2 }' "${upload_headers}" | tr -d '\r' | sed 's#.*/##' | tail -n 1)"
+          if [ -z "${upload_operation}" ]; then
+            echo "Edge Add-ons upload did not return an operation ID." >&2
+            exit 1
+          fi
+
+          poll_operation() {
+            local endpoint="$1"
+            local operation="$2"
+            local label="$3"
+            local response status
+
+            for _ in $(seq 1 60); do
+              response="$(curl --fail-with-body --silent --show-error "${headers[@]}" "${endpoint}/${operation}")"
+              status="$(jq -r '.status // empty' <<<"${response}")"
+              echo "Edge Add-ons ${label} status: ${status:-unknown}"
+              case "${status}" in
+                Succeeded) return 0 ;;
+                Failed)
+                  jq -c '{status, errorCode, message, errors}' <<<"${response}" >&2
+                  return 1
+                  ;;
+              esac
+              sleep 10
+            done
+
+            echo "Timed out waiting for Edge Add-ons ${label}." >&2
+            return 1
+          }
+
+          poll_operation \
+            "${api_root}/products/${EDGE_ADDONS_PRODUCT_ID}/submissions/draft/package/operations" \
+            "${upload_operation}" \
+            "package upload"
+
+          publish_headers="$(mktemp)"
+          curl --fail-with-body --silent --show-error \
+            "${headers[@]}" \
+            -H "Content-Type: application/json" \
+            -D "${publish_headers}" \
+            --data "$(jq -cn --arg version "${RELEASE_VERSION}" '{notes: ("Automated TermPop release " + $version + ".") }')" \
+            "${api_root}/products/${EDGE_ADDONS_PRODUCT_ID}/submissions" >/dev/null
+
+          publish_operation="$(awk 'tolower($1) == "location:" { print $2 }' "${publish_headers}" | tr -d '\r' | sed 's#.*/##' | tail -n 1)"
+          rm -f "${publish_headers}"
+          if [ -z "${publish_operation}" ]; then
+            echo "Edge Add-ons publish request did not return an operation ID." >&2
+            exit 1
+          fi
+
+          poll_operation \
+            "${api_root}/products/${EDGE_ADDONS_PRODUCT_ID}/submissions/operations" \
+            "${publish_operation}" \
+            "submission"
