@@ -183,10 +183,11 @@ jobs:
           trap 'rm -f "${upload_headers}"' EXIT
           curl --fail-with-body --silent --show-error \
             "${headers[@]}" \
-            -H "Content-Type: application/zip" \
-            -D "${upload_headers}" \
-            --upload-file "${PACKAGE_PATH}" \
-            "${api_root}/products/${EDGE_ADDONS_PRODUCT_ID}/submissions/draft/package" >/dev/null
+          -H "Content-Type: application/zip" \
+          -D "${upload_headers}" \
+          -X POST \
+          --upload-file "${PACKAGE_PATH}" \
+          "${api_root}/products/${EDGE_ADDONS_PRODUCT_ID}/submissions/draft/package" >/dev/null
 
           upload_operation="$(awk 'tolower($1) == "location:" { print $2 }' "${upload_headers}" | tr -d '\r' | sed 's#.*/##' | tail -n 1)"
           if [ -z "${upload_operation}" ]; then
