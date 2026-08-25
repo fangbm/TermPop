@@ -480,11 +480,9 @@ mod tests {
 
     #[test]
     fn detects_terms_at_string_edges_and_before_cjk() {
-        let terms = detect_terms_with_dictionary_json_result(
-            "Rust语言值得学习",
-            r#"[{"term":"Rust"}]"#,
-        )
-        .expect("valid dictionary");
+        let terms =
+            detect_terms_with_dictionary_json_result("Rust语言值得学习", r#"[{"term":"Rust"}]"#)
+                .expect("valid dictionary");
         let labels: Vec<_> = terms.iter().map(|term| term.term.as_str()).collect();
         assert_eq!(labels, vec!["Rust"]);
     }
@@ -498,11 +496,9 @@ mod tests {
         .expect("valid dictionary");
         assert!(terms.is_empty());
 
-        let terms = detect_terms_with_dictionary_json_result(
-            "JARVIS 不是 JAR",
-            r#"[{"term":"JAR"}]"#,
-        )
-        .expect("valid dictionary");
+        let terms =
+            detect_terms_with_dictionary_json_result("JARVIS 不是 JAR", r#"[{"term":"JAR"}]"#)
+                .expect("valid dictionary");
         let labels: Vec<_> = terms.iter().map(|term| term.term.as_str()).collect();
         assert_eq!(labels, vec!["JAR"]);
     }
