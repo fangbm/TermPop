@@ -1,5 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, posix, resolve } from "node:path";
+import { gunzipSync } from "node:zlib";
 import { defineConfig } from "vite";
 
 export default defineConfig({
@@ -67,14 +68,16 @@ function copyOcrAssets(): void {
   ]) {
     copyFileSync(resolve(__dirname, "node_modules/tesseract.js-core", file), resolve(coreDestination, file));
   }
-  copyFileSync(
-    resolve(__dirname, "node_modules/@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz"),
-    resolve(languageDestination, "eng.traineddata.gz")
+  copyUncompressedTessdata("eng", languageDestination);
+  copyUncompressedTessdata("chi_sim", languageDestination);
+}
+
+function copyUncompressedTessdata(language: "eng" | "chi_sim", destination: string): void {
+  const source = resolve(
+    __dirname,
+    `node_modules/@tesseract.js-data/${language}/4.0.0_best_int/${language}.traineddata.gz`
   );
-  copyFileSync(
-    resolve(__dirname, "node_modules/@tesseract.js-data/chi_sim/4.0.0_best_int/chi_sim.traineddata.gz"),
-    resolve(languageDestination, "chi_sim.traineddata.gz")
-  );
+  writeFileSync(resolve(destination, `${language}.traineddata`), gunzipSync(readFileSync(source)));
 }
 
 function validateManifestResources(): void {
@@ -100,8 +103,8 @@ function validateManifestResources(): void {
   resources.add("assets/ocr/core/tesseract-core-lstm.wasm.js");
   resources.add("assets/ocr/core/tesseract-core-simd-lstm.wasm.js");
   resources.add("assets/ocr/core/tesseract-core-relaxedsimd-lstm.wasm.js");
-  resources.add("assets/ocr/lang/eng.traineddata.gz");
-  resources.add("assets/ocr/lang/chi_sim.traineddata.gz");
+  resources.add("assets/ocr/lang/eng.traineddata");
+  resources.add("assets/ocr/lang/chi_sim.traineddata");
   for (const resource of Object.values(manifest.icons ?? {})) {
     resources.add(resource);
   }

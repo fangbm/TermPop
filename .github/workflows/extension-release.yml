@@ -113,6 +113,10 @@ jobs:
           set -euo pipefail
           package_name="termpop-extension-${{ steps.version.outputs.version }}.zip"
           mkdir -p artifacts
+          if find extension/dist -type f \( -iname '*.zip' -o -iname '*.gz' -o -iname '*.rar' -o -iname '*.7z' -o -iname '*.br' \) -print -quit | grep -q .; then
+            echo "Extension package cannot contain nested compressed files for Microsoft Edge Add-ons." >&2
+            exit 1
+          fi
           (cd extension/dist && zip -r "../../artifacts/${package_name}" .)
           echo "package_name=${package_name}" >> "$GITHUB_OUTPUT"
           echo "package_path=artifacts/${package_name}" >> "$GITHUB_OUTPUT"

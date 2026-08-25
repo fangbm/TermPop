@@ -44,6 +44,7 @@ function getWorker(): Promise<Worker> {
     workerPath: chrome.runtime.getURL("assets/ocr/worker.min.js"),
     corePath: chrome.runtime.getURL("assets/ocr/core/"),
     langPath: chrome.runtime.getURL("assets/ocr/lang/"),
+    gzip: false,
     workerBlobURL: false,
     logger: () => undefined,
     errorHandler: (error) => {
