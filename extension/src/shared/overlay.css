@@ -157,7 +157,8 @@
 }
 
 #termpop-overlay-root .termpop-follow-up {
-  display: none;
+  display: flex;
+  flex-direction: column;
   margin-top: 10px;
 }
 
@@ -176,10 +177,15 @@
 }
 
 #termpop-overlay-root .termpop-follow-up-history {
+  display: none;
   min-height: 0;
   flex: 1 1 auto;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+#termpop-overlay-root.is-follow-up .termpop-follow-up-history {
+  display: block;
 }
 
 #termpop-overlay-root .termpop-follow-up-turn {
