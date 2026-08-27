@@ -330,6 +330,15 @@ textarea { min-height: 136px; padding: 10px; line-height: 1.5; resize: vertical;
 
 .advanced-toggle { min-height: 36px; border-style: dashed; }
 .advanced-settings { background: #f8fbff; }
+.advanced-settings .site-resources,
+.advanced-settings .ignored-terms {
+  padding: 10px 0;
+  border: 0;
+  border-top: 1px solid #dbe5f3;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
 .privacy-settings { display: grid; padding-bottom: 2px; }
 .privacy-settings .toggle-row { min-height: 42px; }
 .inline-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }

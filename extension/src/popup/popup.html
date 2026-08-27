@@ -132,36 +132,6 @@
             </section>
           </div>
         </section>
-        <section class="site-resources" aria-label="TermPop resources" data-i18n-attr="aria-label:resourcesLabel">
-          <div>
-            <strong data-i18n="resourcesLabel">使用帮助</strong>
-            <p data-i18n="resourcesNote">首次使用或遇到问题时，可打开官网新手向导和文档。</p>
-          </div>
-          <div class="site-resources-actions">
-            <button id="open-guide" class="secondary-button" type="button" data-i18n="openGuide">打开新手向导</button>
-            <button id="open-docs" class="secondary-button" type="button" data-i18n="openDocs">打开文档</button>
-          </div>
-        </section>
-        <section class="ignored-terms" aria-label="Ignored automatic highlights" data-i18n-attr="aria-label:ignoredTerms">
-          <div class="ignored-terms-header">
-            <div>
-              <strong data-i18n="ignoredTerms">已忽略词</strong>
-              <p data-i18n="ignoredTermsNote">这些词不会再自动高亮。划词和截图解释不受影响。</p>
-            </div>
-            <button id="restore-all-ignored-terms" class="secondary-button" type="button" data-i18n="restoreAll">全部恢复</button>
-          </div>
-          <div id="ignored-terms-list" class="ignored-terms-list"></div>
-        </section>
-        <section class="site-resources" aria-label="Export local data" data-i18n-attr="aria-label:exportData">
-          <div>
-            <strong data-i18n="exportData">导出本地数据</strong>
-            <p data-i18n="exportDataNote">导出用户词库和已忽略词，便于备份或迁移。</p>
-          </div>
-          <div class="site-resources-actions">
-            <button id="export-markdown" class="secondary-button" type="button" data-i18n="exportMarkdown">导出 Markdown</button>
-            <button id="export-csv" class="secondary-button" type="button" data-i18n="exportCsv">导出 CSV</button>
-          </div>
-        </section>
         <button id="advanced-toggle" class="secondary-button advanced-toggle" type="button">高级设置</button>
         <section id="advanced-settings" class="advanced-settings" hidden>
           <section class="privacy-settings" aria-label="Privacy controls" data-i18n-attr="aria-label:privacyControls">
@@ -173,6 +143,36 @@
             <label class="toggle-row"><span data-i18n="previewBeforeSend">发送页面摘要和批量解释前预览文本</span><input id="privacy-preview-before-send" type="checkbox" /><i aria-hidden="true"></i></label>
             <label class="toggle-row"><span data-i18n="disableScreenshotUpload">不上传截图，始终使用本地 OCR</span><input id="privacy-disable-screenshot-upload" type="checkbox" /><i aria-hidden="true"></i></label>
             <label class="toggle-row"><span data-i18n="onlyExplainSelection">仅解释主动选中的文本</span><input id="privacy-only-explain-selection" type="checkbox" /><i aria-hidden="true"></i></label>
+          </section>
+          <section class="site-resources" aria-label="TermPop resources" data-i18n-attr="aria-label:resourcesLabel">
+            <div>
+              <strong data-i18n="resourcesLabel">使用帮助</strong>
+              <p data-i18n="resourcesNote">首次使用或遇到问题时，可打开官网新手向导和文档。</p>
+            </div>
+            <div class="site-resources-actions">
+              <button id="open-guide" class="secondary-button" type="button" data-i18n="openGuide">打开新手向导</button>
+              <button id="open-docs" class="secondary-button" type="button" data-i18n="openDocs">打开文档</button>
+            </div>
+          </section>
+          <section class="ignored-terms" aria-label="Ignored automatic highlights" data-i18n-attr="aria-label:ignoredTerms">
+            <div class="ignored-terms-header">
+              <div>
+                <strong data-i18n="ignoredTerms">已忽略词</strong>
+                <p data-i18n="ignoredTermsNote">这些词不会再自动高亮。划词和截图解释不受影响。</p>
+              </div>
+              <button id="restore-all-ignored-terms" class="secondary-button" type="button" data-i18n="restoreAll">全部恢复</button>
+            </div>
+            <div id="ignored-terms-list" class="ignored-terms-list"></div>
+          </section>
+          <section class="site-resources" aria-label="Export local data" data-i18n-attr="aria-label:exportData">
+            <div>
+              <strong data-i18n="exportData">导出本地数据</strong>
+              <p data-i18n="exportDataNote">导出用户词库和已忽略词，便于备份或迁移。</p>
+            </div>
+            <div class="site-resources-actions">
+              <button id="export-markdown" class="secondary-button" type="button" data-i18n="exportMarkdown">导出 Markdown</button>
+              <button id="export-csv" class="secondary-button" type="button" data-i18n="exportCsv">导出 CSV</button>
+            </div>
           </section>
           <div class="inline-fields">
             <label>
