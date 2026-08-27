@@ -15,17 +15,21 @@
         </div>
         <span class="save-pill" data-i18n="autoSaveHint">自动保存</span>
       </header>
-      <section class="settings-section mode-section" aria-label="检测模式" data-i18n-attr="aria-label:modeGroupLabel">
-        <div class="section-heading">
+      <details class="settings-section collapsible-section mode-section" aria-label="检测模式" data-i18n-attr="aria-label:modeGroupLabel">
+        <summary class="section-summary">
+          <div class="section-heading">
           <span data-i18n="readingMode">阅读方式</span>
           <p data-i18n="readingModeNote">选择你更习惯的解释触发方式。</p>
+          </div>
+        </summary>
+        <div class="collapsible-content">
+          <div class="mode-group">
+            <button type="button" data-mode="hover" data-label-zh="悬停" data-label-en="Hover">悬停</button>
+            <button type="button" data-mode="selection" data-label-zh="划词" data-label-en="Selection">划词</button>
+            <button type="button" data-mode="hybrid" data-label-zh="混合" data-label-en="Hybrid">混合</button>
+          </div>
         </div>
-        <div class="mode-group">
-          <button type="button" data-mode="hover" data-label-zh="悬停" data-label-en="Hover">悬停</button>
-          <button type="button" data-mode="selection" data-label-zh="划词" data-label-en="Selection">划词</button>
-          <button type="button" data-mode="hybrid" data-label-zh="混合" data-label-en="Hybrid">混合</button>
-        </div>
-      </section>
+      </details>
       <section class="site-access">
         <div>
           <strong data-i18n="currentSite">当前站点</strong>
@@ -38,61 +42,69 @@
         <p data-i18n="pdfToolsNote">适用于网页 PDF 或本地 PDF 文件。浏览器可能需要为插件开启“允许访问文件网址”。</p>
       </section>
       <form id="llm-form" class="settings-form">
-        <section class="settings-section connection-section">
-          <div class="section-heading section-heading-inline">
+        <details class="settings-section collapsible-section connection-section">
+          <summary class="section-summary">
+            <div class="section-heading section-heading-inline">
             <div>
               <span data-i18n="llmConnection">LLM 连接</span>
               <p data-i18n="llmConnectionNote">配置后用于抽词、释义与追问。</p>
             </div>
             <span class="section-status" data-i18n="localOnly">本地配置</span>
-          </div>
-          <label>
-            <span data-i18n="provider">服务商</span>
-            <select id="provider" name="provider">
-              <option value="openai">OpenAI</option>
-              <option value="kimi">Kimi</option>
-              <option value="deepseek">DeepSeek</option>
-              <option value="stepfun">StepFun</option>
-              <option value="step-plan">Step Plan</option>
-              <option value="openai-compatible">OpenAI-compatible</option>
-              <option value="anthropic">Anthropic</option>
-            </select>
-          </label>
-          <label>
-            API Key
-            <input id="api-key" name="apiKey" type="password" autocomplete="off" placeholder="sk-..." />
-          </label>
-          <label>
-            <span data-i18n="model">模型</span>
-            <input id="model" name="model" type="text" placeholder="gpt-4.1-mini" />
-          </label>
-          <label>
-            Base URL
-            <input id="base-url" name="baseUrl" type="url" placeholder="https://api.openai.com/v1" />
-          </label>
-          <button id="provider-test" class="secondary-button full-width-button" type="button" data-i18n="testProvider">测试连接</button>
-          <p id="status" role="status"></p>
-        </section>
-        <section class="settings-section reading-settings">
-          <div class="section-heading">
-            <span data-i18n="explanationPreferences">解释偏好</span>
-          </div>
-          <div class="preference-grid">
+            </div>
+          </summary>
+          <div class="collapsible-content">
             <label>
-              <span data-i18n="explanationLanguage">解释语言</span>
-              <select id="language" name="language">
-                <option value="auto" data-i18n="languageAuto">跟随上下文</option>
-                <option value="zh-CN" data-i18n="languageChinese">中文</option>
-                <option value="en">English</option>
+              <span data-i18n="provider">服务商</span>
+              <select id="provider" name="provider">
+                <option value="openai">OpenAI</option>
+                <option value="kimi">Kimi</option>
+                <option value="deepseek">DeepSeek</option>
+                <option value="stepfun">StepFun</option>
+                <option value="step-plan">Step Plan</option>
+                <option value="openai-compatible">OpenAI-compatible</option>
+                <option value="anthropic">Anthropic</option>
               </select>
             </label>
-          <label class="toggle-row">
-            <span data-i18n="includeUsageExample">生成例句</span>
-            <input id="include-usage-example" name="includeUsageExample" type="checkbox" />
-            <i aria-hidden="true"></i>
-          </label>
+            <label>
+              API Key
+              <input id="api-key" name="apiKey" type="password" autocomplete="off" placeholder="sk-..." />
+            </label>
+            <label>
+              <span data-i18n="model">模型</span>
+              <input id="model" name="model" type="text" placeholder="gpt-4.1-mini" />
+            </label>
+            <label>
+              Base URL
+              <input id="base-url" name="baseUrl" type="url" placeholder="https://api.openai.com/v1" />
+            </label>
+            <button id="provider-test" class="secondary-button full-width-button" type="button" data-i18n="testProvider">测试连接</button>
+            <p id="status" role="status"></p>
           </div>
-        </section>
+        </details>
+        <details class="settings-section collapsible-section reading-settings">
+          <summary class="section-summary">
+            <div class="section-heading">
+            <span data-i18n="explanationPreferences">解释偏好</span>
+            </div>
+          </summary>
+          <div class="collapsible-content">
+            <div class="preference-grid">
+              <label>
+                <span data-i18n="explanationLanguage">解释语言</span>
+                <select id="language" name="language">
+                  <option value="auto" data-i18n="languageAuto">跟随上下文</option>
+                  <option value="zh-CN" data-i18n="languageChinese">中文</option>
+                  <option value="en">English</option>
+                </select>
+              </label>
+              <label class="toggle-row">
+                <span data-i18n="includeUsageExample">生成例句</span>
+                <input id="include-usage-example" name="includeUsageExample" type="checkbox" />
+                <i aria-hidden="true"></i>
+              </label>
+            </div>
+          </div>
+        </details>
         <section class="settings-section reading-tools" aria-label="Reading tools" data-i18n-attr="aria-label:readingTools">
           <div class="section-heading">
             <span data-i18n="readingTools">阅读工具</span>
@@ -103,35 +115,38 @@
             <button id="batch-explain-selection" class="secondary-button" type="button" data-i18n="batchExplainSelection">批量解释选区</button>
           </div>
         </section>
-        <section class="settings-section screenshot-section">
-          <div class="section-heading section-heading-inline">
-            <div>
+        <details class="settings-section collapsible-section screenshot-section">
+          <summary class="section-summary">
+            <div class="section-heading">
               <span data-i18n="screenshotRecognitionEnabled">启用截图解释</span>
               <p data-i18n="screenshotNote">用快捷键截取区域，识别后直接解释。</p>
             </div>
-            <label class="toggle-row compact-toggle">
+          </summary>
+          <div class="collapsible-content">
+            <label class="toggle-row">
+              <span data-i18n="screenshotRecognitionEnabled">启用截图解释</span>
               <input id="screenshot-recognition-enabled" name="screenshotRecognitionEnabled" type="checkbox" />
               <i aria-hidden="true"></i>
             </label>
+            <div class="preference-grid">
+              <label>
+                <span data-i18n="screenshotRecognitionMode">截图识别方式</span>
+                <select id="screenshot-recognition-mode" name="screenshotRecognitionMode">
+                  <option value="auto" data-i18n="screenshotModeAuto">自动选择</option>
+                  <option value="multimodal" data-i18n="screenshotModeMultimodal">多模态 LLM</option>
+                  <option value="ocr" data-i18n="screenshotModeOcr">本地 OCR</option>
+                </select>
+              </label>
+              <section class="shortcut-settings" aria-label="截图快捷键" data-i18n-attr="aria-label:screenshotShortcutLabel">
+                <div>
+                  <span data-i18n="screenshotShortcutLabel">截图快捷键</span>
+                  <strong id="screenshot-shortcut">Alt+Shift+S</strong>
+                </div>
+                <button id="customize-shortcut" class="secondary-button" type="button" data-i18n="customizeShortcut">自定义快捷键</button>
+              </section>
+            </div>
           </div>
-          <div class="preference-grid">
-            <label>
-              <span data-i18n="screenshotRecognitionMode">截图识别方式</span>
-              <select id="screenshot-recognition-mode" name="screenshotRecognitionMode">
-                <option value="auto" data-i18n="screenshotModeAuto">自动选择</option>
-                <option value="multimodal" data-i18n="screenshotModeMultimodal">多模态 LLM</option>
-                <option value="ocr" data-i18n="screenshotModeOcr">本地 OCR</option>
-              </select>
-            </label>
-            <section class="shortcut-settings" aria-label="截图快捷键" data-i18n-attr="aria-label:screenshotShortcutLabel">
-              <div>
-                <span data-i18n="screenshotShortcutLabel">截图快捷键</span>
-                <strong id="screenshot-shortcut">Alt+Shift+S</strong>
-              </div>
-              <button id="customize-shortcut" class="secondary-button" type="button" data-i18n="customizeShortcut">自定义快捷键</button>
-            </section>
-          </div>
-        </section>
+        </details>
         <section class="site-resources" aria-label="TermPop resources" data-i18n-attr="aria-label:resourcesLabel">
           <div>
             <strong data-i18n="resourcesLabel">使用帮助</strong>

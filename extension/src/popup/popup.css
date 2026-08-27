@@ -115,6 +115,53 @@ p {
 .section-status { padding: 5px 7px; align-self: start; }
 .mode-section { gap: 10px; }
 
+.collapsible-section {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+}
+
+.section-summary {
+  display: block;
+  min-height: 62px;
+  padding: 12px 42px 12px 12px;
+  cursor: pointer;
+  list-style: none;
+  position: relative;
+}
+
+.section-summary::-webkit-details-marker { display: none; }
+
+.section-summary::after {
+  position: absolute;
+  top: 50%;
+  right: 15px;
+  width: 8px;
+  height: 8px;
+  border-right: 1.5px solid #61718b;
+  border-bottom: 1.5px solid #61718b;
+  content: "";
+  transform: translateY(-65%) rotate(45deg);
+  transition: transform 150ms ease;
+}
+
+.collapsible-section[open] > .section-summary {
+  border-bottom: 1px solid #e7edf6;
+}
+
+.collapsible-section[open] > .section-summary::after {
+  transform: translateY(-25%) rotate(225deg);
+}
+
+.section-summary:hover { background: #f8fbff; }
+.section-summary:focus-visible { outline: 2px solid rgba(74, 131, 237, 0.4); outline-offset: -2px; }
+
+.collapsible-content {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
 .mode-group {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
