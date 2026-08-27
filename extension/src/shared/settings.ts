@@ -66,7 +66,7 @@ export async function getSettings(): Promise<ExtensionSettings> {
 function normalizeLlmSettings(stored: Partial<LlmSettings> | undefined): LlmSettings {
   const legacyProvider = (stored as { provider?: unknown } | undefined)?.provider;
   const wasLegacyMock = legacyProvider === "mock";
-  const provider = legacyProvider === "openai" || legacyProvider === "kimi" || legacyProvider === "openai-compatible" || legacyProvider === "anthropic"
+  const provider = legacyProvider === "openai" || legacyProvider === "kimi" || legacyProvider === "deepseek" || legacyProvider === "stepfun" || legacyProvider === "step-plan" || legacyProvider === "openai-compatible" || legacyProvider === "anthropic"
     ? legacyProvider
     : DEFAULT_SETTINGS.llm.provider;
 

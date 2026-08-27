@@ -1,7 +1,14 @@
 export type TermType = "Tech" | "Brand" | "Person" | "Place" | "Acronym" | "Custom";
 export type DetectionSource = "Rule" | "Dictionary" | "Ner" | "User";
 export type TermPopMode = "hover" | "selection" | "hybrid";
-export type LlmProvider = "openai" | "kimi" | "openai-compatible" | "anthropic";
+export type LlmProvider =
+  | "openai"
+  | "kimi"
+  | "deepseek"
+  | "stepfun"
+  | "step-plan"
+  | "openai-compatible"
+  | "anthropic";
 export type ExplanationLanguage = "auto" | "zh-CN" | "en";
 export type CacheScope = "global" | "domain" | "pageFingerprint";
 export type ScreenshotRecognitionMode = "auto" | "multimodal" | "ocr";
