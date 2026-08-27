@@ -130,7 +130,7 @@ async function fetchOpenAiCompatibleFollowUpStream(
       max_tokens: settings.maxTokens,
       stream: true,
       messages: [
-        { role: "system", content: buildFollowUpSystemPrompt(settings.language) },
+        { role: "system", content: buildFollowUpSystemPrompt(settings.language, settings.promptOverrides?.followUp) },
         { role: "user", content }
       ]
     }),
@@ -188,7 +188,7 @@ async function fetchAnthropicFollowUpStream(
       max_tokens: settings.maxTokens,
       temperature: settings.temperature,
       stream: true,
-      system: buildFollowUpSystemPrompt(settings.language),
+      system: buildFollowUpSystemPrompt(settings.language, settings.promptOverrides?.followUp),
       messages: [{ role: "user", content }]
     }),
     signal
@@ -230,7 +230,7 @@ async function fetchOpenAiCompatibleScreenshotRecognition(
       messages: [
         {
           role: "system",
-          content: buildScreenshotRecognitionSystemPrompt(settings.language)
+          content: buildScreenshotRecognitionSystemPrompt(settings.language, settings.promptOverrides?.screenshot)
         },
         {
           role: "user",
@@ -276,7 +276,7 @@ async function fetchAnthropicScreenshotRecognition(
       model: settings.model || defaultModel(settings.provider),
       max_tokens: Math.max(128, Math.min(settings.maxTokens, 450)),
       temperature: Math.min(settings.temperature, 0.1),
-      system: buildScreenshotRecognitionSystemPrompt(settings.language),
+      system: buildScreenshotRecognitionSystemPrompt(settings.language, settings.promptOverrides?.screenshot),
       messages: [
         {
           role: "user",
@@ -327,7 +327,7 @@ async function fetchOpenAiCompatibleExplanation(
       messages: [
         {
           role: "system",
-          content: buildExplanationSystemPrompt(settings.language, settings.includeUsageExample)
+          content: buildExplanationSystemPrompt(settings.language, settings.includeUsageExample, settings.promptOverrides?.explanation)
         },
         {
           role: "user",
@@ -366,7 +366,7 @@ async function fetchAnthropicExplanation(
       model: settings.model || defaultModel(settings.provider),
       max_tokens: settings.maxTokens,
       temperature: settings.temperature,
-      system: buildExplanationSystemPrompt(settings.language, settings.includeUsageExample),
+      system: buildExplanationSystemPrompt(settings.language, settings.includeUsageExample, settings.promptOverrides?.explanation),
       messages: [
         {
           role: "user",

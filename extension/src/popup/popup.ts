@@ -3,12 +3,15 @@ import { defaultBaseUrl, defaultModel, normalizeBaseUrl } from "../shared/llm-de
 import { ALL_SITES_ORIGIN_PATTERNS, FILE_ORIGIN_PATTERN, providerOriginPatternFromBaseUrl } from "../shared/browser-utils";
 import { termpopWebsiteUrl } from "../shared/website";
 import { clearIgnoredTerms, IGNORED_TERMS_STORAGE_KEY, parseIgnoredTerms, removeIgnoredTerm } from "../shared/ignored-terms";
+import { promptInstruction } from "../background/prompts";
 import type {
   ExplanationLanguage,
   GetSiteAccessResponse,
   InjectActiveTabResponse,
   LlmProvider,
   LlmSettings,
+  PromptOverrides,
+  PromptTemplateKind,
   ScreenshotRecognitionMode,
   SetSiteAccessResponse,
   SiteAccessState,
@@ -41,6 +44,9 @@ const maxConcurrencyInput = document.querySelector<HTMLInputElement>("#max-concu
 const providerTestButton = document.querySelector<HTMLButtonElement>("#provider-test");
 const advancedToggle = document.querySelector<HTMLButtonElement>("#advanced-toggle");
 const advancedSettings = document.querySelector<HTMLElement>("#advanced-settings");
+const promptTemplateInput = document.querySelector<HTMLSelectElement>("#prompt-template");
+const promptTemplateEditor = document.querySelector<HTMLTextAreaElement>("#prompt-template-editor");
+const resetPromptTemplateButton = document.querySelector<HTMLButtonElement>("#reset-prompt-template");
 const siteAccess = document.querySelector<HTMLElement>(".site-access");
 const siteAccessStatus = document.querySelector<HTMLParagraphElement>("#site-access-status");
 const siteAccessToggle = document.querySelector<HTMLButtonElement>("#site-access-toggle");
@@ -54,6 +60,8 @@ let settingsWriteChain: Promise<void> = Promise.resolve();
 let latestLlmSaveId = 0;
 const composingInputs = new Set<HTMLInputElement>();
 let currentSiteAccess: SiteAccessState | undefined;
+let currentPromptTemplate: PromptTemplateKind = "detection";
+let promptOverrides: PromptOverrides = {};
 type UiLocale = "zh" | "en";
 
 const uiLocale: UiLocale = chrome.i18n.getUILanguage().toLocaleLowerCase().startsWith("zh") ? "zh" : "en";
@@ -108,6 +116,12 @@ const t = {
     collapseAdvancedSettings: "收起高级设置",
     temperature: "温度",
     maxConcurrency: "并发限制",
+    promptEditor: "提示词编辑",
+    promptEditorDetection: "LLM 摘词",
+    promptEditorExplanation: "词条释义",
+    promptEditorScreenshot: "截图识别",
+    promptEditorFollowUp: "追问回答",
+    resetPrompt: "恢复默认",
     saving: "正在自动保存...",
     savedLlm: "已自动保存。当前使用 LLM 解释。",
     savedUnconfigured: "已自动保存。LLM 未配置，释义与 LLM 摘词不可用。",
@@ -179,6 +193,12 @@ const t = {
     collapseAdvancedSettings: "Collapse advanced settings",
     temperature: "Temperature",
     maxConcurrency: "Concurrency limit",
+    promptEditor: "Prompt editor",
+    promptEditorDetection: "LLM detection",
+    promptEditorExplanation: "Term explanation",
+    promptEditorScreenshot: "Screenshot recognition",
+    promptEditorFollowUp: "Follow-up answers",
+    resetPrompt: "Reset default",
     saving: "Saving automatically...",
     savedLlm: "Saved automatically. LLM explanations are active.",
     savedUnconfigured: "Saved automatically. LLM is not configured, so explanations and LLM detection are unavailable.",
@@ -276,6 +296,22 @@ async function init(): Promise<void> {
   });
 
   screenshotRecognitionModeInput?.addEventListener("change", () => {
+    void saveLlm();
+  });
+
+  promptTemplateInput?.addEventListener("change", () => {
+    currentPromptTemplate = promptTemplateInput.value as PromptTemplateKind;
+    renderPromptEditor();
+  });
+
+  promptTemplateEditor?.addEventListener("input", () => {
+    updatePromptOverrideFromEditor();
+    scheduleLlmAutoSave();
+  });
+
+  resetPromptTemplateButton?.addEventListener("click", () => {
+    delete promptOverrides[currentPromptTemplate];
+    renderPromptEditor();
     void saveLlm();
   });
 
@@ -614,6 +650,7 @@ function collectLlmSettings(): LlmSettings {
     maxConcurrency: Math.round(clampNumber(Number(maxConcurrencyInput?.value), 1, Number.MAX_SAFE_INTEGER, 5)),
     temperature: clampNumber(Number(temperatureInput?.value), 0, 2, 0.2),
     maxTokens: Math.round(clampNumber(Number(maxTokensInput?.value), 128, 4000, 450)),
+    promptOverrides: { ...promptOverrides },
     advancedVisible: advancedSettings ? !advancedSettings.hidden : false,
     debugLogging: false
   };
@@ -638,8 +675,10 @@ function renderModeLabels(): void {
 }
 
 function renderLlmSettings(llm: LlmSettings): void {
+  promptOverrides = { ...llm.promptOverrides };
   renderNormalizedLlmFields(llm);
   renderAdvancedSettings(llm);
+  renderPromptEditor();
   renderProviderTest();
 }
 
@@ -692,6 +731,42 @@ function renderAdvancedSettings(llm: LlmSettings): void {
   if (advancedToggle) {
     advancedToggle.textContent = llm.advancedVisible ? t[uiLocale].collapseAdvancedSettings : t[uiLocale].advancedSettings;
   }
+}
+
+function renderPromptEditor(): void {
+  if (!promptTemplateInput || !promptTemplateEditor) {
+    return;
+  }
+  const templates: Array<[PromptTemplateKind, string]> = [
+    ["detection", t[uiLocale].promptEditorDetection],
+    ["explanation", t[uiLocale].promptEditorExplanation],
+    ["screenshot", t[uiLocale].promptEditorScreenshot],
+    ["followUp", t[uiLocale].promptEditorFollowUp]
+  ];
+  const currentValue = promptTemplateInput.value;
+  promptTemplateInput.replaceChildren(...templates.map(([value, label]) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    return option;
+  }));
+  const selected = templates.some(([value]) => value === currentValue) ? currentValue : currentPromptTemplate;
+  currentPromptTemplate = selected as PromptTemplateKind;
+  promptTemplateInput.value = currentPromptTemplate;
+  promptTemplateEditor.value = promptInstruction(currentPromptTemplate, promptOverrides[currentPromptTemplate]);
+}
+
+function updatePromptOverrideFromEditor(): void {
+  if (!promptTemplateEditor) {
+    return;
+  }
+  const value = promptTemplateEditor.value.trim();
+  const defaultValue = promptInstruction(currentPromptTemplate).trim();
+  if (!value || value === defaultValue) {
+    delete promptOverrides[currentPromptTemplate];
+    return;
+  }
+  promptOverrides[currentPromptTemplate] = value;
 }
 
 async function renderIgnoredTerms(): Promise<void> {

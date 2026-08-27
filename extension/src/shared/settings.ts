@@ -1,4 +1,4 @@
-import type { ExtensionSettings, LlmSettings, TermPopMode } from "./types";
+import type { ExtensionSettings, LlmSettings, PromptOverrides, TermPopMode } from "./types";
 
 export const DEFAULT_SETTINGS: ExtensionSettings = {
   mode: "hover",
@@ -77,8 +77,23 @@ function normalizeLlmSettings(stored: Partial<LlmSettings> | undefined): LlmSett
     // A mock profile cannot make real requests. Reset it to an explicit, unconfigured OpenAI profile.
     apiKey: wasLegacyMock ? "" : stored?.apiKey?.trim() ?? "",
     model: wasLegacyMock ? DEFAULT_SETTINGS.llm.model : stored?.model?.trim() || DEFAULT_SETTINGS.llm.model,
-    baseUrl: wasLegacyMock ? DEFAULT_SETTINGS.llm.baseUrl : stored?.baseUrl?.trim() || DEFAULT_SETTINGS.llm.baseUrl
+    baseUrl: wasLegacyMock ? DEFAULT_SETTINGS.llm.baseUrl : stored?.baseUrl?.trim() || DEFAULT_SETTINGS.llm.baseUrl,
+    promptOverrides: normalizePromptOverrides(stored?.promptOverrides)
   };
+}
+
+function normalizePromptOverrides(overrides: PromptOverrides | undefined): PromptOverrides {
+  if (!overrides || typeof overrides !== "object") {
+    return {};
+  }
+  const result: PromptOverrides = {};
+  for (const key of ["detection", "explanation", "screenshot", "followUp"] as const) {
+    const value = overrides[key];
+    if (typeof value === "string" && value.trim()) {
+      result[key] = value.trim();
+    }
+  }
+  return result;
 }
 
 /**

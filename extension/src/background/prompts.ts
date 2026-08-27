@@ -1,11 +1,21 @@
-import type { Explanation, ExplanationLanguage, FollowUpTurn } from "../shared/types";
-import { languageInstruction } from "./utils";
+import type { Explanation, ExplanationLanguage, FollowUpTurn, PromptTemplateKind } from "../shared/types";
+import { languageInstruction } from "./utils.ts";
 
-export function buildTermExtractionSystemPrompt(language: ExplanationLanguage): string {
+export const DEFAULT_PROMPT_INSTRUCTIONS: Record<PromptTemplateKind, string> = {
+  detection: "You extract vocabulary that would benefit from explanation. Do not explain, reason, analyze, or restate the task.",
+  explanation: "You explain vocabulary for readers.",
+  screenshot: "You identify and explain one vocabulary term from screenshots for a reading assistant. Use the nearby context to choose the meaning that best fits what the user is reading. Do not describe the images.",
+  followUp: "You answer concise follow-up questions about a vocabulary explanation. Use the supplied reading context and earlier answer. Do not invent information. Reply with plain text only, without markdown headings or JSON."
+};
+
+export function promptInstruction(kind: PromptTemplateKind, override?: string): string {
+  return override?.trim() || DEFAULT_PROMPT_INSTRUCTIONS[kind];
+}
+
+export function buildTermExtractionSystemPrompt(language: ExplanationLanguage, override?: string): string {
   return [
     languageInstruction(language),
-    "You extract vocabulary that would benefit from explanation.",
-    "Do not explain, reason, analyze, or restate the task.",
+    promptInstruction("detection", override),
     "Your entire response must be exactly one minified JSON object and nothing else."
   ].join(" ");
 }
@@ -25,10 +35,10 @@ export function buildTermExtractionPrompt(text: string, language: ExplanationLan
   ].join("\n");
 }
 
-export function buildExplanationSystemPrompt(language: ExplanationLanguage, includeUsageExample: boolean): string {
+export function buildExplanationSystemPrompt(language: ExplanationLanguage, includeUsageExample: boolean, override?: string): string {
   return [
     languageInstruction(language),
-    "You explain vocabulary for readers.",
+    promptInstruction("explanation", override),
     "Return only valid JSON. Do not include markdown fences.",
     explanationJsonShapeInstruction(includeUsageExample)
   ].join(" ");
@@ -46,12 +56,10 @@ export function buildExplanationPrompt(term: string, context: string | undefined
   ].filter(Boolean).join("\n");
 }
 
-export function buildScreenshotRecognitionSystemPrompt(language: ExplanationLanguage): string {
+export function buildScreenshotRecognitionSystemPrompt(language: ExplanationLanguage, override?: string): string {
   return [
     languageInstruction(language),
-    "You identify and explain one vocabulary term from screenshots for a reading assistant.",
-    "Use the nearby context to choose the meaning that best fits what the user is reading.",
-    "Do not describe the images.",
+    promptInstruction("screenshot", override),
     "Return exactly one minified JSON object and nothing else."
   ].join(" ");
 }
@@ -73,12 +81,10 @@ export function buildScreenshotRecognitionPrompt(language: ExplanationLanguage, 
   ].join("\n");
 }
 
-export function buildFollowUpSystemPrompt(language: ExplanationLanguage): string {
+export function buildFollowUpSystemPrompt(language: ExplanationLanguage, override?: string): string {
   return [
     languageInstruction(language),
-    "You answer concise follow-up questions about a vocabulary explanation.",
-    "Use the supplied reading context and earlier answer. Do not invent information.",
-    "Reply with plain text only, without markdown headings or JSON."
+    promptInstruction("followUp", override)
   ].join(" ");
 }
 

@@ -6,6 +6,7 @@ import { setPersistentExplanation } from "../src/background/cache.ts";
 import { isSiteEnabledByPolicy } from "../src/background/site-access-policy.ts";
 import { parseScreenshotRecognition, splitImageDataUrl } from "../src/background/vision.ts";
 import { inferImageInputCapability, isImageInputUnsupportedError, shouldStartWithOcr } from "../src/background/model-capabilities.ts";
+import { buildExplanationSystemPrompt, buildFollowUpSystemPrompt, buildTermExtractionSystemPrompt, promptInstruction } from "../src/background/prompts.ts";
 import { utf8ByteOffsetToUtf16Index } from "../src/shared/unicode.ts";
 import { cancelPdfSessionToken, createPdfSessionToken, drainPdfLlmQueue, isPdfSessionCurrent } from "../src/pdf-viewer/pdf-session.ts";
 import type { Explanation } from "../src/shared/types.ts";
@@ -13,6 +14,17 @@ import type { Explanation } from "../src/shared/types.ts";
 type TestCase = { name: string; run: () => void | Promise<void> };
 
 const tests: TestCase[] = [
+  {
+    name: "prompt overrides preserve required output constraints and change instructions",
+    run: () => {
+      const override = "Prefer concrete software concepts and ignore product names.";
+      equal(promptInstruction("detection", override), override);
+      ok(buildTermExtractionSystemPrompt("en", override).includes(override));
+      ok(buildTermExtractionSystemPrompt("en", override).includes("minified JSON object"));
+      ok(buildExplanationSystemPrompt("zh-CN", false, "Use concise definitions.").includes("usage_example"));
+      ok(buildFollowUpSystemPrompt("en", "Answer with a practical example.").includes("Answer with a practical example."));
+    }
+  },
   {
     name: "screenshot routing uses OCR for text-only models and vision for multimodal models",
     run: () => {
@@ -76,6 +88,19 @@ const tests: TestCase[] = [
         text: "private page body"
       });
       ok(changedConfigKey !== key);
+      const changedPromptKey = buildDetectionCacheKey({
+        detectionMode: "all",
+        provider: "openai-compatible",
+        apiKey: "first-secret",
+        baseUrl: "https://api.example/v1",
+        model: "gpt-4.1-mini",
+        language: "en",
+        temperature: 0.2,
+        maxTokens: 450,
+        promptInstruction: "Only return acronyms.",
+        text: "private page body"
+      });
+      ok(changedPromptKey !== key);
     }
   },
   {

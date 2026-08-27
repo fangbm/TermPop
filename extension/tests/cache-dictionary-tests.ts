@@ -77,7 +77,8 @@ async function testExplanationCache(): Promise<void> {
     buildExplanationCacheKey("Term", "context A", "page-b", settings),
     buildExplanationCacheKey("Term", "context A", "page-a", { ...settings, language: "en" }),
     buildExplanationCacheKey("Term", "context A", "page-a", { ...settings, model: "model-b" }),
-    buildExplanationCacheKey("Term", "context A", "page-a", { ...settings, includeUsageExample: true })
+    buildExplanationCacheKey("Term", "context A", "page-a", { ...settings, includeUsageExample: true }),
+    buildExplanationCacheKey("Term", "context A", "page-a", { ...settings, promptOverrides: { explanation: "Use a glossary style." } })
   ];
   ok(variants.every((key) => key !== base));
 }

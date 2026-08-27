@@ -72,6 +72,7 @@ export async function detectTerms(
     language: settings.llm.language,
     temperature: settings.llm.temperature,
     maxTokens: settings.llm.maxTokens,
+    promptInstruction: settings.llm.promptOverrides?.detection,
     dictionaryJson: settings.dictionaryJson,
     url: cacheContext.url,
     pageFingerprint: cacheContext.pageFingerprint,
@@ -171,7 +172,7 @@ async function fetchLlmDetectedTerms(text: string, settings: LlmSettings, primar
     sampleMatchedTerms: []
   };
   const provider = createLlmProvider(settings);
-  const system = buildTermExtractionSystemPrompt(settings.language);
+  const system = buildTermExtractionSystemPrompt(settings.language, settings.promptOverrides?.detection);
 
   const batch = await runPartialBatch(chunks, async (chunk) => {
     const prompt = buildTermExtractionPrompt(chunk.text, settings.language, chunk.index + 1, chunks.length);

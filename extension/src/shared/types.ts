@@ -5,6 +5,14 @@ export type LlmProvider = "openai" | "kimi" | "openai-compatible" | "anthropic";
 export type ExplanationLanguage = "auto" | "zh-CN" | "en";
 export type CacheScope = "global" | "domain" | "pageFingerprint";
 export type ScreenshotRecognitionMode = "auto" | "multimodal" | "ocr";
+export type PromptTemplateKind = "detection" | "explanation" | "screenshot" | "followUp";
+
+export interface PromptOverrides {
+  detection?: string;
+  explanation?: string;
+  screenshot?: string;
+  followUp?: string;
+}
 
 export interface DetectedTerm {
   term: string;
@@ -55,6 +63,8 @@ export interface LlmSettings {
   maxConcurrency: number;
   temperature: number;
   maxTokens: number;
+  /** Optional replacements for the instruction portion of each LLM prompt. */
+  promptOverrides?: PromptOverrides;
   advancedVisible?: boolean;
   debugLogging?: boolean;
 }

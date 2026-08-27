@@ -176,6 +176,7 @@ export function buildExplanationCacheKey(term: string, context: string | undefin
     model,
     settings.language,
     settings.includeUsageExample ? "example" : "no-example",
+    hashString(settings.promptOverrides?.explanation?.trim() || "default-explanation-prompt"),
     normalizedTerm,
     scopeFingerprint,
     contextFingerprint

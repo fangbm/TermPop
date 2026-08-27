@@ -118,6 +118,14 @@
             <span data-i18n="maxConcurrency">并发限制</span>
             <input id="max-concurrency" name="maxConcurrency" type="number" min="1" step="1" />
           </label>
+          <section class="prompt-editor" aria-label="Prompt editor" data-i18n-attr="aria-label:promptEditor">
+            <div class="prompt-editor-header">
+              <label for="prompt-template" data-i18n="promptEditor">提示词编辑</label>
+              <button id="reset-prompt-template" class="secondary-button" type="button" data-i18n="resetPrompt">恢复默认</button>
+            </div>
+            <select id="prompt-template" aria-label="Prompt template"></select>
+            <textarea id="prompt-template-editor" rows="7" spellcheck="false"></textarea>
+          </section>
         </section>
       </form>
     </main>

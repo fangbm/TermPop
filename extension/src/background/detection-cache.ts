@@ -57,6 +57,7 @@ export function buildDetectionCacheKey(parts: {
   language: string;
   temperature: number;
   maxTokens: number;
+  promptInstruction?: string;
   dictionaryJson?: string;
   url?: string;
   pageFingerprint?: string;
@@ -71,6 +72,7 @@ export function buildDetectionCacheKey(parts: {
     parts.language,
     String(parts.temperature),
     String(parts.maxTokens),
+    fingerprint(parts.promptInstruction ?? "default-detection-prompt"),
     fingerprint(parts.dictionaryJson ?? ""),
     fingerprint(parts.url ?? ""),
     fingerprint(parts.pageFingerprint || parts.text.slice(0, 1_200)),
