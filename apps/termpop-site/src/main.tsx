@@ -376,7 +376,7 @@ function App(): React.ReactElement {
       {route === "home" ? (
         <>
           <Hero t={t} />
-          <ProductShowcase language={language} t={t} />
+          <ProductShowcase key={language} language={language} t={t} />
           <FeatureGrid t={t} />
           <DownloadSection downloadTarget={DOWNLOAD_TARGET} t={t} />
         </>
