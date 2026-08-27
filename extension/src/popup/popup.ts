@@ -294,10 +294,9 @@ async function init(): Promise<void> {
   renderAppName();
   renderModeLabels();
   renderAdvancedSettings(settings.llm);
-  await renderSiteAccess();
-  await renderPdfToolsVisibility();
-  await renderScreenshotShortcut();
-  await renderIgnoredTerms();
+  // Bind controls before querying browser state. A transient service-worker or
+  // tab-query failure must not leave the whole popup without event handlers.
+  void renderRuntimeState();
 
   for (const button of buttons) {
     button.addEventListener("click", () => {
@@ -441,6 +440,15 @@ async function init(): Promise<void> {
   });
 }
 
+async function renderRuntimeState(): Promise<void> {
+  await Promise.allSettled([
+    renderSiteAccess(),
+    renderPdfToolsVisibility(),
+    renderScreenshotShortcut(),
+    renderIgnoredTerms()
+  ]);
+}
+
 async function saveMode(mode: TermPopMode): Promise<void> {
   await enqueueSettingsWrite(() => setMode(mode));
   setActive(mode);
@@ -489,12 +497,18 @@ async function renderPdfToolsVisibility(): Promise<void> {
 }
 
 async function renderSiteAccess(): Promise<void> {
-  const response = await chrome.runtime.sendMessage({ type: "TERMPOP_GET_SITE_ACCESS" }) as GetSiteAccessResponse;
-  if (!response.ok || !response.access) {
-    renderSiteAccessState(undefined, response.error ?? t[uiLocale].readingPermission);
-    return;
+  try {
+    const response = await chrome.runtime.sendMessage({ type: "TERMPOP_GET_SITE_ACCESS" }) as GetSiteAccessResponse;
+    if (!response.ok || !response.access) {
+      renderSiteAccessState(undefined, response.error ?? t[uiLocale].readingPermission);
+      return;
+    }
+    renderSiteAccessState(response.access);
+  } catch {
+    // The background worker can be briefly unavailable while Chrome starts it.
+    // Keep the rest of the popup interactive and show a recoverable state.
+    renderSiteAccessState(undefined, t[uiLocale].readingPermission);
   }
-  renderSiteAccessState(response.access);
 }
 
 function renderSiteAccessState(access: SiteAccessState | undefined, error?: string): void {
