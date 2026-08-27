@@ -230,6 +230,11 @@ textarea { min-height: 136px; padding: 10px; line-height: 1.5; resize: vertical;
   gap: 10px;
 }
 
+.screenshot-section .preference-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
 .toggle-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 38px;
@@ -277,11 +282,9 @@ textarea { min-height: 136px; padding: 10px; line-height: 1.5; resize: vertical;
 
 .shortcut-settings {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  min-height: 36px;
-  padding: 0 7px 0 10px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 9px;
+  padding: 10px;
   border: 1px solid #cfdae9;
   border-radius: 7px;
   background: #ffffff;
@@ -290,8 +293,8 @@ textarea { min-height: 136px; padding: 10px; line-height: 1.5; resize: vertical;
 .shortcut-settings span,
 .shortcut-settings strong { display: block; }
 .shortcut-settings span { color: #53627a; font-size: 11px; font-weight: 720; }
-.shortcut-settings strong { margin-top: 1px; color: #263754; font-size: 11px; font-weight: 760; }
-.shortcut-settings button { min-height: 27px; padding: 0 8px; font-size: 11px; white-space: nowrap; }
+.shortcut-settings strong { margin-top: 2px; color: #263754; font-size: 12px; font-weight: 760; }
+.shortcut-settings button { width: 100%; min-height: 32px; padding: 0 10px; font-size: 11px; white-space: nowrap; }
 
 .site-resources,
 .ignored-terms,
