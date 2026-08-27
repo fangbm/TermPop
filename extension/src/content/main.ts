@@ -26,6 +26,12 @@ import type {
   IgnoreTermResponse,
   RecognizeScreenshotRequest,
   RecognizeScreenshotResponse,
+  ReadingAssistKind,
+  ReadingAssistRequest,
+  ReadingAssistResponse,
+  SummarizeVisibleRequest,
+  ExplainSelectionTermsRequest,
+  PrivacySettings,
   TermDictionarySettings,
   TermPopMode
 } from "../shared/types";
@@ -40,6 +46,7 @@ import screenshotSelectionStyles from "./screenshot-selection.css?inline";
 import { isCachedTermAvailable, mergeCachedTermView } from "./cache-view";
 import { ScreenshotSelectionController, type ScreenshotSelectionResult } from "./screenshot-selection";
 import { filterIgnoredCachedTerms, filterIgnoredDetectedTerms, IGNORED_TERMS_STORAGE_KEY, ignoredTermSet, isIgnoredTerm, normalizeIgnoredTerm } from "../shared/ignored-terms";
+import { ReadingAssistPanel, readingAssistStyles } from "./reading-assist-panel";
 
 const MAX_HIGHLIGHTS_AUTO = 80;
 const MAX_HIGHLIGHTS_HYBRID = 40;
@@ -53,6 +60,7 @@ const RESCAN_DELAY_MS = 500;
 const HOVER_SHOW_DELAY_MS = 420;
 
 let overlay: TermPopOverlayController | undefined;
+let readingAssistPanel: ReadingAssistPanel | undefined;
 let activeMode: TermPopMode = "hover";
 let scanTimer: number | undefined;
 let pendingScanRoots: Node[] = [];
@@ -79,6 +87,12 @@ const runtimeState = globalThis as typeof globalThis & { __termpopBooted?: boole
 let cachedPageFingerprint: { value: string; at: number; url: string } | undefined;
 let dictionaryJson: string | undefined;
 let ignoredTerms = new Set<string>();
+let privacySettings: PrivacySettings = {
+  localOnlyDictionary: false,
+  previewBeforeSend: false,
+  disableScreenshotUpload: false,
+  onlyExplainSelection: false
+};
 
 type DetectionModeOverride = "primary" | "llm" | "all";
 type TextNodeSpan = {
@@ -106,9 +120,11 @@ async function boot(): Promise<void> {
     locale: uiLocale()
   });
   screenshotSelection = new ScreenshotSelectionController(uiLocale());
+  readingAssistPanel = new ReadingAssistPanel(uiLocale());
 
-  const { mode, dictionary } = await getContentSettings();
+  const { mode, dictionary, privacy } = await getContentSettings();
   dictionaryJson = serializeDictionary(dictionary);
+  privacySettings = privacy;
   ignoredTerms = ignoredTermSet((await chrome.storage.local.get(IGNORED_TERMS_STORAGE_KEY))[IGNORED_TERMS_STORAGE_KEY]);
   globalCachedTerms = debugOptions.disableCache ? [] : await loadGlobalCachedTerms();
   activeMode = debugOptions.detectionMode ? "hover" : mode;
@@ -137,7 +153,7 @@ function injectStyles(): void {
 
   const style = document.createElement("style");
   style.id = "termpop-styles";
-  style.textContent = `${styles}\n${overlayStyles}\n${screenshotSelectionStyles}`;
+  style.textContent = `${styles}\n${overlayStyles}\n${screenshotSelectionStyles}\n${readingAssistStyles}`;
   document.documentElement.append(style);
 }
 
@@ -418,7 +434,7 @@ function countExistingHighlights(counts: Map<string, number>): number {
 
 function shouldAskLlmForNode(node: Text): boolean {
   const text = node.data.trim();
-  return text.length >= 12 && text.length <= 1200;
+  return !privacySettings.localOnlyDictionary && text.length >= 12 && text.length <= 1200;
 }
 
 function setupModeChangeListener(): void {
@@ -433,8 +449,9 @@ function setupModeChangeListener(): void {
     const previousDictionary = changes[SETTINGS_KEY].oldValue?.dictionary;
     const nextDictionary = changes[SETTINGS_KEY].newValue?.dictionary;
     const dictionaryChanged = JSON.stringify(previousDictionary ?? {}) !== JSON.stringify(nextDictionary ?? {});
-    void getContentSettings().then(({ mode, dictionary }) => {
+    void getContentSettings().then(({ mode, dictionary, privacy }) => {
       dictionaryJson = serializeDictionary(dictionary);
+      privacySettings = privacy;
       pageExplanationCache.clear();
       const previousMode = activeMode;
       if (dictionaryChanged) {
@@ -507,6 +524,7 @@ async function enableSite(): Promise<void> {
 
 function disableSite(): void {
   siteDisabled = true;
+  readingAssistPanel?.hide();
   screenshotRequestSeq += 1;
   screenshotSelection?.cancel();
   screenshotAnchor?.remove();
@@ -689,7 +707,7 @@ function collectScanTextNodes(roots: Node[]): Text[] {
 
 function setupSelectionMessageListener(): void {
   chrome.runtime.onMessage.addListener((
-    message: ExplainSelectionRequest | DisableSiteRequest | BeginScreenshotSelectionRequest,
+    message: ExplainSelectionRequest | DisableSiteRequest | BeginScreenshotSelectionRequest | SummarizeVisibleRequest | ExplainSelectionTermsRequest,
     _sender,
     sendResponse
   ) => {
@@ -707,6 +725,29 @@ function setupSelectionMessageListener(): void {
       sendResponse({ ok: true } satisfies BeginScreenshotSelectionResponse);
       void beginScreenshotExplanation();
       return false;
+    }
+
+    if (message.type === "TERMPOP_SUMMARIZE_VISIBLE") {
+      if (siteDisabled) {
+        sendResponse({ ok: false, error: "TermPop is disabled on this site." });
+        return false;
+      }
+      void requestReadingAssist("summary", collectVisibleReadingText())
+        .then(() => sendResponse({ ok: true }))
+        .catch((error: unknown) => sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) }));
+      return true;
+    }
+
+    if (message.type === "TERMPOP_EXPLAIN_SELECTION_TERMS") {
+      if (siteDisabled) {
+        sendResponse({ ok: false, error: "TermPop is disabled on this site." });
+        return false;
+      }
+      const selectedText = window.getSelection()?.toString() ?? "";
+      void requestReadingAssist("batch", selectedText)
+        .then(() => sendResponse({ ok: true }))
+        .catch((error: unknown) => sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) }));
+      return true;
     }
 
     if (message.type !== "TERMPOP_EXPLAIN_SELECTION") {
@@ -866,7 +907,7 @@ function setupHighlightEventDelegation(): void {
   document.addEventListener(
     "pointerover",
     (event) => {
-      if (siteDisabled) {
+      if (siteDisabled || privacySettings.onlyExplainSelection) {
         return;
       }
       const highlight = closestHighlight(event.target);
@@ -887,7 +928,7 @@ function setupHighlightEventDelegation(): void {
   document.addEventListener(
     "pointerout",
     (event) => {
-      if (siteDisabled) {
+      if (siteDisabled || privacySettings.onlyExplainSelection) {
         return;
       }
       const highlight = closestHighlight(event.target);
@@ -904,7 +945,7 @@ function setupHighlightEventDelegation(): void {
   document.addEventListener(
     "click",
     (event) => {
-      if (siteDisabled) {
+      if (siteDisabled || privacySettings.onlyExplainSelection) {
         return;
       }
       const highlight = closestHighlight(event.target);
@@ -984,6 +1025,45 @@ async function explainSelectedText(rawTerm: string): Promise<void> {
   };
 
   await showExplanation(anchor, term, selectionContext(termText), { refresh: false, pin: true });
+}
+
+async function requestReadingAssist(kind: ReadingAssistKind, rawText: string): Promise<void> {
+  const text = rawText.replace(/\s+/g, " ").trim();
+  if (text.length < 12) {
+    const message = uiLocale() === "zh" ? "请先选中或显示更多可阅读文本。" : "Select or display a little more readable text first.";
+    readingAssistPanel?.showError(kind, message);
+    throw new Error(message);
+  }
+
+  const run = async (): Promise<void> => {
+    readingAssistPanel?.showLoading(kind);
+    const response = await chrome.runtime.sendMessage({
+      type: "TERMPOP_READING_ASSIST",
+      kind,
+      text,
+      url: location.href
+    } satisfies ReadingAssistRequest) as ReadingAssistResponse;
+    if (!response.ok || !response.result) {
+      const message = response.error ?? (uiLocale() === "zh" ? "阅读辅助暂时不可用。" : "Reading assistance is unavailable right now.");
+      readingAssistPanel?.showError(kind, message);
+      throw new Error(message);
+    }
+    readingAssistPanel?.showResult(kind, response.result);
+  };
+
+  if (privacySettings.previewBeforeSend) {
+    readingAssistPanel?.showPreview(kind, text, () => { void run(); });
+    return;
+  }
+  await run();
+}
+
+function collectVisibleReadingText(): string {
+  const nodes = collectScanTextNodes([document.body])
+    .filter(isTextNodeNearViewport)
+    .slice(0, 160);
+  const text = nodes.map((node) => node.data.trim()).filter(Boolean).join(" ");
+  return text.slice(0, 9_000) || (document.body.innerText || "").replace(/\s+/g, " ").slice(0, 9_000);
 }
 
 function normalizeSelectedTerm(value: string): string {

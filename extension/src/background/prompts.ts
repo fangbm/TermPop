@@ -109,6 +109,37 @@ export function buildFollowUpPrompt(
   ].join("\n");
 }
 
+export function buildReadingAssistSystemPrompt(language: ExplanationLanguage): string {
+  return [
+    languageInstruction(language),
+    "You are a precise reading assistant.",
+    "Return exactly one minified JSON object and nothing else."
+  ].join(" ");
+}
+
+export function buildReadingSummaryPrompt(text: string): string {
+  return [
+    "Summarize the supplied visible page text without inventing facts.",
+    "Return 2-5 concise core claims, 1-4 structural points, and 3-8 important terms.",
+    "Return JSON only in this shape:",
+    "{\"summary\":[\"claim\"],\"structure\":[\"section or relationship\"],\"terms\":[\"term\"]}",
+    "",
+    `Visible text: ${text}`
+  ].join("\n");
+}
+
+export function buildBatchExplanationPrompt(text: string): string {
+  return [
+    "From the selected text, choose 3-8 domain-specific terms that are most useful to explain.",
+    "Skip ordinary words and do not return terms that do not appear in the selected text.",
+    "Explain each item in one concise, context-specific sentence.",
+    "Return JSON only in this shape:",
+    "{\"items\":[{\"term\":\"exact selected term\",\"explanation\":\"concise explanation\"}]}",
+    "",
+    `Selected text: ${text}`
+  ].join("\n");
+}
+
 function explanationJsonShapeInstruction(includeUsageExample: boolean): string {
   return includeUsageExample
     ? "JSON shape: {\"term\":\"...\",\"definition\":\"...\",\"category\":\"...\",\"related_terms\":[\"...\"],\"usage_example\":\"...\",\"source_url\":null}"

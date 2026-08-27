@@ -1,10 +1,11 @@
 import { getSettings } from "../shared/settings";
-import type { ExplainSelectionRequest } from "../shared/types";
+import type { ExplainSelectionRequest, ExplainSelectionTermsRequest } from "../shared/types";
 import { BLOCKED_SITES_STORAGE_KEY } from "../shared/browser-utils";
 import { isUrlEnabled } from "./site-access";
 import { sanitizeForLog } from "./utils";
 
 const SELECTION_CONTEXT_MENU_ID = "termpop-explain-selection";
+const BATCH_SELECTION_CONTEXT_MENU_ID = "termpop-explain-selection-terms";
 const SETTINGS_KEY = "termpop.settings";
 
 export function setupContextMenus(): void {
@@ -39,22 +40,22 @@ export function setupContextMenus(): void {
   });
 
   chrome.contextMenus.onClicked.addListener((info, tab) => {
-    if (info.menuItemId !== SELECTION_CONTEXT_MENU_ID || !tab?.id || !info.selectionText?.trim()) {
+    if ((info.menuItemId !== SELECTION_CONTEXT_MENU_ID && info.menuItemId !== BATCH_SELECTION_CONTEXT_MENU_ID) || !tab?.id || !info.selectionText?.trim()) {
       return;
     }
 
     void getSettings().then(async (settings) => {
-      if (settings.mode === "hover") {
+      if (settings.mode === "hover" && !settings.privacy.onlyExplainSelection) {
         return;
       }
       if (!tab.url || !await isUrlEnabled(tab.url)) {
         return;
       }
       try {
-        await chrome.tabs.sendMessage(tab.id as number, {
-          type: "TERMPOP_EXPLAIN_SELECTION",
-          term: info.selectionText ?? ""
-        } satisfies ExplainSelectionRequest);
+        const message = info.menuItemId === BATCH_SELECTION_CONTEXT_MENU_ID
+          ? { type: "TERMPOP_EXPLAIN_SELECTION_TERMS" } satisfies ExplainSelectionTermsRequest
+          : { type: "TERMPOP_EXPLAIN_SELECTION", term: info.selectionText ?? "" } satisfies ExplainSelectionRequest;
+        await chrome.tabs.sendMessage(tab.id as number, message);
       } catch (error) {
         console.warn("TermPop selection explain could not run on this page.", sanitizeForLog(error, 300));
       }
@@ -64,8 +65,9 @@ export function setupContextMenus(): void {
 
 export async function syncContextMenus(): Promise<void> {
   const settings = await getSettings();
-  const visible = (settings.mode === "selection" || settings.mode === "hybrid") && await isActiveTabEnabled();
+  const visible = (settings.mode === "selection" || settings.mode === "hybrid" || settings.privacy.onlyExplainSelection) && await isActiveTabEnabled();
   const title = uiLocale() === "zh" ? "用 TermPop 解释选中文本" : "Explain selection with TermPop";
+  const batchTitle = uiLocale() === "zh" ? "用 TermPop 批量解释选区术语" : "Explain key terms in selection";
 
   chrome.contextMenus.update(SELECTION_CONTEXT_MENU_ID, { title, visible }, () => {
     if (!chrome.runtime.lastError) {
@@ -75,6 +77,23 @@ export async function syncContextMenus(): Promise<void> {
       {
         id: SELECTION_CONTEXT_MENU_ID,
         title,
+        contexts: ["selection"],
+        visible
+      },
+      () => {
+        void chrome.runtime.lastError;
+      }
+    );
+  });
+
+  chrome.contextMenus.update(BATCH_SELECTION_CONTEXT_MENU_ID, { title: batchTitle, visible }, () => {
+    if (!chrome.runtime.lastError) {
+      return;
+    }
+    chrome.contextMenus.create(
+      {
+        id: BATCH_SELECTION_CONTEXT_MENU_ID,
+        title: batchTitle,
         contexts: ["selection"],
         visible
       },

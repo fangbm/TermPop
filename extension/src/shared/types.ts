@@ -13,6 +13,7 @@ export type ExplanationLanguage = "auto" | "zh-CN" | "en";
 export type CacheScope = "global" | "domain" | "pageFingerprint";
 export type ScreenshotRecognitionMode = "auto" | "multimodal" | "ocr";
 export type PromptTemplateKind = "detection" | "explanation" | "screenshot" | "followUp";
+export type ReadingAssistKind = "summary" | "batch";
 
 export interface PromptOverrides {
   detection?: string;
@@ -56,6 +57,19 @@ export interface ExtensionSettings {
   mode: TermPopMode;
   llm: LlmSettings;
   dictionary: TermDictionarySettings;
+  privacy: PrivacySettings;
+}
+
+/** Settings which are safe for content scripts to read. */
+export interface PrivacySettings {
+  /** Automatic term extraction stays on-device and uses only the user dictionary/cache. */
+  localOnlyDictionary: boolean;
+  /** Manual page summary and batch requests require a preview confirmation first. */
+  previewBeforeSend: boolean;
+  /** Screenshot explanations always use the bundled OCR engine instead of uploading an image. */
+  disableScreenshotUpload: boolean;
+  /** Do not open an explanation card from automatic highlights. */
+  onlyExplainSelection: boolean;
 }
 
 export interface LlmSettings {
@@ -185,6 +199,39 @@ export interface ExplainSelectionRequest {
 export interface ExplainSelectionResponse {
   ok: boolean;
   error?: string;
+}
+
+export interface ReadingAssistRequest {
+  type: "TERMPOP_READING_ASSIST";
+  kind: ReadingAssistKind;
+  text: string;
+  url?: string;
+}
+
+export interface ReadingAssistItem {
+  term: string;
+  explanation: string;
+}
+
+export interface ReadingAssistResult {
+  summary?: string[];
+  structure?: string[];
+  terms?: string[];
+  items?: ReadingAssistItem[];
+}
+
+export interface ReadingAssistResponse {
+  ok: boolean;
+  result?: ReadingAssistResult;
+  error?: string;
+}
+
+export interface SummarizeVisibleRequest {
+  type: "TERMPOP_SUMMARIZE_VISIBLE";
+}
+
+export interface ExplainSelectionTermsRequest {
+  type: "TERMPOP_EXPLAIN_SELECTION_TERMS";
 }
 
 export interface DetectTermsRequest {

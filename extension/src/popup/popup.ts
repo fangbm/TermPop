@@ -1,4 +1,4 @@
-import { getSettings, setLlmSettings, setMode } from "../shared/settings";
+import { getSettings, setLlmSettings, setMode, setPrivacySettings } from "../shared/settings";
 import { defaultBaseUrl, normalizeBaseUrl } from "../shared/llm-defaults";
 import { ALL_SITES_ORIGIN_PATTERNS, FILE_ORIGIN_PATTERN, providerOriginPatternFromBaseUrl } from "../shared/browser-utils";
 import { termpopWebsiteUrl } from "../shared/website";
@@ -18,6 +18,9 @@ import type {
   TermPopMode,
   DisableSiteRequest,
   DisableSiteResponse,
+  ExplainSelectionTermsRequest,
+  PrivacySettings,
+  SummarizeVisibleRequest,
   TestLlmProviderResponse
 } from "../shared/types";
 import "./popup.css";
@@ -54,6 +57,14 @@ const pdfTools = document.querySelector<HTMLElement>(".pdf-tools");
 const openPdfViewerButton = document.querySelector<HTMLButtonElement>("#open-pdf-viewer");
 const ignoredTermsList = document.querySelector<HTMLElement>("#ignored-terms-list");
 const restoreAllIgnoredTermsButton = document.querySelector<HTMLButtonElement>("#restore-all-ignored-terms");
+const summarizeVisibleButton = document.querySelector<HTMLButtonElement>("#summarize-visible");
+const batchExplainSelectionButton = document.querySelector<HTMLButtonElement>("#batch-explain-selection");
+const exportMarkdownButton = document.querySelector<HTMLButtonElement>("#export-markdown");
+const exportCsvButton = document.querySelector<HTMLButtonElement>("#export-csv");
+const privacyLocalOnlyInput = document.querySelector<HTMLInputElement>("#privacy-local-only");
+const privacyPreviewBeforeSendInput = document.querySelector<HTMLInputElement>("#privacy-preview-before-send");
+const privacyDisableScreenshotUploadInput = document.querySelector<HTMLInputElement>("#privacy-disable-screenshot-upload");
+const privacyOnlyExplainSelectionInput = document.querySelector<HTMLInputElement>("#privacy-only-explain-selection");
 const AUTO_SAVE_DELAY_MS = 400;
 let autoSaveTimer: number | undefined;
 let settingsWriteChain: Promise<void> = Promise.resolve();
@@ -145,6 +156,23 @@ const t = {
     ignoredTermsEmpty: "暂无已忽略词。",
     restoreTerm: "恢复",
     restoreAll: "全部恢复",
+    readingTools: "阅读工具",
+    readingToolsNote: "主动整理当前可见内容，或批量解释已经选中的一段文字。",
+    summarizeVisible: "摘要当前可见内容",
+    batchExplainSelection: "批量解释选区",
+    readingAssistSent: "已在当前页面打开阅读辅助面板。",
+    readingAssistFailed: "无法在当前页面启动阅读辅助。",
+    exportData: "导出本地数据",
+    exportDataNote: "导出用户词库和已忽略词，便于备份或迁移。",
+    exportMarkdown: "导出 Markdown",
+    exportCsv: "导出 CSV",
+    exportSucceeded: "本地数据已开始下载。",
+    privacyControls: "隐私控制",
+    privacyControlsNote: "这些开关只影响此浏览器内的 TermPop。",
+    localOnlyDictionary: "仅使用本地词库进行自动高亮",
+    previewBeforeSend: "发送页面摘要和批量解释前预览文本",
+    disableScreenshotUpload: "不上传截图，始终使用本地 OCR",
+    onlyExplainSelection: "仅解释主动选中的文本",
     modes: {
       hover: "悬停",
       selection: "划词",
@@ -230,6 +258,23 @@ const t = {
     ignoredTermsEmpty: "No ignored terms.",
     restoreTerm: "Restore",
     restoreAll: "Restore all",
+    readingTools: "Reading tools",
+    readingToolsNote: "Summarize visible content or explain important terms in selected text.",
+    summarizeVisible: "Summarize visible content",
+    batchExplainSelection: "Explain selected terms",
+    readingAssistSent: "Opened the reading assistant on the current page.",
+    readingAssistFailed: "The reading assistant could not start on this page.",
+    exportData: "Export local data",
+    exportDataNote: "Export your user dictionary and ignored terms for backup or migration.",
+    exportMarkdown: "Export Markdown",
+    exportCsv: "Export CSV",
+    exportSucceeded: "Your local data download has started.",
+    privacyControls: "Privacy controls",
+    privacyControlsNote: "These controls affect TermPop in this browser only.",
+    localOnlyDictionary: "Use only the local dictionary for automatic highlighting",
+    previewBeforeSend: "Preview text before summary and batch requests",
+    disableScreenshotUpload: "Never upload screenshots; always use local OCR",
+    onlyExplainSelection: "Explain only text I actively select",
     modes: {
       hover: "Hover",
       selection: "Selection",
@@ -245,6 +290,7 @@ async function init(): Promise<void> {
   applyUiLocale();
   setActive(settings.mode);
   renderLlmSettings(settings.llm);
+  renderPrivacySettings(settings.privacy);
   renderAppName();
   renderModeLabels();
   renderAdvancedSettings(settings.llm);
@@ -346,6 +392,28 @@ async function init(): Promise<void> {
   restoreAllIgnoredTermsButton?.addEventListener("click", () => {
     void restoreAllIgnoredTerms();
   });
+
+  summarizeVisibleButton?.addEventListener("click", () => {
+    void sendReadingAssistMessage({ type: "TERMPOP_SUMMARIZE_VISIBLE" } satisfies SummarizeVisibleRequest);
+  });
+
+  batchExplainSelectionButton?.addEventListener("click", () => {
+    void sendReadingAssistMessage({ type: "TERMPOP_EXPLAIN_SELECTION_TERMS" } satisfies ExplainSelectionTermsRequest);
+  });
+
+  exportMarkdownButton?.addEventListener("click", () => {
+    void exportLocalData("markdown");
+  });
+
+  exportCsvButton?.addEventListener("click", () => {
+    void exportLocalData("csv");
+  });
+
+  for (const input of [privacyLocalOnlyInput, privacyPreviewBeforeSendInput, privacyDisableScreenshotUploadInput, privacyOnlyExplainSelectionInput]) {
+    input?.addEventListener("change", () => {
+      void savePrivacySettings();
+    });
+  }
 
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName === "local" && changes[IGNORED_TERMS_STORAGE_KEY]) {
@@ -696,6 +764,91 @@ function renderLlmSettings(llm: LlmSettings): void {
   renderAdvancedSettings(llm);
   renderPromptEditor();
   renderProviderTest();
+}
+
+function renderPrivacySettings(privacy: PrivacySettings): void {
+  if (privacyLocalOnlyInput) privacyLocalOnlyInput.checked = privacy.localOnlyDictionary;
+  if (privacyPreviewBeforeSendInput) privacyPreviewBeforeSendInput.checked = privacy.previewBeforeSend;
+  if (privacyDisableScreenshotUploadInput) privacyDisableScreenshotUploadInput.checked = privacy.disableScreenshotUpload;
+  if (privacyOnlyExplainSelectionInput) privacyOnlyExplainSelectionInput.checked = privacy.onlyExplainSelection;
+}
+
+function collectPrivacySettings(): PrivacySettings {
+  return {
+    localOnlyDictionary: privacyLocalOnlyInput?.checked ?? false,
+    previewBeforeSend: privacyPreviewBeforeSendInput?.checked ?? false,
+    disableScreenshotUpload: privacyDisableScreenshotUploadInput?.checked ?? false,
+    onlyExplainSelection: privacyOnlyExplainSelectionInput?.checked ?? false
+  };
+}
+
+async function savePrivacySettings(): Promise<void> {
+  await enqueueSettingsWrite(() => setPrivacySettings(collectPrivacySettings()));
+  if (status) {
+    status.textContent = uiLocale === "zh" ? "隐私设置已自动保存。" : "Privacy settings saved automatically.";
+  }
+}
+
+async function sendReadingAssistMessage(message: SummarizeVisibleRequest | ExplainSelectionTermsRequest): Promise<void> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id) {
+    if (status) status.textContent = t[uiLocale].noCurrentTab;
+    return;
+  }
+  try {
+    const response = await chrome.tabs.sendMessage(tab.id, message) as { ok?: boolean; error?: string };
+    if (!response?.ok) {
+      throw new Error(response?.error || t[uiLocale].readingAssistFailed);
+    }
+    if (status) status.textContent = t[uiLocale].readingAssistSent;
+    window.close();
+  } catch (error) {
+    if (status) status.textContent = error instanceof Error ? error.message : t[uiLocale].readingAssistFailed;
+  }
+}
+
+async function exportLocalData(format: "markdown" | "csv"): Promise<void> {
+  const settings = await getSettings();
+  const stored = await chrome.storage.local.get(IGNORED_TERMS_STORAGE_KEY);
+  const ignored = parseIgnoredTerms(stored[IGNORED_TERMS_STORAGE_KEY]);
+  const userTerms = settings.dictionary.user;
+  const content = format === "markdown"
+    ? toMarkdownExport(userTerms, ignored.map((entry) => entry.term))
+    : toCsvExport(userTerms, ignored.map((entry) => entry.term));
+  const extension = format === "markdown" ? "md" : "csv";
+  const mime = format === "markdown" ? "text/markdown;charset=utf-8" : "text/csv;charset=utf-8";
+  const url = URL.createObjectURL(new Blob([content], { type: mime }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `termpop-local-data-${new Date().toISOString().slice(0, 10)}.${extension}`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+  if (status) status.textContent = t[uiLocale].exportSucceeded;
+}
+
+function toMarkdownExport(userTerms: Awaited<ReturnType<typeof getSettings>>["dictionary"]["user"], ignoredTerms: string[]): string {
+  const lines = ["# TermPop local data", "", "## User dictionary", "", "| Term | Type | Confidence |", "| --- | --- | --- |"];
+  for (const entry of userTerms) {
+    lines.push(`| ${escapeExportCell(entry.term)} | ${entry.term_type ?? "Custom"} | ${entry.confidence ?? ""} |`);
+  }
+  lines.push("", "## Ignored terms", "");
+  for (const term of ignoredTerms) lines.push(`- ${term}`);
+  return `${lines.join("\n")}\n`;
+}
+
+function toCsvExport(userTerms: Awaited<ReturnType<typeof getSettings>>["dictionary"]["user"], ignoredTerms: string[]): string {
+  const lines = ["kind,term,term_type,confidence"];
+  for (const entry of userTerms) lines.push(["user_dictionary", entry.term, entry.term_type ?? "Custom", entry.confidence ?? ""].map(csvCell).join(","));
+  for (const term of ignoredTerms) lines.push(["ignored_term", term, "", ""].map(csvCell).join(","));
+  return `\uFEFF${lines.join("\n")}\n`;
+}
+
+function csvCell(value: string | number): string {
+  return `"${String(value).replaceAll('"', '""')}"`;
+}
+
+function escapeExportCell(value: string): string {
+  return value.replaceAll("|", "\\|");
 }
 
 function renderProviderTest(): void {

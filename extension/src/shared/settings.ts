@@ -1,4 +1,4 @@
-import type { ExtensionSettings, LlmSettings, PromptOverrides, TermPopMode } from "./types";
+import type { ExtensionSettings, LlmSettings, PrivacySettings, PromptOverrides, TermPopMode } from "./types";
 
 export const DEFAULT_SETTINGS: ExtensionSettings = {
   mode: "hover",
@@ -21,6 +21,12 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
     base: [],
     domain: [],
     user: []
+  },
+  privacy: {
+    localOnlyDictionary: false,
+    previewBeforeSend: false,
+    disableScreenshotUpload: false,
+    onlyExplainSelection: false
   }
 };
 
@@ -30,7 +36,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
 const SETTINGS_KEY = "termpop.settings";
 const LLM_SETTINGS_KEY = "termpop.llmSettings";
 
-type StoredGeneralSettings = Partial<Pick<ExtensionSettings, "dictionary">> & {
+type StoredGeneralSettings = Partial<Pick<ExtensionSettings, "dictionary" | "privacy">> & {
   mode?: string;
   // Legacy key used before LLM settings were split into their own storage key.
   llm?: Partial<LlmSettings>;
@@ -59,6 +65,10 @@ export async function getSettings(): Promise<ExtensionSettings> {
     dictionary: {
       ...DEFAULT_SETTINGS.dictionary,
       ...general?.dictionary
+    },
+    privacy: {
+      ...DEFAULT_SETTINGS.privacy,
+      ...general?.privacy
     }
   };
 }
@@ -100,7 +110,7 @@ function normalizePromptOverrides(overrides: PromptOverrides | undefined): Promp
  * Settings available to content scripts. Intentionally excludes LLM settings
  * so the API key is never loaded into per-page script contexts.
  */
-export async function getContentSettings(): Promise<Pick<ExtensionSettings, "mode" | "dictionary">> {
+export async function getContentSettings(): Promise<Pick<ExtensionSettings, "mode" | "dictionary" | "privacy">> {
   const stored = await chrome.storage.local.get(SETTINGS_KEY);
   const general = stored[SETTINGS_KEY] as StoredGeneralSettings | undefined;
   return {
@@ -108,6 +118,10 @@ export async function getContentSettings(): Promise<Pick<ExtensionSettings, "mod
     dictionary: {
       ...DEFAULT_SETTINGS.dictionary,
       ...general?.dictionary
+    },
+    privacy: {
+      ...DEFAULT_SETTINGS.privacy,
+      ...general?.privacy
     }
   };
 }
@@ -130,6 +144,21 @@ export async function setMode(mode: TermPopMode): Promise<void> {
     [SETTINGS_KEY]: {
       ...rest,
       mode
+    }
+  });
+}
+
+export async function setPrivacySettings(privacy: PrivacySettings): Promise<void> {
+  const stored = await chrome.storage.local.get(SETTINGS_KEY);
+  const general = (stored[SETTINGS_KEY] ?? {}) as StoredGeneralSettings;
+  const { llm: _legacyLlm, ...rest } = general;
+  await chrome.storage.local.set({
+    [SETTINGS_KEY]: {
+      ...rest,
+      privacy: {
+        ...DEFAULT_SETTINGS.privacy,
+        ...privacy
+      }
     }
   });
 }

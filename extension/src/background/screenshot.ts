@@ -48,7 +48,7 @@ export async function recognizeScreenshot(request: RecognizeScreenshotRequest): 
     throw new Error(screenshotCopy[uiLocale()].disabled);
   }
   await assertLlmProviderAuthorized(settings.llm);
-  if (shouldStartWithOcr(settings.llm)) {
+  if (settings.privacy.disableScreenshotUpload || shouldStartWithOcr(settings.llm)) {
     return recognizeAndExplainWithOcr(request, settings.llm);
   }
   try {

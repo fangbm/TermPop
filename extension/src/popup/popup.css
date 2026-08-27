@@ -304,7 +304,8 @@ textarea { min-height: 136px; padding: 10px; line-height: 1.5; resize: vertical;
 
 .site-resources,
 .ignored-terms,
-.advanced-settings { gap: 10px; }
+.advanced-settings,
+.privacy-settings { gap: 10px; }
 
 .site-resources-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .site-resources-actions button { min-height: 30px; }
@@ -329,6 +330,8 @@ textarea { min-height: 136px; padding: 10px; line-height: 1.5; resize: vertical;
 
 .advanced-toggle { min-height: 36px; border-style: dashed; }
 .advanced-settings { background: #f8fbff; }
+.privacy-settings { display: grid; padding-bottom: 2px; }
+.privacy-settings .toggle-row { min-height: 42px; }
 .inline-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .prompt-editor { display: grid; gap: 8px; padding-top: 2px; }
 .prompt-editor-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

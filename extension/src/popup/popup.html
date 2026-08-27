@@ -93,6 +93,16 @@
           </label>
           </div>
         </section>
+        <section class="settings-section reading-tools" aria-label="Reading tools" data-i18n-attr="aria-label:readingTools">
+          <div class="section-heading">
+            <span data-i18n="readingTools">阅读工具</span>
+            <p data-i18n="readingToolsNote">主动整理当前可见内容，或批量解释已经选中的一段文字。</p>
+          </div>
+          <div class="site-resources-actions">
+            <button id="summarize-visible" class="secondary-button" type="button" data-i18n="summarizeVisible">摘要当前可见内容</button>
+            <button id="batch-explain-selection" class="secondary-button" type="button" data-i18n="batchExplainSelection">批量解释选区</button>
+          </div>
+        </section>
         <section class="settings-section screenshot-section">
           <div class="section-heading section-heading-inline">
             <div>
@@ -142,8 +152,28 @@
           </div>
           <div id="ignored-terms-list" class="ignored-terms-list"></div>
         </section>
+        <section class="site-resources" aria-label="Export local data" data-i18n-attr="aria-label:exportData">
+          <div>
+            <strong data-i18n="exportData">导出本地数据</strong>
+            <p data-i18n="exportDataNote">导出用户词库和已忽略词，便于备份或迁移。</p>
+          </div>
+          <div class="site-resources-actions">
+            <button id="export-markdown" class="secondary-button" type="button" data-i18n="exportMarkdown">导出 Markdown</button>
+            <button id="export-csv" class="secondary-button" type="button" data-i18n="exportCsv">导出 CSV</button>
+          </div>
+        </section>
         <button id="advanced-toggle" class="secondary-button advanced-toggle" type="button">高级设置</button>
         <section id="advanced-settings" class="advanced-settings" hidden>
+          <section class="privacy-settings" aria-label="Privacy controls" data-i18n-attr="aria-label:privacyControls">
+            <div class="section-heading">
+              <span data-i18n="privacyControls">隐私控制</span>
+              <p data-i18n="privacyControlsNote">这些开关只影响此浏览器内的 TermPop。</p>
+            </div>
+            <label class="toggle-row"><span data-i18n="localOnlyDictionary">仅使用本地词库进行自动高亮</span><input id="privacy-local-only" type="checkbox" /><i aria-hidden="true"></i></label>
+            <label class="toggle-row"><span data-i18n="previewBeforeSend">发送页面摘要和批量解释前预览文本</span><input id="privacy-preview-before-send" type="checkbox" /><i aria-hidden="true"></i></label>
+            <label class="toggle-row"><span data-i18n="disableScreenshotUpload">不上传截图，始终使用本地 OCR</span><input id="privacy-disable-screenshot-upload" type="checkbox" /><i aria-hidden="true"></i></label>
+            <label class="toggle-row"><span data-i18n="onlyExplainSelection">仅解释主动选中的文本</span><input id="privacy-only-explain-selection" type="checkbox" /><i aria-hidden="true"></i></label>
+          </section>
           <div class="inline-fields">
             <label>
               <span data-i18n="temperature">温度</span>

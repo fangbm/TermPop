@@ -24,6 +24,8 @@ import type {
   IgnoreTermResponse,
   RecognizeScreenshotRequest,
   RecognizeScreenshotResponse,
+  ReadingAssistRequest,
+  ReadingAssistResponse,
   TestLlmProviderRequest,
   TestLlmProviderResponse,
   SetSiteAccessRequest,
@@ -49,6 +51,7 @@ import { createLlmProvider } from "./llm-provider";
 import { captureVisibleSenderTab, recognizeScreenshot, setupScreenshotCommand } from "./screenshot";
 import { setupOnboarding } from "./onboarding";
 import { inferImageInputCapability } from "./model-capabilities";
+import { generateReadingAssist } from "./reading-assist";
 
 type RuntimeMessage =
   | ExplainRequest
@@ -62,7 +65,8 @@ type RuntimeMessage =
   | InjectActiveTabRequest
   | TestLlmProviderRequest
   | CaptureVisibleTabRequest
-  | RecognizeScreenshotRequest;
+  | RecognizeScreenshotRequest
+  | ReadingAssistRequest;
 
 interface CacheContextMessage {
   url?: string;
@@ -158,9 +162,9 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
         // LLM-backed detection sends page text to the configured provider and
         // can be triggered automatically on DOM changes, so cap it per tab.
         // When the limit is hit, silently fall back to local Rust detection.
-        const mode = requestedMode === "primary" || consumeRateAllowance(sender, "detect")
-          ? requestedMode
-          : "primary";
+        const mode = requestedMode === "primary" || settings.privacy.localOnlyDictionary
+          ? "primary"
+          : consumeRateAllowance(sender, "detect") ? requestedMode : "primary";
         return detectTerms(message.text, mode, {
           llm: settings.llm,
           dictionaryJson: buildDictionaryJson(settings.dictionary)
@@ -200,7 +204,8 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
       .then(getSettings)
       .then((settings) => {
         const screenshotMode = settings.llm.screenshotRecognitionMode;
-        const useScreenshotContext = settings.llm.screenshotRecognitionEnabled
+        const useScreenshotContext = !settings.privacy.disableScreenshotUpload
+          && settings.llm.screenshotRecognitionEnabled
           && (screenshotMode === "multimodal" || (screenshotMode === "auto" && inferImageInputCapability(settings.llm) === "supported"))
           && Boolean(message.termImageDataUrl && message.contextImageDataUrl);
         return followUp(
@@ -217,6 +222,20 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
       })
       .then((answer) => sendResponse({ ok: true, answer } satisfies FollowUpResponse))
       .catch((error: unknown) => sendResponse({ ok: false, error: errorMessage(error) } satisfies FollowUpResponse));
+    return true;
+  }
+
+  if (message.type === "TERMPOP_READING_ASSIST") {
+    ensureSenderCanUsePageServices(sender)
+      .then(() => {
+        if (!consumeRateAllowance(sender, "explain")) {
+          throw new Error("TermPop rate limit reached; try again shortly.");
+        }
+      })
+      .then(getSettings)
+      .then((settings) => generateReadingAssist(message.kind, message.text, settings.llm))
+      .then((result) => sendResponse({ ok: true, result } satisfies ReadingAssistResponse))
+      .catch((error: unknown) => sendResponse({ ok: false, error: errorMessage(error) } satisfies ReadingAssistResponse));
     return true;
   }
 
@@ -258,7 +277,8 @@ async function handleFollowUpStream(port: chrome.runtime.Port, message: FollowUp
 
     const settings = await getSettings();
     const screenshotMode = settings.llm.screenshotRecognitionMode;
-    const useScreenshotContext = settings.llm.screenshotRecognitionEnabled
+    const useScreenshotContext = !settings.privacy.disableScreenshotUpload
+      && settings.llm.screenshotRecognitionEnabled
       && (screenshotMode === "multimodal" || (screenshotMode === "auto" && inferImageInputCapability(settings.llm) === "supported"))
       && Boolean(message.termImageDataUrl && message.contextImageDataUrl);
     const result = await followUpStream(
