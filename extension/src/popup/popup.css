@@ -36,19 +36,10 @@ body {
 }
 
 .brand-mark {
-  display: grid;
   width: 34px;
   height: 34px;
   flex: 0 0 34px;
-  place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.72);
-  border-radius: 10px;
-  background: linear-gradient(145deg, #3b82f6, #2563eb);
-  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.25);
-  color: #ffffff;
-  font-size: 20px;
-  font-weight: 780;
-  line-height: 1;
+  object-fit: contain;
 }
 
 .brand-copy { min-width: 0; }
