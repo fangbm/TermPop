@@ -292,8 +292,14 @@ textarea { min-height: 136px; padding: 10px; line-height: 1.5; resize: vertical;
 
 .shortcut-settings span,
 .shortcut-settings strong { display: block; }
+.shortcut-settings > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
 .shortcut-settings span { color: #53627a; font-size: 11px; font-weight: 720; }
-.shortcut-settings strong { margin-top: 2px; color: #263754; font-size: 12px; font-weight: 760; }
+.shortcut-settings strong { color: #263754; font-size: 12px; font-weight: 760; white-space: nowrap; }
 .shortcut-settings button { width: 100%; min-height: 32px; padding: 0 10px; font-size: 11px; white-space: nowrap; }
 
 .site-resources,
