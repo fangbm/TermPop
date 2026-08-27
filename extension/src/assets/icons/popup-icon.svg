@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">TermPop icon</title>
+  <desc id="desc">A rounded browser window with a highlighted term, an explanation card, and a blue TermPop T badge.</desc>
+  <defs>
+    <linearGradient id="baseFill" x1="52" y1="25" x2="205" y2="229" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f3f7ff"/>
+    </linearGradient>
+    <linearGradient id="browserFill" x1="68" y1="64" x2="198" y2="213" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f4f8ff"/>
+    </linearGradient>
+    <linearGradient id="blueBar" x1="58" y1="39" x2="214" y2="84" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2f79ff"/>
+      <stop offset="0.55" stop-color="#2274fb"/>
+      <stop offset="1" stop-color="#0e5fe7"/>
+    </linearGradient>
+    <linearGradient id="badgeBlue" x1="32" y1="104" x2="118" y2="198" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2b6fff"/>
+      <stop offset="1" stop-color="#0b82f4"/>
+    </linearGradient>
+    <linearGradient id="highlightFill" x1="128" y1="131" x2="186" y2="149" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#b9dcff"/>
+      <stop offset="1" stop-color="#96c9ff"/>
+    </linearGradient>
+    <filter id="baseShadow" x="-18%" y="-18%" width="136%" height="148%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#0f172a" flood-opacity="0.14"/>
+    </filter>
+    <filter id="windowShadow" x="-18%" y="-18%" width="136%" height="146%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="10" stdDeviation="11" flood-color="#1d4ed8" flood-opacity="0.12"/>
+    </filter>
+    <filter id="cardShadow" x="-25%" y="-25%" width="150%" height="160%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="8" stdDeviation="7" flood-color="#0f172a" flood-opacity="0.17"/>
+    </filter>
+    <filter id="badgeShadow" x="-26%" y="-22%" width="150%" height="152%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="8" stdDeviation="7" flood-color="#0f172a" flood-opacity="0.2"/>
+      <feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-color="#ffffff" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#windowShadow)">
+    <rect x="45" y="41" width="172" height="173" rx="20" fill="url(#browserFill)"/>
+    <path d="M45 61c0-11.05 8.95-20 20-20h132c11.05 0 20 8.95 20 20v25H45V61z" fill="url(#blueBar)"/>
+    <path d="M45 83h172v9H45z" fill="#ffffff"/>
+    <circle cx="63" cy="61" r="6.3" fill="#ff5f57"/>
+    <circle cx="78" cy="61" r="6.3" fill="#ffcc33"/>
+    <circle cx="93" cy="61" r="6.3" fill="#30d158"/>
+    <circle cx="63" cy="61" r="6.3" fill="none" stroke="#ffffff" stroke-opacity="0.35" stroke-width="1"/>
+    <circle cx="78" cy="61" r="6.3" fill="none" stroke="#ffffff" stroke-opacity="0.35" stroke-width="1"/>
+    <circle cx="93" cy="61" r="6.3" fill="none" stroke="#ffffff" stroke-opacity="0.35" stroke-width="1"/>
+
+    <rect x="58" y="103" width="55" height="7" rx="3.5" fill="#e5e8ef"/>
+    <rect x="58" y="117" width="55" height="7" rx="3.5" fill="#e1e5ec"/>
+    <rect x="112" y="135" width="15" height="7" rx="3.5" fill="#dce2ea"/>
+    <rect x="188" y="135" width="17" height="7" rx="3.5" fill="#dfe4eb"/>
+    <rect x="116" y="153" width="89" height="7" rx="3.5" fill="#dfe4eb"/>
+    <rect x="116" y="167" width="78" height="7" rx="3.5" fill="#dfe4eb"/>
+    <rect x="112" y="181" width="93" height="7" rx="3.5" fill="#dfe4eb"/>
+    <rect x="60" y="196" width="131" height="7" rx="3.5" fill="#e1e5ec"/>
+
+    <rect x="128" y="131" width="58" height="18" rx="8" fill="url(#highlightFill)" stroke="#5ea8ff" stroke-width="1.8"/>
+    <rect x="133" y="137" width="46" height="7" rx="3.5" fill="#657386" opacity="0.86"/>
+  </g>
+
+  <g filter="url(#cardShadow)">
+    <rect x="119" y="78" width="89" height="41" rx="12" fill="#ffffff"/>
+    <path d="M151 118h21l-10.5 18z" fill="#ffffff"/>
+    <circle cx="138" cy="99" r="8.6" fill="#1472f5"/>
+    <rect x="153" y="92" width="40" height="7" rx="3.5" fill="#8d98aa"/>
+    <rect x="153" y="106" width="34" height="6" rx="3" fill="#c8ced8"/>
+  </g>
+
+  <g filter="url(#badgeShadow)">
+    <rect x="29" y="101" width="86" height="86" rx="21" fill="#ffffff"/>
+    <rect x="34" y="106" width="76" height="76" rx="18" fill="url(#badgeBlue)"/>
+    <path d="M51 122.5c0-1.38 1.12-2.5 2.5-2.5h37c1.38 0 2.5 1.12 2.5 2.5v12c0 1.38-1.12 2.5-2.5 2.5H78.8v31.5c0 1.38-1.12 2.5-2.5 2.5h-8.6c-1.38 0-2.5-1.12-2.5-2.5V137H53.5c-1.38 0-2.5-1.12-2.5-2.5v-12z" fill="#ffffff"/>
+  </g>
+</svg>
