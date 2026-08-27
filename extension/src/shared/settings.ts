@@ -1,4 +1,4 @@
-import type { ExtensionSettings, LlmSettings, PrivacySettings, PromptOverrides, TermPopMode } from "./types";
+import type { ExtensionSettings, LlmSettings, PrivacySettings, PromptOverrides, TermDictionaryEntry, TermPopMode } from "./types";
 
 export const DEFAULT_SETTINGS: ExtensionSettings = {
   mode: "hover",
@@ -158,6 +158,22 @@ export async function setPrivacySettings(privacy: PrivacySettings): Promise<void
       privacy: {
         ...DEFAULT_SETTINGS.privacy,
         ...privacy
+      }
+    }
+  });
+}
+
+export async function setUserDictionary(user: TermDictionaryEntry[]): Promise<void> {
+  const stored = await chrome.storage.local.get(SETTINGS_KEY);
+  const general = (stored[SETTINGS_KEY] ?? {}) as StoredGeneralSettings;
+  const { llm: _legacyLlm, ...rest } = general;
+  await chrome.storage.local.set({
+    [SETTINGS_KEY]: {
+      ...rest,
+      dictionary: {
+        ...DEFAULT_SETTINGS.dictionary,
+        ...general.dictionary,
+        user
       }
     }
   });

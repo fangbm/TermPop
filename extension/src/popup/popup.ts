@@ -1,6 +1,7 @@
-import { getSettings, setLlmSettings, setMode, setPrivacySettings } from "../shared/settings";
+import { getSettings, setLlmSettings, setMode, setPrivacySettings, setUserDictionary } from "../shared/settings";
 import { defaultBaseUrl, normalizeBaseUrl } from "../shared/llm-defaults";
 import { ALL_SITES_ORIGIN_PATTERNS, FILE_ORIGIN_PATTERN, providerOriginPatternFromBaseUrl } from "../shared/browser-utils";
+import { mergeUserDictionary, parseDictionaryImport } from "../shared/dictionary-import";
 import { termpopWebsiteUrl } from "../shared/website";
 import { clearIgnoredTerms, IGNORED_TERMS_STORAGE_KEY, parseIgnoredTerms, removeIgnoredTerm } from "../shared/ignored-terms";
 import { promptInstruction } from "../background/prompts";
@@ -61,6 +62,9 @@ const summarizeVisibleButton = document.querySelector<HTMLButtonElement>("#summa
 const batchExplainSelectionButton = document.querySelector<HTMLButtonElement>("#batch-explain-selection");
 const exportMarkdownButton = document.querySelector<HTMLButtonElement>("#export-markdown");
 const exportCsvButton = document.querySelector<HTMLButtonElement>("#export-csv");
+const importDictionaryButton = document.querySelector<HTMLButtonElement>("#import-dictionary");
+const importDictionaryFileInput = document.querySelector<HTMLInputElement>("#import-dictionary-file");
+const importDictionaryStatus = document.querySelector<HTMLParagraphElement>("#import-dictionary-status");
 const privacyLocalOnlyInput = document.querySelector<HTMLInputElement>("#privacy-local-only");
 const privacyPreviewBeforeSendInput = document.querySelector<HTMLInputElement>("#privacy-preview-before-send");
 const privacyDisableScreenshotUploadInput = document.querySelector<HTMLInputElement>("#privacy-disable-screenshot-upload");
@@ -167,6 +171,13 @@ const t = {
     exportMarkdown: "导出 Markdown",
     exportCsv: "导出 CSV",
     exportSucceeded: "本地数据已开始下载。",
+    importDictionary: "导入词表",
+    importDictionaryNote: "支持 TXT（每行一个词）和 CSV（读取 term 列或首列）。",
+    importDictionaryButton: "选择 CSV 或 TXT",
+    importDictionaryEmpty: "没有找到可导入的词条。",
+    importDictionarySucceeded: "已导入 {count} 个词条{skipped}。",
+    importDictionarySkipped: "，跳过 {count} 条无效内容",
+    importDictionaryFailed: "词表导入失败",
     privacyControls: "隐私控制",
     privacyControlsNote: "这些开关只影响此浏览器内的 TermPop。",
     localOnlyDictionary: "仅使用本地词库进行自动高亮",
@@ -269,6 +280,13 @@ const t = {
     exportMarkdown: "Export Markdown",
     exportCsv: "Export CSV",
     exportSucceeded: "Your local data download has started.",
+    importDictionary: "Import dictionary",
+    importDictionaryNote: "Supports TXT (one term per line) and CSV (the term column or first column).",
+    importDictionaryButton: "Choose CSV or TXT",
+    importDictionaryEmpty: "No importable terms were found.",
+    importDictionarySucceeded: "Imported {count} terms{skipped}.",
+    importDictionarySkipped: ", skipped {count} invalid rows",
+    importDictionaryFailed: "Dictionary import failed",
     privacyControls: "Privacy controls",
     privacyControlsNote: "These controls affect TermPop in this browser only.",
     localOnlyDictionary: "Use only the local dictionary for automatic highlighting",
@@ -406,6 +424,18 @@ async function init(): Promise<void> {
 
   exportCsvButton?.addEventListener("click", () => {
     void exportLocalData("csv");
+  });
+
+  importDictionaryButton?.addEventListener("click", () => {
+    importDictionaryFileInput?.click();
+  });
+
+  importDictionaryFileInput?.addEventListener("change", () => {
+    const [file] = importDictionaryFileInput.files ?? [];
+    if (file) {
+      void importUserDictionary(file);
+    }
+    importDictionaryFileInput.value = "";
   });
 
   for (const input of [privacyLocalOnlyInput, privacyPreviewBeforeSendInput, privacyDisableScreenshotUploadInput, privacyOnlyExplainSelectionInput]) {
@@ -844,6 +874,34 @@ async function exportLocalData(format: "markdown" | "csv"): Promise<void> {
   anchor.click();
   URL.revokeObjectURL(url);
   if (status) status.textContent = t[uiLocale].exportSucceeded;
+}
+
+async function importUserDictionary(file: File): Promise<void> {
+  try {
+    const { entries: imported, skipped } = parseDictionaryImport(file.name, await file.text());
+    if (!imported.length) {
+      if (importDictionaryStatus) importDictionaryStatus.textContent = t[uiLocale].importDictionaryEmpty;
+      return;
+    }
+
+    const settings = await getSettings();
+    const { entries, added } = mergeUserDictionary(settings.dictionary.user, imported);
+    await enqueueSettingsWrite(() => setUserDictionary(entries));
+    const totalSkipped = skipped + imported.length - added;
+    const skippedText = totalSkipped
+      ? t[uiLocale].importDictionarySkipped.replace("{count}", String(totalSkipped))
+      : "";
+    if (importDictionaryStatus) {
+      importDictionaryStatus.textContent = t[uiLocale].importDictionarySucceeded
+        .replace("{count}", String(added))
+        .replace("{skipped}", skippedText);
+    }
+  } catch (error) {
+    if (importDictionaryStatus) {
+      const detail = error instanceof Error ? error.message : String(error);
+      importDictionaryStatus.textContent = `${t[uiLocale].importDictionaryFailed}: ${detail}`;
+    }
+  }
 }
 
 function toMarkdownExport(userTerms: Awaited<ReturnType<typeof getSettings>>["dictionary"]["user"], ignoredTerms: string[]): string {

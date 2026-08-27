@@ -1,6 +1,7 @@
 import { addCachedTerms, buildExplanationCacheKey, detectCachedTerms, getCachedTerms, getPersistentExplanation, setPersistentExplanation } from "../src/background/cache.ts";
 import { isCachedTermAvailable, mergeCachedTermView } from "../src/content/cache-view.ts";
 import { getSettings } from "../src/shared/settings.ts";
+import { mergeUserDictionary, parseDictionaryImport } from "../src/shared/dictionary-import.ts";
 import type { DetectedTerm, Explanation, LlmSettings } from "../src/shared/types.ts";
 import { addIgnoredTerm, clearIgnoredTerms, filterIgnoredCachedTerms, filterIgnoredDetectedTerms, ignoredTermSet, normalizeIgnoredTerm, parseIgnoredTerms, removeIgnoredTerm } from "../src/shared/ignored-terms.ts";
 
@@ -44,6 +45,7 @@ const storage: Record<string, unknown> = {
 await testTermCacheScopes();
 await testExplanationCache();
 await testUserDictionarySettings();
+testDictionaryImport();
 testContentCacheView();
 await testIgnoredTerms();
 console.log("ok - cache scopes, explanation persistence, user dictionary settings, and ignored terms");
@@ -89,6 +91,22 @@ async function testUserDictionarySettings(): Promise<void> {
   equal(settings.dictionary.user[0].term, "星穹检索");
   equal(settings.llm.screenshotRecognitionEnabled, true);
   equal(settings.llm.screenshotRecognitionMode, "auto");
+}
+
+function testDictionaryImport(): void {
+  const text = parseDictionaryImport("terms.txt", "Rust\n# comment\n  WebAssembly  \n\n");
+  equal(text.entries.map((entry) => entry.term).join(","), "Rust,WebAssembly");
+
+  const exported = parseDictionaryImport(
+    "termpop.csv",
+    "kind,term,term_type,confidence\nuser_dictionary,LLM,Acronym,0.9\nignored_term,task,,\nuser_dictionary,Transformer,Tech,1\n"
+  );
+  equal(exported.entries.map((entry) => entry.term).join(","), "LLM,Transformer");
+  equal(exported.entries[0].term_type, "Acronym");
+
+  const merged = mergeUserDictionary([{ term: "rust", term_type: "Custom", confidence: 1 }], text.entries);
+  equal(merged.added, 1);
+  equal(merged.entries.map((entry) => entry.term).join(","), "rust,WebAssembly");
 }
 
 function testContentCacheView(): void {

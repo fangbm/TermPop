@@ -347,6 +347,7 @@ textarea { min-height: 136px; padding: 10px; line-height: 1.5; resize: vertical;
 
 .site-resources-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .site-resources-actions button { min-height: 30px; }
+.import-dictionary-status { min-height: 0; margin: -3px 0 0; font-size: 11px; }
 
 .ignored-terms-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .ignored-terms-header button { min-height: 28px; padding: 0 8px; font-size: 11px; white-space: nowrap; }

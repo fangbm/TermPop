@@ -189,6 +189,15 @@
               <button id="export-csv" class="secondary-button" type="button" data-i18n="exportCsv">导出 CSV</button>
             </div>
           </section>
+          <section class="site-resources" aria-label="Import user dictionary" data-i18n-attr="aria-label:importDictionary">
+            <div>
+              <strong data-i18n="importDictionary">导入词表</strong>
+              <p data-i18n="importDictionaryNote">支持 TXT（每行一个词）和 CSV（读取 term 列或首列）。</p>
+            </div>
+            <input id="import-dictionary-file" type="file" accept=".txt,.csv,text/plain,text/csv" hidden />
+            <button id="import-dictionary" class="secondary-button full-width-button" type="button" data-i18n="importDictionaryButton">选择 CSV 或 TXT</button>
+            <p id="import-dictionary-status" class="import-dictionary-status" role="status"></p>
+          </section>
           <div class="inline-fields">
             <label>
               <span data-i18n="temperature">温度</span>
