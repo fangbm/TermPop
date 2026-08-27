@@ -478,8 +478,14 @@ async function renderPdfToolsVisibility(): Promise<void> {
   if (!pdfTools) {
     return;
   }
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  pdfTools.hidden = !extractPdfUrl(tab?.url ?? "");
+  pdfTools.hidden = true;
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    pdfTools.hidden = !extractPdfUrl(tab?.url ?? "");
+  } catch {
+    // A popup must never advertise the PDF viewer without a confirmed PDF tab.
+    pdfTools.hidden = true;
+  }
 }
 
 async function renderSiteAccess(): Promise<void> {
