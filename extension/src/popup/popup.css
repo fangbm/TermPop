@@ -323,7 +323,7 @@ textarea { min-height: 136px; padding: 10px; line-height: 1.5; resize: vertical;
 
 .advanced-toggle { min-height: 36px; border-style: dashed; }
 .advanced-settings { background: #f8fbff; }
-.inline-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.inline-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .prompt-editor { display: grid; gap: 8px; padding-top: 2px; }
 .prompt-editor-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .prompt-editor-header label { color: #53627a; font-size: 11px; font-weight: 720; }
