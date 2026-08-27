@@ -19,22 +19,6 @@ export function defaultBaseUrl(provider: LlmProvider): string {
   return "https://api.openai.com/v1";
 }
 
-export function defaultModel(provider: LlmProvider): string {
-  if (provider === "kimi") {
-    return "moonshot-v1-8k";
-  }
-  if (provider === "deepseek") {
-    return "deepseek-chat";
-  }
-  if (provider === "stepfun" || provider === "step-plan") {
-    return "step-3.7-flash";
-  }
-  if (provider === "anthropic") {
-    return "claude-3-5-haiku-latest";
-  }
-  return "gpt-4.1-mini";
-}
-
 export function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, "");
 }

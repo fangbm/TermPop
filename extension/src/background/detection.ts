@@ -9,7 +9,7 @@ import { createLlmProvider } from "./llm-provider";
 import { assertPartialBatchSuccess, PartialBatchAllFailedError, runPartialBatch } from "./partial-batch";
 import { assertLlmProviderAuthorized } from "./provider-access";
 import { buildTermExtractionPrompt, buildTermExtractionSystemPrompt } from "./prompts";
-import { debugLog, defaultBaseUrl, defaultModel, sanitizeForLog } from "./utils";
+import { debugLog, defaultBaseUrl, sanitizeForLog } from "./utils";
 import { detectWithWasm } from "./wasm-runtime";
 import { filterIgnoredDetectedTerms, loadIgnoredTermSet } from "../shared/ignored-terms";
 
@@ -68,7 +68,7 @@ export async function detectTerms(
     provider: settings.llm.provider,
     apiKey: settings.llm.apiKey,
     baseUrl: settings.llm.baseUrl || defaultBaseUrl(settings.llm.provider),
-    model: settings.llm.model || defaultModel(settings.llm.provider),
+    model: settings.llm.model.trim(),
     language: settings.llm.language,
     temperature: settings.llm.temperature,
     maxTokens: settings.llm.maxTokens,
@@ -180,7 +180,7 @@ async function fetchLlmDetectedTerms(text: string, settings: LlmSettings, primar
 
     debugLog(`TermPop LLM detection raw response ${chunk.index + 1}/${chunks.length}`, {
       provider: settings.provider,
-      model: settings.model || defaultModel(settings.provider),
+      model: settings.model.trim(),
       chunkStart: chunk.start,
       inputPreview: sanitizeForLog(chunk.text, 300),
       rawPreview: sanitizeForLog(content, 500)
@@ -215,7 +215,7 @@ async function fetchLlmDetectedTerms(text: string, settings: LlmSettings, primar
     debugLog(`TermPop LLM detection parse failed ${chunk.index + 1}/${chunks.length}`, {
       error: sanitizeForLog(message, 300),
       provider: settings.provider,
-      model: settings.model || defaultModel(settings.provider),
+      model: settings.model.trim(),
       chunkStart: chunk.start,
       inputPreview: sanitizeForLog(chunk.text, 500),
       failedChunk: chunk.index + 1

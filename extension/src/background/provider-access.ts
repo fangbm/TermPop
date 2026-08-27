@@ -2,10 +2,13 @@ import { providerOriginPatternFromBaseUrl } from "../shared/browser-utils";
 import type { LlmSettings } from "../shared/types";
 import { hasAllSitesAccess } from "./site-access";
 
-export const LLM_NOT_CONFIGURED_ERROR = "LLM is not configured. Add an API key in TermPop settings.";
+export const LLM_NOT_CONFIGURED_ERROR = "LLM is not configured. Add an API key and model name in TermPop settings.";
 
 export async function assertLlmProviderAuthorized(settings: LlmSettings): Promise<void> {
   if (!settings.apiKey.trim()) {
+    throw new Error(LLM_NOT_CONFIGURED_ERROR);
+  }
+  if (!settings.model.trim()) {
     throw new Error(LLM_NOT_CONFIGURED_ERROR);
   }
 

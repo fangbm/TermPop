@@ -2,7 +2,7 @@ import { findAllowedOccurrences } from "../shared/term-matching.ts";
 import type { CachedTermEntry, CacheScope, DetectedTerm, Explanation, LlmSettings } from "../shared/types";
 import { normalizeTermType } from "../shared/types.ts";
 import { domainFromUrl } from "../shared/browser-utils.ts";
-import { debugLog, defaultBaseUrl, defaultModel, hashString, isExplanation, normalizeBaseUrl, normalizeCacheContext, normalizeCacheTerm } from "./utils.ts";
+import { debugLog, defaultBaseUrl, hashString, isExplanation, normalizeBaseUrl, normalizeCacheContext, normalizeCacheTerm } from "./utils.ts";
 import { pruneEntriesToByteBudget, serializedEntriesByteSize } from "./cache-helpers.ts";
 import { filterIgnoredCachedTerms, isIgnoredTerm, loadIgnoredTermSet } from "../shared/ignored-terms.ts";
 
@@ -166,7 +166,7 @@ export async function setPersistentExplanation(cacheKey: string, explanation: Ex
 export function buildExplanationCacheKey(term: string, context: string | undefined, cacheScope: string | undefined, settings: LlmSettings): string {
   const provider = settings.provider;
   const baseUrl = normalizeBaseUrl(settings.baseUrl || defaultBaseUrl(settings.provider));
-  const model = settings.model || defaultModel(settings.provider);
+  const model = settings.model.trim();
   const normalizedTerm = normalizeCacheTerm(term);
   const contextFingerprint = hashString(normalizeCacheContext(context));
   const scopeFingerprint = hashString((cacheScope || "global").slice(0, 1200));

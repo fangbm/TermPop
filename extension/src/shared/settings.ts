@@ -5,7 +5,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   llm: {
     provider: "openai",
     apiKey: "",
-    model: "gpt-4.1-mini",
+    model: "",
     baseUrl: "https://api.openai.com/v1",
     language: "auto",
     includeUsageExample: false,
@@ -76,7 +76,7 @@ function normalizeLlmSettings(stored: Partial<LlmSettings> | undefined): LlmSett
     provider,
     // A mock profile cannot make real requests. Reset it to an explicit, unconfigured OpenAI profile.
     apiKey: wasLegacyMock ? "" : stored?.apiKey?.trim() ?? "",
-    model: wasLegacyMock ? DEFAULT_SETTINGS.llm.model : stored?.model?.trim() || DEFAULT_SETTINGS.llm.model,
+    model: wasLegacyMock ? "" : stored?.model?.trim() ?? "",
     baseUrl: wasLegacyMock ? DEFAULT_SETTINGS.llm.baseUrl : stored?.baseUrl?.trim() || DEFAULT_SETTINGS.llm.baseUrl,
     promptOverrides: normalizePromptOverrides(stored?.promptOverrides)
   };

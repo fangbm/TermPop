@@ -1,5 +1,5 @@
 import { getSettings, setLlmSettings, setMode } from "../shared/settings";
-import { defaultBaseUrl, defaultModel, normalizeBaseUrl } from "../shared/llm-defaults";
+import { defaultBaseUrl, normalizeBaseUrl } from "../shared/llm-defaults";
 import { ALL_SITES_ORIGIN_PATTERNS, FILE_ORIGIN_PATTERN, providerOriginPatternFromBaseUrl } from "../shared/browser-utils";
 import { termpopWebsiteUrl } from "../shared/website";
 import { clearIgnoredTerms, IGNORED_TERMS_STORAGE_KEY, parseIgnoredTerms, removeIgnoredTerm } from "../shared/ignored-terms";
@@ -641,7 +641,7 @@ function collectLlmSettings(): LlmSettings {
   const llm: LlmSettings = {
     provider: (providerInput?.value || "openai") as LlmProvider,
     apiKey: apiKeyInput?.value.trim() || "",
-    model: modelInput?.value.trim() || defaultModel((providerInput?.value || "openai") as LlmProvider),
+    model: modelInput?.value.trim() || "",
     baseUrl: normalizeBaseUrl(baseUrlInput?.value.trim() || defaultBaseUrl((providerInput?.value || "openai") as LlmProvider)),
     language: (languageInput?.value || "auto") as ExplanationLanguage,
     includeUsageExample: includeUsageExampleInput?.checked ?? false,
@@ -836,7 +836,7 @@ function applyUiLocale(): void {
 
 function applyProviderDefaults(provider: LlmProvider): void {
   if (modelInput) {
-    modelInput.value = defaultModel(provider);
+    modelInput.value = "";
   }
   if (baseUrlInput) {
     baseUrlInput.value = defaultBaseUrl(provider);

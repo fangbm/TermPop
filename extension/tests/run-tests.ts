@@ -7,7 +7,7 @@ import { isSiteEnabledByPolicy } from "../src/background/site-access-policy.ts";
 import { parseScreenshotRecognition, splitImageDataUrl } from "../src/background/vision.ts";
 import { inferImageInputCapability, isImageInputUnsupportedError, shouldStartWithOcr } from "../src/background/model-capabilities.ts";
 import { buildExplanationSystemPrompt, buildFollowUpSystemPrompt, buildTermExtractionSystemPrompt, promptInstruction } from "../src/background/prompts.ts";
-import { defaultBaseUrl, defaultModel } from "../src/shared/llm-defaults.ts";
+import { defaultBaseUrl } from "../src/shared/llm-defaults.ts";
 import { utf8ByteOffsetToUtf16Index } from "../src/shared/unicode.ts";
 import { cancelPdfSessionToken, createPdfSessionToken, drainPdfLlmQueue, isPdfSessionCurrent } from "../src/pdf-viewer/pdf-session.ts";
 import type { Explanation } from "../src/shared/types.ts";
@@ -16,14 +16,11 @@ type TestCase = { name: string; run: () => void | Promise<void> };
 
 const tests: TestCase[] = [
   {
-    name: "provider presets supply compatible default endpoints and models",
+    name: "provider presets supply compatible default endpoints without a forced model",
     run: () => {
       equal(defaultBaseUrl("deepseek"), "https://api.deepseek.com/v1");
-      equal(defaultModel("deepseek"), "deepseek-chat");
       equal(defaultBaseUrl("stepfun"), "https://api.stepfun.com/v1");
-      equal(defaultModel("stepfun"), "step-3.7-flash");
       equal(defaultBaseUrl("step-plan"), "https://api.stepfun.com/step_plan/v1");
-      equal(defaultModel("step-plan"), "step-3.7-flash");
     }
   },
   {

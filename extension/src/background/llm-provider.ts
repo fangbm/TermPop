@@ -9,7 +9,7 @@ import {
   buildScreenshotRecognitionPrompt,
   buildScreenshotRecognitionSystemPrompt
 } from "./prompts";
-import { defaultBaseUrl, defaultModel, normalizeBaseUrl, sanitizeForLog } from "./utils";
+import { defaultBaseUrl, normalizeBaseUrl, sanitizeForLog } from "./utils";
 import { parseScreenshotRecognition, splitImageDataUrl } from "./vision";
 import { readSsePayloads } from "./streaming";
 
@@ -125,7 +125,7 @@ async function fetchOpenAiCompatibleFollowUpStream(
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${settings.apiKey}` },
     body: JSON.stringify({
-      model: settings.model || defaultModel(settings.provider),
+      model: settings.model.trim(),
       temperature: settings.temperature,
       max_tokens: settings.maxTokens,
       stream: true,
@@ -184,7 +184,7 @@ async function fetchAnthropicFollowUpStream(
       "anthropic-dangerous-direct-browser-access": "true"
     },
     body: JSON.stringify({
-      model: settings.model || defaultModel(settings.provider),
+      model: settings.model.trim(),
       max_tokens: settings.maxTokens,
       temperature: settings.temperature,
       stream: true,
@@ -224,7 +224,7 @@ async function fetchOpenAiCompatibleScreenshotRecognition(
       authorization: `Bearer ${settings.apiKey}`
     },
     body: JSON.stringify({
-      model: settings.model || defaultModel(settings.provider),
+      model: settings.model.trim(),
       temperature: Math.min(settings.temperature, 0.1),
       max_tokens: Math.max(128, Math.min(settings.maxTokens, 450)),
       messages: [
@@ -273,7 +273,7 @@ async function fetchAnthropicScreenshotRecognition(
       "anthropic-dangerous-direct-browser-access": "true"
     },
     body: JSON.stringify({
-      model: settings.model || defaultModel(settings.provider),
+      model: settings.model.trim(),
       max_tokens: Math.max(128, Math.min(settings.maxTokens, 450)),
       temperature: Math.min(settings.temperature, 0.1),
       system: buildScreenshotRecognitionSystemPrompt(settings.language, settings.promptOverrides?.screenshot),
@@ -321,7 +321,7 @@ async function fetchOpenAiCompatibleExplanation(
       authorization: `Bearer ${settings.apiKey}`
     },
     body: JSON.stringify({
-      model: settings.model || defaultModel(settings.provider),
+      model: settings.model.trim(),
       temperature: settings.temperature,
       max_tokens: settings.maxTokens,
       messages: [
@@ -363,7 +363,7 @@ async function fetchAnthropicExplanation(
       "anthropic-dangerous-direct-browser-access": "true"
     },
     body: JSON.stringify({
-      model: settings.model || defaultModel(settings.provider),
+      model: settings.model.trim(),
       max_tokens: settings.maxTokens,
       temperature: settings.temperature,
       system: buildExplanationSystemPrompt(settings.language, settings.includeUsageExample, settings.promptOverrides?.explanation),
@@ -401,7 +401,7 @@ async function fetchOpenAiCompatibleDetectionText(settings: LlmSettings, system:
       authorization: `Bearer ${settings.apiKey}`
     },
     body: JSON.stringify({
-      model: settings.model || defaultModel(settings.provider),
+      model: settings.model.trim(),
       temperature: Math.min(settings.temperature, 0.1),
       response_format: { type: "json_object" },
       reasoning_effort: "low",
@@ -432,7 +432,7 @@ async function fetchAnthropicText(settings: LlmSettings, prompt: string, signal?
       "anthropic-dangerous-direct-browser-access": "true"
     },
     body: JSON.stringify({
-      model: settings.model || defaultModel(settings.provider),
+      model: settings.model.trim(),
       temperature: Math.min(settings.temperature, 0.1),
       system: "Return only valid JSON.",
       messages: [{ role: "user", content: prompt }]

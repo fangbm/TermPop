@@ -1,7 +1,7 @@
 import type { Explanation, ExplanationLanguage } from "../shared/types";
 import { sanitizeForLog as sanitizeValueForLog } from "../shared/browser-utils.ts";
 export { hashString, sanitizeForLog } from "../shared/browser-utils.ts";
-export { defaultBaseUrl, defaultModel, normalizeBaseUrl } from "../shared/llm-defaults.ts";
+export { defaultBaseUrl, normalizeBaseUrl } from "../shared/llm-defaults.ts";
 
 export function normalizeCacheTerm(term: string): string {
   return term.trim().toLocaleLowerCase();
