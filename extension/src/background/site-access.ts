@@ -4,6 +4,7 @@ import {
   BLOCKED_SITES_STORAGE_KEY,
   FILE_ORIGIN_PATTERN,
   LEGACY_SITE_ACCESS_STORAGE_KEY,
+  hasAllSitesPermission,
   originPatternFromUrl
 } from "../shared/browser-utils";
 import { sanitizeForLog } from "./utils";
@@ -97,24 +98,12 @@ export async function isUrlEnabled(url: string | undefined): Promise<boolean> {
 }
 
 export async function hasAllSitesAccess(): Promise<boolean> {
-  return chrome.permissions.contains({ origins: [...ALL_SITES_ORIGIN_PATTERNS] });
+  const permissions = await chrome.permissions.getAll();
+  return hasAllSitesPermission(permissions.origins);
 }
 
 export async function migrateLegacySiteAccess(): Promise<void> {
   await chrome.storage.local.remove([LEGACY_SITE_ACCESS_STORAGE_KEY, "termpop.authorizedProviderOrigins"]);
-
-  // Old releases granted individual site and provider origins. Remove those
-  // grants before the user opts into the new all-sites permission model.
-  if (!await hasAllSitesAccess()) {
-    const permissions = await chrome.permissions.getAll();
-    const legacyOrigins = (permissions.origins ?? []).filter((origin) =>
-      origin !== FILE_ORIGIN_PATTERN
-      && !ALL_SITES_ORIGIN_PATTERNS.includes(origin as typeof ALL_SITES_ORIGIN_PATTERNS[number])
-    );
-    if (legacyOrigins.length > 0) {
-      await chrome.permissions.remove({ origins: legacyOrigins });
-    }
-  }
 }
 
 export async function injectContentScriptForTab(tabId: number, url: string | undefined): Promise<boolean> {

@@ -4,6 +4,7 @@ import { assertPartialBatchSuccess, runPartialBatch } from "../src/background/pa
 import { canUseCachedExplanation, pruneEntriesToByteBudget, serializedEntriesByteSize, utf8ByteSize } from "../src/background/cache-helpers.ts";
 import { setPersistentExplanation } from "../src/background/cache.ts";
 import { isSiteEnabledByPolicy } from "../src/background/site-access-policy.ts";
+import { hasAllSitesPermission } from "../src/shared/browser-utils.ts";
 import { parseScreenshotRecognition, splitImageDataUrl } from "../src/background/vision.ts";
 import { inferImageInputCapability, isImageInputUnsupportedError, shouldStartWithOcr } from "../src/background/model-capabilities.ts";
 import { buildExplanationSystemPrompt, buildFollowUpSystemPrompt, buildTermExtractionSystemPrompt, promptInstruction } from "../src/background/prompts.ts";
@@ -234,6 +235,15 @@ const tests: TestCase[] = [
         filePermission: true,
         blockedOrigins: []
       }), true);
+    }
+  },
+  {
+    name: "all-sites access accepts Chromium canonical permission patterns",
+    run: () => {
+      ok(hasAllSitesPermission(["http://*/*", "https://*/*"]));
+      ok(hasAllSitesPermission(["*://*/*"]));
+      ok(hasAllSitesPermission(["<all_urls>"]));
+      ok(!hasAllSitesPermission(["https://example.com/*"]));
     }
   },
   {

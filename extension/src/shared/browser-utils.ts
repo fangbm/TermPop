@@ -3,6 +3,14 @@ export const BLOCKED_SITES_STORAGE_KEY = "termpop.blockedOrigins";
 export const ALL_SITES_ORIGIN_PATTERNS = ["http://*/*", "https://*/*"] as const;
 export const FILE_ORIGIN_PATTERN = "file:///*";
 
+/** Chromium may canonicalize an all-sites grant to either of these patterns. */
+export function hasAllSitesPermission(origins: readonly string[] | undefined): boolean {
+  const granted = new Set(origins ?? []);
+  return granted.has("<all_urls>")
+    || granted.has("*://*/*")
+    || ALL_SITES_ORIGIN_PATTERNS.every((origin) => granted.has(origin));
+}
+
 export function originPatternFromUrl(value: string | undefined): string | undefined {
   if (!value || /^chrome(?:-extension)?:/i.test(value) || /^edge:/i.test(value) || /^about:/i.test(value)) {
     return undefined;
