@@ -732,10 +732,11 @@ function setupSelectionMessageListener(): void {
         sendResponse({ ok: false, error: "TermPop is disabled on this site." });
         return false;
       }
-      void requestReadingAssist("summary", collectVisibleReadingText())
-        .then(() => sendResponse({ ok: true }))
-        .catch((error: unknown) => sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) }));
-      return true;
+      void requestReadingAssist("summary", collectVisibleReadingText()).catch((error: unknown) => {
+        console.warn("TermPop reading summary failed", error);
+      });
+      sendResponse({ ok: true });
+      return false;
     }
 
     if (message.type === "TERMPOP_EXPLAIN_SELECTION_TERMS") {
@@ -744,10 +745,11 @@ function setupSelectionMessageListener(): void {
         return false;
       }
       const selectedText = window.getSelection()?.toString() ?? "";
-      void requestReadingAssist("batch", selectedText)
-        .then(() => sendResponse({ ok: true }))
-        .catch((error: unknown) => sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) }));
-      return true;
+      void requestReadingAssist("batch", selectedText).catch((error: unknown) => {
+        console.warn("TermPop batch explanation failed", error);
+      });
+      sendResponse({ ok: true });
+      return false;
     }
 
     if (message.type !== "TERMPOP_EXPLAIN_SELECTION") {

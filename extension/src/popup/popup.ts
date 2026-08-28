@@ -874,7 +874,7 @@ async function exportLocalData(format: "markdown" | "csv"): Promise<void> {
   anchor.href = url;
   anchor.download = `termpop-local-data-${new Date().toISOString().slice(0, 10)}.${extension}`;
   anchor.click();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
   if (status) status.textContent = t[uiLocale].exportSucceeded;
 }
 
