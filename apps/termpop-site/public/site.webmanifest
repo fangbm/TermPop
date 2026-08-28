@@ -1,0 +1,25 @@
+{
+  "name": "TermPop - Explain terms without leaving the page",
+  "short_name": "TermPop",
+  "description": "A Chrome and Edge extension that highlights technical terms and explains them in context.",
+  "icons": [
+    {
+      "src": "/favicon-48.png",
+      "sizes": "48x48",
+      "type": "image/png"
+    },
+    {
+      "src": "/termpop-icon.png",
+      "sizes": "128x128",
+      "type": "image/png"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ],
+  "display": "standalone",
+  "theme_color": "#ffffff",
+  "background_color": "#f7f9fd"
+}
