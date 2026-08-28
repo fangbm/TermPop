@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://termpop.com/?lang=en</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://termpop.com/?lang=en" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://termpop.com/?lang=zh" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://termpop.com/?lang=en" />
+    <lastmod>2026-08-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://termpop.com/guide?lang=en</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://termpop.com/guide?lang=en" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://termpop.com/guide?lang=zh" />
+    <lastmod>2026-08-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://termpop.com/docs?lang=en</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://termpop.com/docs?lang=en" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://termpop.com/docs?lang=zh" />
+    <lastmod>2026-08-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+</urlset>

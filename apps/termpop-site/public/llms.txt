@@ -1,0 +1,33 @@
+# TermPop
+
+> TermPop is a browser extension for reading technical content. It highlights terms and offers contextual explanations without making the reader leave the current page.
+
+## Official links
+
+- Website: https://termpop.com/
+- Quick-start guide: https://termpop.com/guide?lang=en
+- Documentation: https://termpop.com/docs?lang=en
+- Source code and releases: https://github.com/fangbm/TermPop
+- Microsoft Edge Add-ons: https://microsoftedge.microsoft.com/addons/detail/termpop/blphbffphknkkblackimhnjbckegnchn
+
+## Capabilities
+
+- Highlights technical terms in ordinary web pages.
+- Explains a hovered term or a user-selected phrase in context.
+- Supports hover, selection, and hybrid reading modes.
+- Supports screenshot explanations with a vision-capable model or local OCR fallback.
+- Includes a dedicated PDF viewer; direct injection into built-in browser PDF viewers is not supported.
+- Uses a Rust and WebAssembly core for local term matching.
+- Provides a personal dictionary, ignored-term list, and separate term and explanation caches.
+
+## Privacy and LLM configuration
+
+- Core Rust/WebAssembly matching runs locally in the browser.
+- Users can configure a bring-your-own-key provider locally.
+- When an LLM feature is used, only the needed selected text, contextual excerpt, or enabled screenshot is sent to that user-selected provider.
+- API keys are stored in browser local storage and are not hardened secret storage.
+
+## Browser support
+
+- Microsoft Edge and Chromium-based browsers.
+- The Edge store is the preferred download destination for Microsoft Edge.

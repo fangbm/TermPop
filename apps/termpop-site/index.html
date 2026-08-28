@@ -7,6 +7,25 @@
       name="description"
       content="TermPop is a Chrome and Edge extension that highlights technical terms and explains them without leaving the page."
     />
+    <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
+    <meta name="theme-color" content="#f7f9fd" />
+    <link rel="canonical" href="https://termpop.com/?lang=en" />
+    <link rel="alternate" hreflang="en" href="https://termpop.com/?lang=en" />
+    <link rel="alternate" hreflang="zh-CN" href="https://termpop.com/?lang=zh" />
+    <link rel="alternate" hreflang="x-default" href="https://termpop.com/?lang=en" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="TermPop" />
+    <meta property="og:title" content="TermPop - Explain terms without leaving the page" />
+    <meta property="og:description" content="A Chrome and Edge extension that highlights technical terms and explains them in context." />
+    <meta property="og:url" content="https://termpop.com/?lang=en" />
+    <meta property="og:image" content="https://termpop.com/og-card.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="TermPop browser extension" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="TermPop - Explain terms without leaving the page" />
+    <meta name="twitter:description" content="A Chrome and Edge extension that highlights technical terms and explains them in context." />
+    <meta name="twitter:image" content="https://termpop.com/og-card.png" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png" />
@@ -14,6 +33,51 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
     <title>TermPop - Explain terms without leaving the page</title>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "name": "TermPop",
+            "url": "https://termpop.com/",
+            "logo": "https://termpop.com/termpop-icon.png",
+            "sameAs": [
+              "https://github.com/fangbm/TermPop",
+              "https://microsoftedge.microsoft.com/addons/detail/termpop/blphbffphknkkblackimhnjbckegnchn"
+            ]
+          },
+          {
+            "@type": "WebSite",
+            "name": "TermPop",
+            "url": "https://termpop.com/",
+            "inLanguage": ["en", "zh-CN"]
+          },
+          {
+            "@type": "SoftwareApplication",
+            "name": "TermPop",
+            "applicationCategory": "BrowserApplication",
+            "operatingSystem": "Chrome, Microsoft Edge",
+            "url": "https://termpop.com/",
+            "description": "A browser extension that highlights technical terms and explains them in context without leaving the page.",
+            "image": "https://termpop.com/og-card.png",
+            "inLanguage": ["en", "zh-CN"],
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "USD"
+            },
+            "featureList": [
+              "Automatic technical-term highlighting",
+              "Contextual hover explanations",
+              "Selected-text explanations",
+              "Screenshot explanations",
+              "Local Rust and WebAssembly matching"
+            ]
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

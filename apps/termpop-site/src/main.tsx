@@ -314,6 +314,11 @@ const copy: Record<Language, Copy> = {
 };
 
 function initialLanguage(): Language {
+  const requested = new URLSearchParams(window.location.search).get("lang");
+  if (requested === "en" || requested === "zh") {
+    return requested;
+  }
+
   const saved = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
   if (saved === "en" || saved === "zh") {
     return saved;
@@ -343,6 +348,16 @@ function routePath(route: SiteRoute): string {
   return "/";
 }
 
+function siteUrl(route: SiteRoute, language: Language): string {
+  const path = routePath(route);
+  return `https://termpop.com${path === "/" ? "/" : path}?lang=${language}`;
+}
+
+function setMeta(selector: string, content: string): void {
+  const element = document.head.querySelector<HTMLMetaElement>(selector);
+  element?.setAttribute("content", content);
+}
+
 function App(): React.ReactElement {
   const [language, setLanguage] = useState<Language>(initialLanguage);
   const [route, setRoute] = useState<SiteRoute>(currentRoute);
@@ -351,9 +366,21 @@ function App(): React.ReactElement {
   useEffect(() => {
     window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
     document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
-    document.title =
-      language === "zh" ? "TermPop - 不离开页面，也能看懂术语" : "TermPop - Explain terms without leaving the page";
-  }, [language]);
+    const title = language === "zh" ? "TermPop - 不离开页面，也能看懂术语" : "TermPop - Explain terms without leaving the page";
+    const description = language === "zh"
+      ? "TermPop 是一款 Chrome 和 Edge 浏览器插件，会标记技术术语，并在不离开页面的情况下结合上下文解释它们。"
+      : "TermPop is a Chrome and Edge extension that highlights technical terms and explains them without leaving the page.";
+    const canonical = siteUrl(route, language);
+
+    document.title = title;
+    setMeta('meta[name="description"]', description);
+    setMeta('meta[property="og:title"]', title);
+    setMeta('meta[property="og:description"]', description);
+    setMeta('meta[property="og:url"]', canonical);
+    setMeta('meta[name="twitter:title"]', title);
+    setMeta('meta[name="twitter:description"]', description);
+    document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.setAttribute("href", canonical);
+  }, [language, route]);
 
   useEffect(() => {
     const handlePopState = () => setRoute(currentRoute());
@@ -364,15 +391,22 @@ function App(): React.ReactElement {
   const navigate = (nextRoute: SiteRoute) => {
     const nextPath = routePath(nextRoute);
     if (window.location.pathname !== nextPath) {
-      window.history.pushState({}, "", `${nextPath}${nextRoute === "guide" ? window.location.search : ""}`);
+      window.history.pushState({}, "", `${nextPath}?lang=${language}`);
     }
     setRoute(nextRoute);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const changeLanguage = (nextLanguage: Language) => {
+    setLanguage(nextLanguage);
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.set("lang", nextLanguage);
+    window.history.replaceState({}, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+  };
+
   return (
     <main>
-      <Nav language={language} navigate={navigate} route={route} setLanguage={setLanguage} t={t} />
+      <Nav language={language} navigate={navigate} route={route} setLanguage={changeLanguage} t={t} />
       {route === "home" ? (
         <>
           <Hero t={t} />
