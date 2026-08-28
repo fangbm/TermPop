@@ -5,6 +5,8 @@ import type {
   BeginScreenshotSelectionRequest,
   BeginScreenshotSelectionResponse,
   CachedTermEntry,
+  ContentReadyRequest,
+  ContentReadyResponse,
   DetectTermsRequest,
   DetectTermsResponse,
   DetectedTerm,
@@ -83,7 +85,12 @@ const hoverTimerIds = new Set<number>();
 const explanationRequestIds = new WeakMap<HTMLElement, number>();
 let explanationRequestSeq = 0;
 const debugOptions = readDebugOptions();
-const runtimeState = globalThis as typeof globalThis & { __termpopBooted?: boolean };
+const runtimeState = globalThis as typeof globalThis & {
+  __termpopBooted?: boolean;
+  __termpopBootPromise?: Promise<void>;
+  __termpopReadyListenerBound?: boolean;
+};
+let bootError: unknown;
 let cachedPageFingerprint: { value: string; at: number; url: string } | undefined;
 let dictionaryJson: string | undefined;
 let ignoredTerms = new Set<string>();
@@ -106,9 +113,40 @@ interface DebugOptions {
   disableCache: boolean;
 }
 
-if (!runtimeState.__termpopBooted) {
+if (!runtimeState.__termpopBootPromise) {
   runtimeState.__termpopBooted = true;
-  void boot();
+  runtimeState.__termpopBootPromise = boot().catch((error: unknown) => {
+    bootError = error;
+    console.warn("TermPop content initialization failed", sanitizeForLog(error, 300));
+  });
+}
+
+setupContentReadyListener();
+
+function setupContentReadyListener(): void {
+  if (runtimeState.__termpopReadyListenerBound) {
+    return;
+  }
+  runtimeState.__termpopReadyListenerBound = true;
+  chrome.runtime.onMessage.addListener((message: ContentReadyRequest, _sender, sendResponse) => {
+    if (message.type !== "TERMPOP_CONTENT_READY") {
+      return false;
+    }
+
+    void runtimeState.__termpopBootPromise
+      ?.then(() => {
+        if (bootError) {
+          sendResponse({
+            ok: false,
+            ready: false,
+            error: "TermPop could not initialize on this page."
+          } satisfies ContentReadyResponse);
+          return;
+        }
+        sendResponse({ ok: true, ready: true } satisfies ContentReadyResponse);
+      });
+    return true;
+  });
 }
 
 async function boot(): Promise<void> {

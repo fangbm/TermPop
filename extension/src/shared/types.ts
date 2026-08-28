@@ -329,6 +329,18 @@ export interface InjectActiveTabResponse {
   error?: string;
 }
 
+/** Used by the background worker to wait until the dynamically injected content
+ * script has finished loading its WASM module and can receive feature commands. */
+export interface ContentReadyRequest {
+  type: "TERMPOP_CONTENT_READY";
+}
+
+export interface ContentReadyResponse {
+  ok: boolean;
+  ready: boolean;
+  error?: string;
+}
+
 export interface DisableSiteRequest {
   type: "TERMPOP_DISABLE_SITE";
 }

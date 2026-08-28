@@ -848,6 +848,10 @@ async function sendReadingAssistMessage(message: SummarizeVisibleRequest | Expla
     return;
   }
   try {
+    const injected = await chrome.runtime.sendMessage({ type: "TERMPOP_INJECT_ACTIVE_TAB" }) as InjectActiveTabResponse;
+    if (!injected.ok || !injected.injected) {
+      throw new Error(injected.error || t[uiLocale].enabledRefreshRequired);
+    }
     const response = await chrome.tabs.sendMessage(tab.id, message) as { ok?: boolean; error?: string };
     if (!response?.ok) {
       throw new Error(response?.error || t[uiLocale].readingAssistFailed);
