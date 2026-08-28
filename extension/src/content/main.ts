@@ -91,6 +91,7 @@ const runtimeState = globalThis as typeof globalThis & {
   __termpopReadyListenerBound?: boolean;
 };
 let bootError: unknown;
+let wasmReady = false;
 let cachedPageFingerprint: { value: string; at: number; url: string } | undefined;
 let dictionaryJson: string | undefined;
 let ignoredTerms = new Set<string>();
@@ -150,7 +151,15 @@ function setupContentReadyListener(): void {
 }
 
 async function boot(): Promise<void> {
-  await initWasm({ module_or_path: chrome.runtime.getURL("assets/termpop_core_bg.wasm") });
+  try {
+    await initWasm({ module_or_path: chrome.runtime.getURL("assets/termpop_core_bg.wasm") });
+    wasmReady = true;
+  } catch (error) {
+    // Reading tools, selection explanations, and cached terms do not depend on
+    // WASM. Keep their message handlers available even when automatic matching
+    // cannot start on a hostile page.
+    console.warn("TermPop WASM matching is unavailable on this page", sanitizeForLog(error, 300));
+  }
   injectStyles();
   overlay = new TermPopOverlayController({
     rootId: ROOT_ID,
@@ -1229,12 +1238,13 @@ async function detectTerms(text: string): Promise<DetectedTerm[]> {
 }
 
 function detectTermsLocally(text: string): DetectedTerm[] {
-  const raw = dictionaryJson ? detect_terms_with_dictionary_json(text, dictionaryJson) : "[]";
-  const rustTerms = (JSON.parse(raw) as DetectedTerm[]).map((term) => ({
-    ...term,
-    start: byteOffsetToJsIndex(text, term.start),
-    end: byteOffsetToJsIndex(text, term.end)
-  }));
+  const rustTerms = wasmReady && dictionaryJson
+    ? (JSON.parse(detect_terms_with_dictionary_json(text, dictionaryJson)) as DetectedTerm[]).map((term) => ({
+      ...term,
+      start: byteOffsetToJsIndex(text, term.start),
+      end: byteOffsetToJsIndex(text, term.end)
+    }))
+    : [];
   const cachedTerms = debugOptions.disableCache ? [] : detectCachedTermsLocally(text);
   return dedupeDetectedTerms(filterAllowedDetectedTerms(text, filterIgnoredDetectedTerms([...rustTerms, ...cachedTerms], ignoredTerms)));
 }
