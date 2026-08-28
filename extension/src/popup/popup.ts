@@ -852,7 +852,7 @@ async function sendReadingAssistMessage(message: SummarizeVisibleRequest | Expla
     if (!injected.ok || !injected.injected) {
       throw new Error(injected.error || t[uiLocale].enabledRefreshRequired);
     }
-    const response = await chrome.tabs.sendMessage(tab.id, message) as { ok?: boolean; error?: string };
+    const response = await sendContentMessageWhenReady(tab.id, message);
     if (!response?.ok) {
       throw new Error(response?.error || t[uiLocale].readingAssistFailed);
     }
@@ -861,6 +861,24 @@ async function sendReadingAssistMessage(message: SummarizeVisibleRequest | Expla
   } catch (error) {
     if (status) status.textContent = error instanceof Error ? error.message : t[uiLocale].readingAssistFailed;
   }
+}
+
+async function sendContentMessageWhenReady(
+  tabId: number,
+  message: SummarizeVisibleRequest | ExplainSelectionTermsRequest
+): Promise<{ ok?: boolean; error?: string } | undefined> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 25; attempt += 1) {
+    try {
+      return await chrome.tabs.sendMessage(tabId, message) as { ok?: boolean; error?: string };
+    } catch (error) {
+      lastError = error;
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 100));
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(t[uiLocale].readingAssistFailed);
 }
 
 async function exportLocalData(format: "markdown" | "csv"): Promise<void> {

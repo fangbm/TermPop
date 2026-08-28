@@ -151,15 +151,6 @@ function setupContentReadyListener(): void {
 }
 
 async function boot(): Promise<void> {
-  try {
-    await initWasm({ module_or_path: chrome.runtime.getURL("assets/termpop_core_bg.wasm") });
-    wasmReady = true;
-  } catch (error) {
-    // Reading tools, selection explanations, and cached terms do not depend on
-    // WASM. Keep their message handlers available even when automatic matching
-    // cannot start on a hostile page.
-    console.warn("TermPop WASM matching is unavailable on this page", sanitizeForLog(error, 300));
-  }
   injectStyles();
   overlay = new TermPopOverlayController({
     rootId: ROOT_ID,
@@ -168,6 +159,12 @@ async function boot(): Promise<void> {
   });
   screenshotSelection = new ScreenshotSelectionController(uiLocale());
   readingAssistPanel = new ReadingAssistPanel(uiLocale());
+  // Bind interactive handlers before starting WASM. A slow or CSP-blocked WASM
+  // fetch must not make selection, screenshot, or reading tools look uninjected.
+  setupSelectionMessageListener();
+  setupSelectionPointerTracking();
+  setupHighlightEventDelegation();
+  const wasmInitialization = initializeWasm();
 
   const { mode, dictionary, privacy } = await getContentSettings();
   dictionaryJson = serializeDictionary(dictionary);
@@ -181,16 +178,31 @@ async function boot(): Promise<void> {
     url: location.href
   });
   setupSiteAccessChangeListener();
-  setupSelectionMessageListener();
-  setupSelectionPointerTracking();
-  setupHighlightEventDelegation();
   setupModeChangeListener();
   setupIgnoredTermsChangeListener();
   if (activeMode === "selection" && !debugOptions.detectionMode) {
     return;
   }
 
-  startAutomaticHighlighting();
+  // Local matching becomes available when WASM is ready. Cached/LLM paths and
+  // all interactive tools remain usable while it is still loading.
+  void wasmInitialization.then(() => {
+    if (!siteDisabled && (activeMode !== "selection" || debugOptions.detectionMode)) {
+      startAutomaticHighlighting();
+    }
+  });
+}
+
+async function initializeWasm(): Promise<void> {
+  try {
+    await initWasm({ module_or_path: chrome.runtime.getURL("assets/termpop_core_bg.wasm") });
+    wasmReady = true;
+  } catch (error) {
+    // Reading tools, selection explanations, and cached terms do not depend on
+    // WASM. Keep their message handlers available even when automatic matching
+    // cannot start on a hostile page.
+    console.warn("TermPop WASM matching is unavailable on this page", sanitizeForLog(error, 300));
+  }
 }
 
 function injectStyles(): void {

@@ -1,7 +1,7 @@
 import { getSettings } from "../shared/settings";
 import type { ExplainSelectionRequest, ExplainSelectionTermsRequest } from "../shared/types";
 import { BLOCKED_SITES_STORAGE_KEY } from "../shared/browser-utils";
-import { isUrlEnabled } from "./site-access";
+import { injectContentScriptForTab, isUrlEnabled } from "./site-access";
 import { sanitizeForLog } from "./utils";
 
 const SELECTION_CONTEXT_MENU_ID = "termpop-explain-selection";
@@ -55,7 +55,10 @@ export function setupContextMenus(): void {
         const message = info.menuItemId === BATCH_SELECTION_CONTEXT_MENU_ID
           ? { type: "TERMPOP_EXPLAIN_SELECTION_TERMS" } satisfies ExplainSelectionTermsRequest
           : { type: "TERMPOP_EXPLAIN_SELECTION", term: info.selectionText ?? "" } satisfies ExplainSelectionRequest;
-        await chrome.tabs.sendMessage(tab.id as number, message);
+        if (!await injectContentScriptForTab(tab.id as number, tab.url)) {
+          return;
+        }
+        await sendSelectionMessageWhenReady(tab.id as number, message);
       } catch (error) {
         console.warn("TermPop selection explain could not run on this page.", sanitizeForLog(error, 300));
       }
@@ -102,6 +105,23 @@ export async function syncContextMenus(): Promise<void> {
       }
     );
   });
+}
+
+async function sendSelectionMessageWhenReady(
+  tabId: number,
+  message: ExplainSelectionRequest | ExplainSelectionTermsRequest
+): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 25; attempt += 1) {
+    try {
+      await chrome.tabs.sendMessage(tabId, message);
+      return;
+    } catch (error) {
+      lastError = error;
+      await new Promise<void>((resolve) => setTimeout(resolve, 100));
+    }
+  }
+  throw lastError ?? new Error("TermPop content script did not become ready.");
 }
 
 function uiLocale(): "zh" | "en" {

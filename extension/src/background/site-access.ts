@@ -1,4 +1,4 @@
-import type { ContentReadyRequest, ContentReadyResponse, SiteAccessState } from "../shared/types";
+import type { SiteAccessState } from "../shared/types";
 import {
   ALL_SITES_ORIGIN_PATTERNS,
   BLOCKED_SITES_STORAGE_KEY,
@@ -116,7 +116,11 @@ export async function injectContentScriptForTab(tabId: number, url: string | und
       target: { tabId },
       files: ["content-loader.js"]
     });
-    return await waitForContentReady(tabId);
+    // executeScript is the authoritative injection result. The loader imports
+    // a module asynchronously, so treating its later boot state as injection
+    // failure makes slow pages look unsupported even though the script is in
+    // the tab. Feature commands perform their own short readiness retry.
+    return true;
   } catch (error) {
     console.warn("TermPop could not inject content script.", sanitizeForLog(error, 300));
     return false;
@@ -136,28 +140,4 @@ async function getBlockedOrigins(): Promise<string[]> {
   return Array.isArray(stored[BLOCKED_SITES_STORAGE_KEY])
     ? stored[BLOCKED_SITES_STORAGE_KEY].filter((value): value is string => typeof value === "string")
     : [];
-}
-
-const CONTENT_READY_ATTEMPTS = 30;
-const CONTENT_READY_RETRY_DELAY_MS = 100;
-
-async function waitForContentReady(tabId: number): Promise<boolean> {
-  for (let attempt = 0; attempt < CONTENT_READY_ATTEMPTS; attempt += 1) {
-    try {
-      const response = await chrome.tabs.sendMessage(tabId, {
-        type: "TERMPOP_CONTENT_READY"
-      } satisfies ContentReadyRequest) as ContentReadyResponse;
-      if (response.ok && response.ready) {
-        return true;
-      }
-      if (!response.ready) {
-        return false;
-      }
-    } catch {
-      // The module can still be loading after executeScript returns.
-    }
-    await new Promise<void>((resolve) => setTimeout(resolve, CONTENT_READY_RETRY_DELAY_MS));
-  }
-  console.warn("TermPop content script did not become ready before the injection timeout.");
-  return false;
 }
