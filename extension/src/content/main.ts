@@ -1150,10 +1150,14 @@ function ensureSelectionAnchor(): HTMLElement {
   return selectionAnchor;
 }
 
-function anchorFromSelection(anchor: HTMLElement, fallbackPoint?: { x: number; y: number; time: number }): void {
+function anchorFromSelection(
+  anchor: HTMLElement,
+  fallbackPoint?: { x: number; y: number; time: number },
+  placement?: "above" | "below"
+): void {
   const selection = window.getSelection();
   const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : undefined;
-  const rect = bestSelectionRect(range, fallbackPoint) ?? range?.getBoundingClientRect();
+  const rect = bestSelectionRect(range, fallbackPoint, placement) ?? range?.getBoundingClientRect();
 
   if (rect && rect.width > 0 && rect.height > 0) {
     anchor.style.left = `${rect.left}px`;
@@ -1185,10 +1189,18 @@ function clampViewportY(value: number): number {
   return Math.min(Math.max(0, value), Math.max(0, window.innerHeight - 1));
 }
 
-function bestSelectionRect(range: Range | undefined, fallbackPoint?: { x: number; y: number; time: number }): DOMRect | undefined {
+function bestSelectionRect(
+  range: Range | undefined,
+  fallbackPoint?: { x: number; y: number; time: number },
+  placement?: "above" | "below"
+): DOMRect | undefined {
   const rects = range ? Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0) : [];
   if (rects.length === 0) {
     return undefined;
+  }
+
+  if (placement) {
+    return placement === "below" ? rects[rects.length - 1] : rects[0];
   }
 
   if (fallbackPoint && Date.now() - fallbackPoint.time < 8000) {
@@ -1616,6 +1628,7 @@ async function showExplanation(anchor: HTMLElement, term: DetectedTerm, context:
     }, options.pin, true, options.pointer, deleteCallbackForHighlight(anchor, term.term), (question, history, callbacks) =>
       requestFollowUp(term.term, context, cached, history, question, undefined, callbacks)
     );
+    alignSelectionAnchorWithCard(anchor, options.selection ?? false);
     return;
   }
 
@@ -1652,6 +1665,7 @@ async function showExplanation(anchor: HTMLElement, term: DetectedTerm, context:
   }, options.pin, !options.refresh, options.pointer, deleteCallbackForHighlight(anchor, term.term), (question, history, callbacks) =>
     requestFollowUp(term.term, context, response.explanation!, history, question, undefined, callbacks)
   );
+  alignSelectionAnchorWithCard(anchor, options.selection ?? false);
 }
 
 function setupSelectionAnchorTracking(): void {
@@ -1665,7 +1679,7 @@ function setupSelectionAnchorTracking(): void {
       return;
     }
 
-    anchorFromSelection(selectionAnchor);
+    anchorFromSelection(selectionAnchor, undefined, overlay.initialDirection());
     overlay.reposition();
   };
 
@@ -1673,6 +1687,20 @@ function setupSelectionAnchorTracking(): void {
   document.addEventListener("scroll", refreshAnchor, true);
   window.addEventListener("scroll", refreshAnchor, true);
   window.addEventListener("resize", refreshAnchor);
+}
+
+function alignSelectionAnchorWithCard(anchor: HTMLElement, isSelection: boolean): void {
+  if (!isSelection || anchor !== selectionAnchor) {
+    return;
+  }
+
+  const placement = overlay?.initialDirection();
+  if (!placement) {
+    return;
+  }
+
+  anchorFromSelection(anchor, undefined, placement);
+  overlay?.reposition();
 }
 
 function deleteCallbackForHighlight(anchor: HTMLElement, term: string): (() => void) | undefined {

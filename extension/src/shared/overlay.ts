@@ -194,11 +194,15 @@ export class TermPopOverlayController {
   }
 
   isAnchoredTo(anchor: HTMLElement): boolean {
-    return this.currentAnchor === anchor && this.root.classList.contains("is-visible");
+    return this.currentAnchor === anchor;
   }
 
   reposition(): void {
     this.scheduleReposition();
+  }
+
+  initialDirection(): "above" | "below" | undefined {
+    return this.initialPlacement;
   }
 
   private pin(): void {
@@ -293,11 +297,16 @@ export class TermPopOverlayController {
     const cardRect = this.root.getBoundingClientRect();
     const left = clamp(anchorRect.left + anchorRect.width / 2 - cardRect.width / 2, 12, Math.max(12, window.innerWidth - cardRect.width - 12));
     const anchorCenterY = anchorRect.top + anchorRect.height / 2;
-    this.initialPlacement ??= anchorCenterY < window.innerHeight / 2 ? "below" : "above";
     const belowTop = anchorRect.bottom + 10;
     const aboveTop = anchorRect.top - cardRect.height - 10;
     const canFitBelow = belowTop + cardRect.height <= window.innerHeight - 12;
     const canFitAbove = aboveTop >= 12;
+    if (!this.initialPlacement) {
+      const preferredPlacement = anchorCenterY < window.innerHeight / 2 ? "below" : "above";
+      this.initialPlacement = preferredPlacement === "below"
+        ? (canFitBelow || !canFitAbove ? "below" : "above")
+        : (canFitAbove || !canFitBelow ? "above" : "below");
+    }
     const activePlacement = this.resolvePlacement(canFitAbove, canFitBelow);
     let top = activePlacement === "below" ? belowTop : aboveTop;
 
