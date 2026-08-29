@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TermPop Feature Lab</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: #13213a;
+        background: #f4f7fc;
+      }
+
+      * { box-sizing: border-box; }
+
+      body { margin: 0; }
+
+      header {
+        padding: 52px max(24px, calc((100vw - 1120px) / 2));
+        color: #ffffff;
+        background: linear-gradient(130deg, #12234a, #296cf0);
+      }
+
+      header p { max-width: 680px; margin: 12px 0 0; color: #dce8ff; line-height: 1.65; }
+      h1 { margin: 0; font-size: clamp(32px, 5vw, 52px); letter-spacing: 0; }
+      h2 { margin: 0; font-size: 21px; letter-spacing: 0; }
+      h3 { margin: 0 0 10px; font-size: 16px; }
+
+      main { width: min(1120px, calc(100% - 32px)); margin: 30px auto 70px; }
+
+      .guide {
+        margin-bottom: 22px;
+        padding: 18px 20px;
+        border: 1px solid #c9daf9;
+        border-radius: 12px;
+        background: #eaf2ff;
+        color: #28446f;
+        line-height: 1.6;
+      }
+
+      .guide strong { color: #0d51cd; }
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+      .wide { grid-column: 1 / -1; }
+
+      .card {
+        min-width: 0;
+        padding: 24px;
+        border: 1px solid #dfe6f2;
+        border-radius: 12px;
+        background: #ffffff;
+        box-shadow: 0 10px 26px rgba(25, 50, 92, 0.06);
+      }
+
+      .card > p, .card li { color: #465a7b; font-size: 16px; line-height: 1.75; }
+      .label { margin: 0 0 10px; color: #2364e7; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+      .test-copy { font-size: 18px; line-height: 1.85; }
+      .test-copy p { margin: 0 0 14px; }
+
+      .sample-link {
+        color: #0759d5;
+        font-weight: 700;
+        text-decoration: underline;
+        text-decoration-thickness: 2px;
+        text-underline-offset: 3px;
+      }
+
+      pre, code {
+        font-family: "Cascadia Code", Consolas, monospace;
+        font-size: 13px;
+      }
+
+      pre {
+        overflow: auto;
+        margin: 12px 0 0;
+        padding: 16px;
+        border-radius: 8px;
+        background: #162235;
+        color: #e4efff;
+        line-height: 1.65;
+      }
+
+      .terminal { background: #111c1a; color: #d5f7d9; }
+      .error { color: #b4233d; background: #fff0f3; border-left: 4px solid #ec2f53; padding: 12px 14px; border-radius: 0 8px 8px 0; }
+      .config { color: #264f97; background: #f1f6ff; border-left: 4px solid #4c8dff; padding: 12px 14px; border-radius: 0 8px 8px 0; }
+
+      .actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0 0; }
+      button {
+        cursor: pointer;
+        border: 0;
+        border-radius: 8px;
+        padding: 10px 14px;
+        color: #ffffff;
+        background: #2768eb;
+        font: inherit;
+        font-weight: 700;
+      }
+      button:hover { background: #1454d0; }
+      button.secondary { color: #1d4d9f; background: #e8f0ff; }
+
+      .screenshot-stage {
+        position: relative;
+        overflow: hidden;
+        min-height: 184px;
+        margin-top: 14px;
+        padding: 28px;
+        border-radius: 10px;
+        color: #eef5ff;
+        background: radial-gradient(circle at top right, #255ec5, transparent 42%), #10213d;
+      }
+      .screenshot-stage h3 { font-size: 24px; }
+      .screenshot-stage p { max-width: 570px; color: #c9d9f6; line-height: 1.65; }
+      .screenshot-stage mark { padding: 1px 4px; border-radius: 4px; color: #ffffff; background: #397cfb; }
+
+      .dynamic-item {
+        margin-top: 12px;
+        padding: 14px;
+        border-radius: 8px;
+        background: #f3f7ff;
+        color: #304e7f;
+        line-height: 1.65;
+      }
+
+      .layout-check { display: flex; gap: 12px; align-items: center; color: #3d5377; }
+      .layout-check strong { white-space: nowrap; }
+      .layout-check span { min-width: 0; }
+      .muted { color: #647693; font-size: 14px; }
+
+      @media (max-width: 720px) {
+        .grid { grid-template-columns: 1fr; }
+        .wide { grid-column: auto; }
+        .card { padding: 20px; }
+      }
+    </style>
+  </head>
+  <body>
+    <header data-termpop-ignore>
+      <h1>TermPop Feature Lab</h1>
+      <p>One page for validating the extension's reading, explanation, selection, cache, dynamic-page, and screenshot paths.</p>
+    </header>
+
+    <main>
+      <section class="guide" data-termpop-ignore>
+        <strong>Suggested run:</strong> enable this site in TermPop, configure an LLM, then test the sections in order. Hover or click highlighted terms, select the marked samples and use the one right-click action, add the dynamic paragraph, then invoke the screenshot shortcut over the visual panel. Reopen a term after refreshing to verify explanation caching.
+      </section>
+
+      <section class="grid">
+        <article class="card wide" data-termpop-scan>
+          <p class="label">01 Automatic highlighting and hover card</p>
+          <h2>Technical reading</h2>
+          <div class="test-copy">
+            <p>
+              A <strong>Transformer</strong> uses <strong>self-attention</strong> to connect tokens across a sequence.
+              During training, a <strong>GPU</strong> accelerates matrix operations while <strong>WebAssembly</strong>
+              lets Rust code run efficiently in the browser.
+            </p>
+            <p>
+              This paragraph intentionally repeats <strong>Transformer</strong> in a second context so you can verify
+              one explanation cache entry is reused across multiple highlights on the same page.
+            </p>
+          </div>
+          <p class="muted" data-termpop-ignore>Check: hover opens a card; click locks it; outside click dismisses it; refresh regenerates the explanation; the delete action only appears for automatic highlights.</p>
+        </article>
+
+        <article class="card" data-termpop-scan>
+          <p class="label">02 Passage explanation</p>
+          <h2>Select a paragraph, then right-click</h2>
+          <p class="test-copy">
+            The model does not simply compare every word with every other word. It creates attention weights that let
+            each token use the most relevant parts of the surrounding sequence, which makes long-range relationships
+            easier to represent without recurrence.
+          </p>
+          <p class="muted" data-termpop-ignore>Expected: a short summary followed by claims, reasoning, and context, not a second keyword list.</p>
+        </article>
+
+        <article class="card" data-termpop-scan>
+          <p class="label">03 Link and layout safety</p>
+          <p class="test-copy">
+            This <a class="sample-link" href="https://github.com/fangbm/TermPop" target="_blank" rel="noreferrer">Transformer documentation link</a>
+            should remain clickable and should not receive automatic inline highlighting.
+          </p>
+          <div class="layout-check">
+            <strong>Flex text:</strong>
+            <span>Rust and WASM inside this direct flex text child should preserve its original layout.</span>
+          </div>
+          <p class="muted" data-termpop-ignore>Check: links continue to navigate, and the flex row does not jump after scanning.</p>
+        </article>
+
+        <article class="card" data-termpop-scan>
+          <p class="label">04 Typed selection: code</p>
+          <h2>Explain the selected source</h2>
+          <pre><code>async function getEmbedding(text: string) {
+  const response = await fetch("/v1/embeddings", {
+    method: "POST",
+    body: JSON.stringify({ input: text })
+  });
+  return response.json();
+}</code></pre>
+          <p class="muted" data-termpop-ignore>Select any portion and choose “Explain with TermPop”. Expected: purpose, inputs/outputs or effects, and pitfalls.</p>
+        </article>
+
+        <article class="card" data-termpop-scan>
+          <p class="label">05 Typed selection: command and error</p>
+          <pre class="terminal"><code>cargo test --workspace --all-features</code></pre>
+          <p class="error"><code>Error: EADDRINUSE: address already in use 127.0.0.1:5173</code></p>
+          <p class="muted" data-termpop-ignore>Select each independently. Expected: command impact and safety notes; error cause and next checks.</p>
+        </article>
+
+        <article class="card" data-termpop-scan>
+          <p class="label">06 Typed selection: configuration</p>
+          <pre class="config"><code>{
+  "provider": "openai-compatible",
+  "model": "gpt-4.1-mini",
+  "temperature": 0.2,
+  "maxTokens": 1200
+}</code></pre>
+          <p class="muted" data-termpop-ignore>Select the object or one field. Expected: field meaning and behavior, without invented settings.</p>
+        </article>
+
+        <article class="card" data-termpop-scan>
+          <p class="label">07 Dynamic DOM and incremental scanning</p>
+          <h2>SPA-style update</h2>
+          <p>Click the button to append new, unhighlighted content after the initial scan.</p>
+          <div class="actions" data-termpop-ignore>
+            <button id="add-dynamic" type="button">Append technical paragraph</button>
+            <button id="clear-dynamic" class="secondary" type="button">Clear dynamic content</button>
+          </div>
+          <div id="dynamic-output" aria-live="polite"></div>
+          <p class="muted" data-termpop-ignore>Check: only new nodes are scanned; existing highlights do not disappear or flash.</p>
+        </article>
+
+        <article class="card" data-termpop-ignore>
+          <p class="label">08 Screenshot recognition</p>
+          <h2>Capture the panel below</h2>
+          <div class="screenshot-stage">
+            <h3>Retrieval-augmented generation</h3>
+            <p>RAG retrieves relevant passages before a language model produces an answer. Capture <mark>vector database</mark> or the title with your configured screenshot shortcut.</p>
+          </div>
+          <p class="muted">Check: with a multimodal model, the captured area and nearby visual context are sent together; OCR-only mode stays local before explanation.</p>
+        </article>
+
+        <article class="card" data-termpop-scan>
+          <p class="label">09 User dictionary and ignored terms</p>
+          <p class="test-copy">Add <strong>Context Window</strong> to your personal dictionary, then verify it highlights here after a rescan. Add <strong>Transformer</strong> to ignored terms and verify automatic highlighting disappears while selection explanation still works.</p>
+          <p class="muted" data-termpop-ignore>Use this section after testing the default automatic card so you can confirm both settings separately.</p>
+        </article>
+      </section>
+    </main>
+
+    <script>
+      const output = document.querySelector("#dynamic-output");
+      const add = document.querySelector("#add-dynamic");
+      const clear = document.querySelector("#clear-dynamic");
+      let count = 0;
+
+      add.addEventListener("click", () => {
+        count += 1;
+        const item = document.createElement("p");
+        item.className = "dynamic-item";
+        item.dataset.termpopScan = "";
+        item.textContent = `Dynamic item ${count}: a Vector Database stores embeddings so Retrieval-Augmented Generation can retrieve context for an LLM.`;
+        output.append(item);
+      });
+
+      clear.addEventListener("click", () => {
+        output.replaceChildren();
+        count = 0;
+      });
+    </script>
+  </body>
+</html>
