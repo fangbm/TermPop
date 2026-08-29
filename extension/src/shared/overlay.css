@@ -31,8 +31,13 @@
 }
 
 #termpop-overlay-root .termpop-card-title {
+  max-height: 7.5em;
+  overflow-y: auto;
   font-size: 14px;
   font-weight: 700;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 2;
 }
 
 #termpop-overlay-root .termpop-card-header {

@@ -1129,7 +1129,7 @@ function collectVisibleReadingText(): string {
 }
 
 function normalizeSelectedText(value: string): string {
-  return value.replace(/\s+/g, " ").trim().slice(0, 2_000);
+  return value.replace(/\r\n?/g, "\n").trim().slice(0, 2_000);
 }
 
 function ensureSelectionAnchor(): HTMLElement {
