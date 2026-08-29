@@ -163,6 +163,7 @@ async function boot(): Promise<void> {
   // fetch must not make selection, screenshot, or reading tools look uninjected.
   setupSelectionMessageListener();
   setupSelectionPointerTracking();
+  setupSelectionAnchorTracking();
   setupHighlightEventDelegation();
   const wasmInitialization = initializeWasm();
 
@@ -1152,7 +1153,7 @@ function ensureSelectionAnchor(): HTMLElement {
 function anchorFromSelection(anchor: HTMLElement, fallbackPoint?: { x: number; y: number; time: number }): void {
   const selection = window.getSelection();
   const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : undefined;
-  const rect = firstUsableRect(range?.getClientRects()) ?? range?.getBoundingClientRect();
+  const rect = bestSelectionRect(range, fallbackPoint) ?? range?.getBoundingClientRect();
 
   if (rect && rect.width > 0 && rect.height > 0) {
     anchor.style.left = `${rect.left}px`;
@@ -1184,16 +1185,28 @@ function clampViewportY(value: number): number {
   return Math.min(Math.max(0, value), Math.max(0, window.innerHeight - 1));
 }
 
-function firstUsableRect(rects: DOMRectList | undefined): DOMRect | undefined {
-  if (!rects) {
+function bestSelectionRect(range: Range | undefined, fallbackPoint?: { x: number; y: number; time: number }): DOMRect | undefined {
+  const rects = range ? Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0) : [];
+  if (rects.length === 0) {
     return undefined;
   }
-  for (const rect of Array.from(rects)) {
-    if (rect.width > 0 && rect.height > 0) {
-      return rect;
-    }
+
+  if (fallbackPoint && Date.now() - fallbackPoint.time < 8000) {
+    return rects
+      .map((rect) => ({
+        rect,
+        distance: distanceToSelectionRect(fallbackPoint, rect)
+      }))
+      .sort((left, right) => left.distance - right.distance)[0].rect;
   }
-  return undefined;
+
+  return rects.find((rect) => rect.bottom > 0 && rect.top < window.innerHeight && rect.right > 0 && rect.left < window.innerWidth) ?? rects[0];
+}
+
+function distanceToSelectionRect(point: { x: number; y: number }, rect: DOMRect): number {
+  const dx = point.x < rect.left ? rect.left - point.x : point.x > rect.right ? point.x - rect.right : 0;
+  const dy = point.y < rect.top ? rect.top - point.y : point.y > rect.bottom ? point.y - rect.bottom : 0;
+  return dx * dx + dy * dy;
 }
 
 function selectionContext(term: string): string {
@@ -1639,6 +1652,27 @@ async function showExplanation(anchor: HTMLElement, term: DetectedTerm, context:
   }, options.pin, !options.refresh, options.pointer, deleteCallbackForHighlight(anchor, term.term), (question, history, callbacks) =>
     requestFollowUp(term.term, context, response.explanation!, history, question, undefined, callbacks)
   );
+}
+
+function setupSelectionAnchorTracking(): void {
+  const refreshAnchor = () => {
+    if (!selectionAnchor || !overlay?.isAnchoredTo(selectionAnchor)) {
+      return;
+    }
+
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+      return;
+    }
+
+    anchorFromSelection(selectionAnchor);
+    overlay.reposition();
+  };
+
+  document.addEventListener("selectionchange", refreshAnchor, true);
+  document.addEventListener("scroll", refreshAnchor, true);
+  window.addEventListener("scroll", refreshAnchor, true);
+  window.addEventListener("resize", refreshAnchor);
 }
 
 function deleteCallbackForHighlight(anchor: HTMLElement, term: string): (() => void) | undefined {

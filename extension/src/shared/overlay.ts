@@ -193,6 +193,14 @@ export class TermPopOverlayController {
     return this.pointerOverCard;
   }
 
+  isAnchoredTo(anchor: HTMLElement): boolean {
+    return this.currentAnchor === anchor && this.root.classList.contains("is-visible");
+  }
+
+  reposition(): void {
+    this.scheduleReposition();
+  }
+
   private pin(): void {
     this.pinned = true;
     this.cancelHide();
