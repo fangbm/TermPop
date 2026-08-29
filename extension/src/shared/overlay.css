@@ -23,6 +23,13 @@
   box-shadow: 0 12px 32px rgba(15, 23, 42, 0.2);
 }
 
+#termpop-overlay-root .termpop-explanation-card {
+  display: flex;
+  height: min(420px, calc(100vh - 24px));
+  min-height: 0;
+  flex-direction: column;
+}
+
 #termpop-overlay-root .termpop-card-title {
   font-size: 14px;
   font-weight: 700;
@@ -34,6 +41,16 @@
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 2px;
+  flex: 0 0 auto;
+}
+
+#termpop-overlay-root .termpop-card-scroll {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
 }
 
 #termpop-overlay-root.is-follow-up .termpop-card {
@@ -41,6 +58,10 @@
   display: flex;
   min-height: 0;
   flex-direction: column;
+}
+
+#termpop-overlay-root.is-follow-up .termpop-card-scroll {
+  display: none;
 }
 
 #termpop-overlay-root .termpop-card-actions {

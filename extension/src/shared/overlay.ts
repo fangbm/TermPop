@@ -99,15 +99,18 @@ export class TermPopOverlayController {
            <button class="termpop-refresh-button" type="button" title="${escapeHtml(copy[this.locale].refresh)}" aria-label="${escapeHtml(copy[this.locale].refresh)}">↻</button>
          </div>
        </div>
+       <div class="termpop-card-scroll">
         <div class="termpop-category">${escapeHtml(explanation.category)}</div>
         <div class="termpop-definition">${escapeHtml(explanation.definition)}</div>
        ${sections}
        ${explanation.usage_example ? `<div class="termpop-example">${escapeHtml(explanation.usage_example)}</div>` : ""}
        <div class="termpop-related">${related}</div>
+       </div>
        ${onFollowUp ? this.followUpComposerHtml() : ""}`,
       keepVisible,
       resetPlacement,
-      pointer
+      pointer,
+      "termpop-explanation-card"
     );
     this.root.querySelector<HTMLButtonElement>(".termpop-refresh-button")?.addEventListener("click", (event) => {
       event.preventDefault();
@@ -223,7 +226,14 @@ export class TermPopOverlayController {
     }
   }
 
-  private render(anchor: HTMLElement, html: string, keepVisible = false, resetPlacement = false, pointer?: OverlayPointer): void {
+  private render(
+    anchor: HTMLElement,
+    html: string,
+    keepVisible = false,
+    resetPlacement = false,
+    pointer?: OverlayPointer,
+    cardClass = ""
+  ): void {
     this.unlockFollowUpSize();
     this.pinned = keepVisible;
     if (this.currentAnchor !== anchor || resetPlacement) {
@@ -235,7 +245,7 @@ export class TermPopOverlayController {
     }
     this.cancelHide();
     this.syncLayer(anchor);
-    this.root.innerHTML = `<div class="termpop-card">${html}</div>`;
+    this.root.innerHTML = `<div class="termpop-card ${cardClass}">${html}</div>`;
     this.root.classList.add("is-visible");
     this.root.style.display = "block";
     this.positionNearAnchor();
