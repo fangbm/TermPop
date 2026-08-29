@@ -9,7 +9,7 @@ const DOWNLOAD_TARGET = getDownloadTarget(typeof navigator === "undefined" ? "" 
 
 type Language = "en" | "zh";
 type Accent = "blue" | "violet" | "green" | "amber" | "cyan" | "rose";
-type SiteRoute = "home" | "guide" | "docs";
+type SiteRoute = "home" | "guide" | "docs" | "demo";
 
 type Feature = {
   title: string;
@@ -34,6 +34,7 @@ type Copy = {
     github: string;
     guide: string;
     docs: string;
+    demo: string;
     languageLabel: string;
     homeLabel: string;
   };
@@ -61,6 +62,15 @@ type Copy = {
     title: string;
     copy: string;
     items: Feature[];
+  };
+  demo: {
+    eyebrow: string;
+    title: string;
+    copy: string;
+    open: string;
+    instruction: string;
+    detailTitle: string;
+    detailCopy: string;
   };
   download: {
     eyebrow: string;
@@ -162,6 +172,7 @@ const copy: Record<Language, Copy> = {
       github: "GitHub",
       guide: "Guide",
       docs: "Docs",
+      demo: "Demo",
       languageLabel: "Choose language",
       homeLabel: "TermPop home"
     },
@@ -222,6 +233,15 @@ const copy: Record<Language, Copy> = {
         }
       ]
     },
+    demo: {
+      eyebrow: "Interactive preview",
+      title: "See the reading flow in action.",
+      copy: "Hover a highlighted term, then click it to keep the explanation open while you continue reading.",
+      open: "Try the interactive demo",
+      instruction: "Hover or click a highlighted term",
+      detailTitle: "A small preview of the extension",
+      detailCopy: "This demo uses the same placement and locking behavior as TermPop's reading card, without sending text anywhere."
+    },
     download: {
       eyebrow: "Get TermPop",
       title: "Install the extension and start reading with context.",
@@ -240,6 +260,7 @@ const copy: Record<Language, Copy> = {
       github: "GitHub",
       guide: "新手向导",
       docs: "文档",
+      demo: "演示",
       languageLabel: "选择语言",
       homeLabel: "TermPop 首页"
     },
@@ -256,7 +277,7 @@ const copy: Record<Language, Copy> = {
       label: "TermPop 产品预览",
       address: "termpop.com/docs/attention",
       kicker: "技术阅读",
-      title: "让Tramsformer\n更容易读懂。",
+      title: "让Transformer\n更容易读懂。",
       textStart: "一个",
       textMiddle: "会使用",
       textEnd: "来建模 token 之间的关系。TermPop 可以在阅读中解释",
@@ -300,6 +321,15 @@ const copy: Record<Language, Copy> = {
         }
       ]
     },
+    demo: {
+      eyebrow: "交互演示",
+      title: "亲手试试原位解释。",
+      copy: "悬停高亮词查看解释，点击后锁定词卡，继续阅读也不会打断。",
+      open: "试用交互演示",
+      instruction: "悬停或点击高亮术语",
+      detailTitle: "一段真实的插件体验预览",
+      detailCopy: "这个演示复用了 TermPop 的词卡定位和锁定逻辑，不会发送任何页面文本。"
+    },
     download: {
       eyebrow: "获取 TermPop",
       title: "  安装插件，\n  从带上下文的阅读开始。",
@@ -335,6 +365,9 @@ function currentRoute(): SiteRoute {
   if (path === "/docs") {
     return "docs";
   }
+  if (path === "/demo") {
+    return "demo";
+  }
   return "home";
 }
 
@@ -344,6 +377,9 @@ function routePath(route: SiteRoute): string {
   }
   if (route === "docs") {
     return "/docs";
+  }
+  if (route === "demo") {
+    return "/demo";
   }
   return "/";
 }
@@ -411,13 +447,16 @@ function App(): React.ReactElement {
         <>
           <Hero t={t} />
           <ProductShowcase key={language} language={language} t={t} />
+          <HomeDemoCallout navigate={navigate} t={t} />
           <FeatureGrid t={t} />
           <DownloadSection downloadTarget={DOWNLOAD_TARGET} t={t} />
         </>
       ) : route === "guide" ? (
         <GuidePage language={language} navigate={navigate} />
-      ) : (
+      ) : route === "docs" ? (
         <DocsPage language={language} navigate={navigate} />
+      ) : (
+        <DemoPage language={language} navigate={navigate} t={t} />
       )}
       <Footer downloadTarget={DOWNLOAD_TARGET} navigate={navigate} t={t} />
     </main>
@@ -474,6 +513,16 @@ function Nav({
               }}
             >
               {t.nav.docs}
+            </a>
+            <a
+              className={route === "demo" ? "is-current" : ""}
+              href="/demo"
+              onClick={(event) => {
+                event.preventDefault();
+                navigate("demo");
+              }}
+            >
+              {t.nav.demo}
             </a>
             <a href="/#download" onClick={() => route !== "home" && navigate("home")}>{t.nav.download}</a>
             <a href={GITHUB_URL}>{t.nav.github}</a>
@@ -829,6 +878,69 @@ function ProductShowcase({ language, t }: { language: Language; t: Copy }): Reac
             </aside>
           ) : null}
         </div>
+      </div>
+    </section>
+  );
+}
+
+function HomeDemoCallout({
+  navigate,
+  t
+}: {
+  navigate: (route: SiteRoute) => void;
+  t: Copy;
+}): React.ReactElement {
+  return (
+    <section className="home-demo-callout" aria-label={t.demo.eyebrow}>
+      <div>
+        <p className="eyebrow">{t.demo.eyebrow}</p>
+        <h2>{t.demo.title}</h2>
+        <p>{t.demo.copy}</p>
+      </div>
+      <button className="button button-primary" type="button" onClick={() => navigate("demo")}>
+        {t.demo.open}
+      </button>
+    </section>
+  );
+}
+
+function DemoPage({
+  language,
+  navigate,
+  t
+}: {
+  language: Language;
+  navigate: (route: SiteRoute) => void;
+  t: Copy;
+}): React.ReactElement {
+  return (
+    <section className="demo-page">
+      <div className="page-intro">
+        <p className="eyebrow">{t.demo.eyebrow}</p>
+        <h1>{t.demo.title}</h1>
+        <p>{t.demo.copy}</p>
+      </div>
+      <div className="demo-instruction" role="status">
+        <span className="demo-pulse" aria-hidden="true" />
+        {t.demo.instruction}
+      </div>
+      <div className="demo-surface">
+        <ProductShowcase key={language} language={language} t={t} />
+      </div>
+      <div className="demo-details">
+        <article>
+          <span>01</span>
+          <h2>{t.demo.detailTitle}</h2>
+          <p>{t.demo.detailCopy}</p>
+        </article>
+        <article>
+          <span>02</span>
+          <h2>{language === "zh" ? "准备好在真实页面使用？" : "Ready to use it on a real page?"}</h2>
+          <p>{language === "zh" ? "安装 TermPop 后，你可以在普通网页、技术文档和自带 PDF 阅读器中获得同样的体验。" : "After you install TermPop, the same flow works on ordinary pages, technical documents, and the built-in PDF viewer."}</p>
+          <button className="text-link" type="button" onClick={() => navigate("guide")}>
+            {language === "zh" ? "查看新手向导" : "Open the guide"}
+          </button>
+        </article>
       </div>
     </section>
   );
