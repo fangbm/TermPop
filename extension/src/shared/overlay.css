@@ -137,6 +137,26 @@
   margin-bottom: 8px;
 }
 
+#termpop-overlay-root .termpop-explanation-section {
+  margin: 0 0 8px;
+  padding: 7px 8px;
+  border-left: 2px solid #bfdbfe;
+  background: #f8fafc;
+}
+
+#termpop-overlay-root .termpop-explanation-section-label {
+  margin-bottom: 2px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+#termpop-overlay-root .termpop-explanation-section-content {
+  color: #475569;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 #termpop-overlay-root .termpop-example {
   margin-bottom: 8px;
   color: #4b5563;
@@ -172,6 +192,7 @@
 #termpop-overlay-root.is-follow-up .termpop-category,
 #termpop-overlay-root.is-follow-up .termpop-definition,
 #termpop-overlay-root.is-follow-up .termpop-example,
+#termpop-overlay-root.is-follow-up .termpop-explanation-section,
 #termpop-overlay-root.is-follow-up .termpop-related {
   display: none;
 }

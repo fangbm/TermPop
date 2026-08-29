@@ -1,5 +1,5 @@
 import type { Explanation, FollowUpStreamResult, FollowUpTurn, LlmSettings, ScreenshotRecognition } from "../shared/types";
-import { extractJsonObject } from "./json";
+import { parseExplanation } from "./explanation-parsing";
 import { runWithLlmConcurrency } from "./llm-queue";
 import {
   buildExplanationPrompt,
@@ -15,7 +15,7 @@ import { readSsePayloads } from "./streaming";
 
 export interface TermPopLlmProvider {
   detectTerms(prompt: string, system: string, settings: LlmSettings, timeoutMs: number): Promise<string>;
-  explain(term: string, context: string | undefined, settings: LlmSettings): Promise<Explanation>;
+  explain(term: string, context: string | undefined, settings: LlmSettings, selection?: boolean): Promise<Explanation>;
   followUp(term: string, context: string | undefined, explanation: Explanation, history: FollowUpTurn[], question: string, images: ScreenshotImages | undefined, settings: LlmSettings): Promise<string>;
   followUpStream(term: string, context: string | undefined, explanation: Explanation, history: FollowUpTurn[], question: string, images: ScreenshotImages | undefined, settings: LlmSettings, callbacks: FollowUpStreamCallbacks, signal?: AbortSignal): Promise<FollowUpStreamResult>;
   recognizeSelection(termImageDataUrl: string, contextImageDataUrl: string, settings: LlmSettings): Promise<ScreenshotRecognition>;
@@ -42,9 +42,9 @@ const openAiCompatibleProvider: TermPopLlmProvider = {
       fetchOpenAiCompatibleDetectionText(settings, system, prompt, signal)
     );
   },
-  explain(term, context, settings) {
+  explain(term, context, settings, selection = false) {
     return runWithLlmConcurrency(settings, { priority: "explanation" }, (signal) =>
-      fetchOpenAiCompatibleExplanation(term, context, settings, signal)
+      fetchOpenAiCompatibleExplanation(term, context, settings, selection, signal)
     );
   },
   followUp(term, context, explanation, history, question, images, settings) {
@@ -71,9 +71,9 @@ const anthropicProvider: TermPopLlmProvider = {
       fetchAnthropicText(settings, `${system} ${prompt}`, signal)
     );
   },
-  explain(term, context, settings) {
+  explain(term, context, settings, selection = false) {
     return runWithLlmConcurrency(settings, { priority: "explanation" }, (signal) =>
-      fetchAnthropicExplanation(term, context, settings, signal)
+      fetchAnthropicExplanation(term, context, settings, selection, signal)
     );
   },
   followUp(term, context, explanation, history, question, images, settings) {
@@ -311,6 +311,7 @@ async function fetchOpenAiCompatibleExplanation(
   term: string,
   context: string | undefined,
   settings: LlmSettings,
+  selection: boolean,
   signal?: AbortSignal
 ): Promise<Explanation> {
   const baseUrl = normalizeBaseUrl(settings.baseUrl || defaultBaseUrl(settings.provider));
@@ -327,11 +328,11 @@ async function fetchOpenAiCompatibleExplanation(
       messages: [
         {
           role: "system",
-          content: buildExplanationSystemPrompt(settings.language, settings.includeUsageExample, settings.promptOverrides?.explanation)
+          content: buildExplanationSystemPrompt(settings.language, settings.includeUsageExample, settings.promptOverrides?.explanation, selection)
         },
         {
           role: "user",
-          content: buildExplanationPrompt(term, context, settings.language, settings.includeUsageExample)
+          content: buildExplanationPrompt(term, context, settings.language, settings.includeUsageExample, selection)
         }
       ]
     }),
@@ -351,6 +352,7 @@ async function fetchAnthropicExplanation(
   term: string,
   context: string | undefined,
   settings: LlmSettings,
+  selection: boolean,
   signal?: AbortSignal
 ): Promise<Explanation> {
   const baseUrl = normalizeBaseUrl(settings.baseUrl || defaultBaseUrl(settings.provider));
@@ -366,11 +368,11 @@ async function fetchAnthropicExplanation(
       model: settings.model.trim(),
       max_tokens: settings.maxTokens,
       temperature: settings.temperature,
-      system: buildExplanationSystemPrompt(settings.language, settings.includeUsageExample, settings.promptOverrides?.explanation),
+      system: buildExplanationSystemPrompt(settings.language, settings.includeUsageExample, settings.promptOverrides?.explanation, selection),
       messages: [
         {
           role: "user",
-          content: buildExplanationPrompt(term, context, settings.language, settings.includeUsageExample)
+          content: buildExplanationPrompt(term, context, settings.language, settings.includeUsageExample, selection)
         }
       ]
     }),
@@ -555,33 +557,6 @@ function stringifyProviderDelta(value: unknown): string {
   return "";
 }
 
-function parseExplanation(content: string, fallbackTerm: string, includeUsageExample: boolean): Explanation {
-  try {
-    const parsed = JSON.parse(extractJsonObject(content)) as Partial<Explanation>;
-    return {
-      term: typeof parsed.term === "string" && parsed.term.trim() ? parsed.term.trim() : fallbackTerm,
-      definition: typeof parsed.definition === "string" ? parsed.definition.trim() : cleanupPlainTextExplanation(content, fallbackTerm),
-      category: typeof parsed.category === "string" && parsed.category.trim() ? parsed.category.trim() : "LLM explanation",
-      related_terms: Array.isArray(parsed.related_terms)
-        ? parsed.related_terms.map(String).map((value) => value.trim()).filter(Boolean).slice(0, 6)
-        : [],
-      usage_example: includeUsageExample && typeof parsed.usage_example === "string" ? parsed.usage_example.trim() : null,
-      source_url: typeof parsed.source_url === "string" ? parsed.source_url : null,
-      provider_status: "llm"
-    };
-  } catch {
-    return {
-      term: fallbackTerm,
-      definition: cleanupPlainTextExplanation(content, fallbackTerm),
-      category: "LLM explanation",
-      related_terms: [],
-      usage_example: null,
-      source_url: null,
-      provider_status: "llm"
-    };
-  }
-}
-
 function extractOpenAiCompatibleText(payload: unknown): string {
   const object = payload as {
     choices?: Array<{
@@ -634,14 +609,6 @@ function stringifyProviderText(value: unknown): string {
     }).join("").trim();
   }
   return "";
-}
-
-function cleanupPlainTextExplanation(content: string, term: string): string {
-  const compact = content.replace(/\s+/g, " ").trim();
-  if (!compact) {
-    return `${term} is a term TermPop detected in the surrounding context.`;
-  }
-  return compact.slice(0, 500);
 }
 
 async function formatProviderError(response: Response): Promise<string> {

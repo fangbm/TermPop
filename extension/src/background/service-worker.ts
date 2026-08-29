@@ -185,7 +185,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
         }
       })
       .then(getSettings)
-      .then((settings) => explain(message.term, message.context, message.cacheScope, message.refresh ?? false, settings.llm))
+      .then((settings) => explain(message.term, message.context, message.cacheScope, message.refresh ?? false, settings.llm, message.selection ?? false))
       .then((explanation) => sendResponse({ ok: true, explanation } satisfies ExplainResponse))
       .catch((error: unknown) => sendResponse({ ok: false, error: errorMessage(error) } satisfies ExplainResponse));
     return true;

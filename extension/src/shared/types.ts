@@ -14,6 +14,7 @@ export type CacheScope = "global" | "domain" | "pageFingerprint";
 export type ScreenshotRecognitionMode = "auto" | "multimodal" | "ocr";
 export type PromptTemplateKind = "detection" | "explanation" | "screenshot" | "followUp";
 export type ReadingAssistKind = "summary" | "batch";
+export type ExplanationKind = "term" | "code" | "command" | "error" | "config" | "text";
 
 export interface PromptOverrides {
   detection?: string;
@@ -48,9 +49,18 @@ export interface Explanation {
   definition: string;
   category: string;
   related_terms: string[];
+  /** The selected-content shape the model identified. Omitted explanations are treated as terms. */
+  kind?: ExplanationKind;
+  /** Concise, type-specific details for selected text such as commands, errors, or code. */
+  sections?: ExplanationSection[];
   usage_example?: string | null;
   source_url?: string | null;
   provider_status?: "llm";
+}
+
+export interface ExplanationSection {
+  label: string;
+  content: string;
 }
 
 export interface ExtensionSettings {
@@ -110,6 +120,8 @@ export interface ExplainRequest {
   url?: string;
   pageFingerprint?: string;
   refresh?: boolean;
+  /** Explicit reader selection: classify the content once and return a structured explanation. */
+  selection?: boolean;
 }
 
 export interface ExplainResponse {

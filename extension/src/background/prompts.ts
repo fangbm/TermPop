@@ -35,16 +35,30 @@ export function buildTermExtractionPrompt(text: string, language: ExplanationLan
   ].join("\n");
 }
 
-export function buildExplanationSystemPrompt(language: ExplanationLanguage, includeUsageExample: boolean, override?: string): string {
+export function buildExplanationSystemPrompt(
+  language: ExplanationLanguage,
+  includeUsageExample: boolean,
+  override?: string,
+  selection = false
+): string {
   return [
     languageInstruction(language),
     promptInstruction("explanation", override),
     "Return only valid JSON. Do not include markdown fences.",
-    explanationJsonShapeInstruction(includeUsageExample)
+    selection ? selectionExplanationJsonShapeInstruction(includeUsageExample) : explanationJsonShapeInstruction(includeUsageExample)
   ].join(" ");
 }
 
-export function buildExplanationPrompt(term: string, context: string | undefined, language: ExplanationLanguage, includeUsageExample: boolean): string {
+export function buildExplanationPrompt(
+  term: string,
+  context: string | undefined,
+  language: ExplanationLanguage,
+  includeUsageExample: boolean,
+  selection = false
+): string {
+  if (selection) {
+    return buildSelectedContentExplanationPrompt(term, context, language, includeUsageExample);
+  }
   return [
     languageInstruction(language),
     `Term: ${term}`,
@@ -54,6 +68,27 @@ export function buildExplanationPrompt(term: string, context: string | undefined
     usageExamplePromptLine(includeUsageExample),
     "Return valid JSON only."
   ].filter(Boolean).join("\n");
+}
+
+function buildSelectedContentExplanationPrompt(
+  selectedText: string,
+  context: string | undefined,
+  language: ExplanationLanguage,
+  includeUsageExample: boolean
+): string {
+  return [
+    languageInstruction(language),
+    "The reader explicitly selected the content below. First classify it silently as exactly one of: term, code, command, error, config, or text.",
+    "Use code for source snippets, command for shell or CLI instructions, error for errors or stack traces, config for configuration or structured settings, text for a normal paragraph, and term for a short concept or phrase.",
+    "Give a concise, context-aware explanation. For code include purpose, inputs/outputs or side effects, and any pitfall. For commands include what it does, impact, and safety notes. For errors include likely cause and concrete next checks. For config include field meaning and effect. For text explain the key idea and important context.",
+    "Use at most four short sections. Do not invent commands, configuration values, or runtime behavior that are not supported by the selected content or context.",
+    includeUsageExample
+      ? "Include one short usage example only when it clarifies the selected content."
+      : "Do not generate a usage example; set usage_example to null.",
+    "Return valid JSON only.",
+    `Selected content: ${selectedText}`,
+    `Nearby context: ${context?.trim() || "(no context provided)"}`
+  ].join("\n");
 }
 
 export function buildScreenshotRecognitionSystemPrompt(language: ExplanationLanguage, override?: string): string {
@@ -144,6 +179,11 @@ function explanationJsonShapeInstruction(includeUsageExample: boolean): string {
   return includeUsageExample
     ? "JSON shape: {\"term\":\"...\",\"definition\":\"...\",\"category\":\"...\",\"related_terms\":[\"...\"],\"usage_example\":\"...\",\"source_url\":null}"
     : "JSON shape: {\"term\":\"...\",\"definition\":\"...\",\"category\":\"...\",\"related_terms\":[\"...\"],\"usage_example\":null,\"source_url\":null}";
+}
+
+function selectionExplanationJsonShapeInstruction(includeUsageExample: boolean): string {
+  const usageExample = includeUsageExample ? "\"usage_example\":\"...\"" : "\"usage_example\":null";
+  return `JSON shape: {"term":"short title","kind":"term|code|command|error|config|text","definition":"concise overview","category":"concise category","sections":[{"label":"purpose","content":"concise detail"}],"related_terms":["..."],${usageExample},"source_url":null}`;
 }
 
 function usageExamplePromptLine(includeUsageExample: boolean): string {

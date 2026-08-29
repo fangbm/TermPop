@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --experimental-strip-types tests/run-tests.ts && node --experimental-strip-types tests/cache-dictionary-tests.ts && node --experimental-strip-types tests/streaming-tests.ts && node --experimental-strip-types tests/reading-assist-tests.ts",
+    "test": "node --experimental-strip-types tests/run-tests.ts && node --experimental-strip-types tests/cache-dictionary-tests.ts && node --experimental-strip-types tests/streaming-tests.ts && node --experimental-strip-types tests/reading-assist-tests.ts && node --experimental-strip-types tests/explanation-parsing-tests.ts",
     "typecheck": "tsc --noEmit",
     "build": "vite build"
   },

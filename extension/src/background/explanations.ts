@@ -23,9 +23,11 @@ export async function explain(
   context: string | undefined,
   cacheScope: string | undefined,
   refresh: boolean,
-  settings: LlmSettings
+  settings: LlmSettings,
+  selection = false
 ): Promise<Explanation> {
-  const cacheKey = buildExplanationCacheKey(term, context, cacheScope, settings);
+  const scopedCacheScope = selection ? `selection:${cacheScope ?? ""}` : cacheScope;
+  const cacheKey = buildExplanationCacheKey(term, context, scopedCacheScope, settings);
   await assertLlmProviderAuthorized(settings);
 
   if (!refresh) {
@@ -40,7 +42,7 @@ export async function explain(
     }
   }
 
-  const explanation = await createLlmProvider(settings).explain(term, context, settings);
+  const explanation = await createLlmProvider(settings).explain(term, context, settings, selection);
   explanationCache.set(cacheKey, explanation);
   await setPersistentExplanation(cacheKey, explanation);
   return explanation;

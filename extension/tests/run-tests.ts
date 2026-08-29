@@ -7,7 +7,7 @@ import { isSiteEnabledByPolicy } from "../src/background/site-access-policy.ts";
 import { hasAllSitesPermission } from "../src/shared/browser-utils.ts";
 import { parseScreenshotRecognition, splitImageDataUrl } from "../src/background/vision.ts";
 import { inferImageInputCapability, isImageInputUnsupportedError, shouldStartWithOcr } from "../src/background/model-capabilities.ts";
-import { buildExplanationSystemPrompt, buildFollowUpSystemPrompt, buildTermExtractionSystemPrompt, promptInstruction } from "../src/background/prompts.ts";
+import { buildExplanationPrompt, buildExplanationSystemPrompt, buildFollowUpSystemPrompt, buildTermExtractionSystemPrompt, promptInstruction } from "../src/background/prompts.ts";
 import { defaultBaseUrl } from "../src/shared/llm-defaults.ts";
 import { utf8ByteOffsetToUtf16Index } from "../src/shared/unicode.ts";
 import { cancelPdfSessionToken, createPdfSessionToken, drainPdfLlmQueue, isPdfSessionCurrent } from "../src/pdf-viewer/pdf-session.ts";
@@ -33,6 +33,11 @@ const tests: TestCase[] = [
       ok(buildTermExtractionSystemPrompt("en", override).includes("minified JSON object"));
       ok(buildExplanationSystemPrompt("zh-CN", false, "Use concise definitions.").includes("usage_example"));
       ok(buildFollowUpSystemPrompt("en", "Answer with a practical example.").includes("Answer with a practical example."));
+
+      const selectionPrompt = buildExplanationPrompt("git status --short", "Run this in a repository.", "en", false, true);
+      ok(selectionPrompt.includes("term, code, command, error, config, or text"));
+      ok(selectionPrompt.includes("Selected content: git status --short"));
+      ok(buildExplanationSystemPrompt("en", false, undefined, true).includes('"kind":"term|code|command|error|config|text"'));
     }
   },
   {

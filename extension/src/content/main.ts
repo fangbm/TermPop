@@ -1069,7 +1069,7 @@ function contextForHighlight(anchor: HTMLElement): string {
 }
 
 async function explainSelectedText(rawTerm: string): Promise<void> {
-  const termText = normalizeSelectedTerm(rawTerm);
+  const termText = normalizeSelectedText(rawTerm);
   if (!termText) {
     return;
   }
@@ -1085,7 +1085,7 @@ async function explainSelectedText(rawTerm: string): Promise<void> {
     source: "User"
   };
 
-  await showExplanation(anchor, term, selectionContext(termText), { refresh: false, pin: true });
+  await showExplanation(anchor, term, selectionContext(termText), { refresh: false, pin: true, selection: true });
 }
 
 async function requestReadingAssist(kind: ReadingAssistKind, rawText: string): Promise<void> {
@@ -1127,8 +1127,8 @@ function collectVisibleReadingText(): string {
   return text.slice(0, 9_000) || (document.body.innerText || "").replace(/\s+/g, " ").slice(0, 9_000);
 }
 
-function normalizeSelectedTerm(value: string): string {
-  return value.replace(/\s+/g, " ").trim().slice(0, 120);
+function normalizeSelectedText(value: string): string {
+  return value.replace(/\s+/g, " ").trim().slice(0, 2_000);
 }
 
 function ensureSelectionAnchor(): HTMLElement {
@@ -1555,6 +1555,7 @@ function stabilizeHighlightLayout(wrapper: HTMLElement): void {
 interface ShowExplanationOptions {
   refresh: boolean;
   pin: boolean;
+  selection?: boolean;
   pointer?: { clientX: number; clientY: number };
 }
 function scheduleHoverExplanation(anchor: HTMLElement, term: DetectedTerm, context: string, pointer: MouseEvent | PointerEvent): void {
@@ -1591,14 +1592,14 @@ async function showExplanation(anchor: HTMLElement, term: DetectedTerm, context:
 
   const requestId = ++explanationRequestSeq;
   explanationRequestIds.set(anchor, requestId);
-  const cacheKey = explanationResultCacheScope(term.term, context);
+  const cacheKey = `${options.selection ? "selection:" : "term:"}${explanationResultCacheScope(term.term, context)}`;
   const cached = pageExplanationCache.get(cacheKey);
   if (cached && !options.refresh) {
     if (!isLatestExplanationRequest(anchor, requestId)) {
       return;
     }
     overlay?.showExplanation(anchor, cached, () => {
-      void showExplanation(anchor, term, context, { refresh: true, pin: true });
+      void showExplanation(anchor, term, context, { refresh: true, pin: true, selection: options.selection });
     }, options.pin, true, options.pointer, deleteCallbackForHighlight(anchor, term.term), (question, history, callbacks) =>
       requestFollowUp(term.term, context, cached, history, question, undefined, callbacks)
     );
@@ -1609,7 +1610,7 @@ async function showExplanation(anchor: HTMLElement, term: DetectedTerm, context:
 
   let response: ExplainResponse;
   try {
-    response = await requestExplanation(term.term, context, cacheKey, options.refresh);
+    response = await requestExplanation(term.term, context, cacheKey, options.refresh, options.selection ?? false);
   } catch (error) {
     if (!isLatestExplanationRequest(anchor, requestId)) {
       return;
@@ -1634,7 +1635,7 @@ async function showExplanation(anchor: HTMLElement, term: DetectedTerm, context:
   }
 
   overlay?.showExplanation(anchor, response.explanation, () => {
-    void showExplanation(anchor, term, context, { refresh: true, pin: true });
+    void showExplanation(anchor, term, context, { refresh: true, pin: true, selection: options.selection });
   }, options.pin, !options.refresh, options.pointer, deleteCallbackForHighlight(anchor, term.term), (question, history, callbacks) =>
     requestFollowUp(term.term, context, response.explanation!, history, question, undefined, callbacks)
   );
@@ -1665,7 +1666,7 @@ function isLatestExplanationRequest(anchor: HTMLElement, requestId: number): boo
   return explanationRequestIds.get(anchor) === requestId;
 }
 
-function requestExplanation(term: string, context: string, cacheKey: string, refresh: boolean): Promise<ExplainResponse> {
+function requestExplanation(term: string, context: string, cacheKey: string, refresh: boolean, selection = false): Promise<ExplainResponse> {
   if (siteDisabled) {
     return Promise.resolve({ ok: false, error: "TermPop is disabled on this site." });
   }
@@ -1684,7 +1685,8 @@ function requestExplanation(term: string, context: string, cacheKey: string, ref
     cacheScope: cacheKey,
     url: location.href,
     pageFingerprint: currentPageFingerprint(),
-    refresh
+    refresh,
+    selection
   } satisfies ExplainRequest) as Promise<ExplainResponse>;
 
   pendingExplanationRequests.set(cacheKey, request);

@@ -87,6 +87,9 @@ export class TermPopOverlayController {
     onFollowUp?: FollowUpHandler
   ): void {
     const related = explanation.related_terms.map((term) => `<span>${escapeHtml(term)}</span>`).join("");
+    const sections = explanation.sections
+      ?.map((section) => `<div class="termpop-explanation-section"><div class="termpop-explanation-section-label">${escapeHtml(section.label)}</div><div class="termpop-explanation-section-content">${escapeHtml(section.content)}</div></div>`)
+      .join("") ?? "";
     this.render(
       anchor,
       `<div class="termpop-card-header">
@@ -98,6 +101,7 @@ export class TermPopOverlayController {
        </div>
         <div class="termpop-category">${escapeHtml(explanation.category)}</div>
         <div class="termpop-definition">${escapeHtml(explanation.definition)}</div>
+       ${sections}
        ${explanation.usage_example ? `<div class="termpop-example">${escapeHtml(explanation.usage_example)}</div>` : ""}
        <div class="termpop-related">${related}</div>
        ${onFollowUp ? this.followUpComposerHtml() : ""}`,
