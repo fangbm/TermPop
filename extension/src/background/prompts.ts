@@ -80,11 +80,12 @@ function buildSelectedContentExplanationPrompt(
     languageInstruction(language),
     "The reader explicitly selected the content below. First classify it silently as exactly one of: term, code, command, error, config, or text.",
     "Use code for source snippets, command for shell or CLI instructions, error for errors or stack traces, config for configuration or structured settings, text for a normal paragraph, and term for a short concept or phrase.",
-    "Give a concise, context-aware explanation. For code include purpose, inputs/outputs or side effects, and any pitfall. For commands include what it does, impact, and safety notes. For errors include likely cause and concrete next checks. For config include field meaning and effect. For text explain the key idea and important context.",
+    "Give a concise, context-aware explanation. For code include purpose, inputs/outputs or side effects, and any pitfall. For commands include what it does, impact, and safety notes. For errors include likely cause and concrete next checks. For config include field meaning and effect.",
+    "For text, treat the selection as a passage to be read, not a term list. Put a one- or two-sentence plain-language summary in definition. Use sections only for the key claims, reasoning or relationships, and necessary context. Do not extract, list, or explain individual keywords: automatic highlighting handles individual terms separately.",
     "Use at most four short sections. Do not invent commands, configuration values, or runtime behavior that are not supported by the selected content or context.",
     includeUsageExample
-      ? "Include one short usage example only when it clarifies the selected content."
-      : "Do not generate a usage example; set usage_example to null.",
+      ? "Include one short usage example only when it clarifies a non-text selection. For kind text, always set usage_example to null and related_terms to []."
+      : "Do not generate a usage example; set usage_example to null. For kind text, always set related_terms to [].",
     "Return valid JSON only.",
     `Selected content: ${selectedText}`,
     `Nearby context: ${context?.trim() || "(no context provided)"}`
@@ -183,7 +184,7 @@ function explanationJsonShapeInstruction(includeUsageExample: boolean): string {
 
 function selectionExplanationJsonShapeInstruction(includeUsageExample: boolean): string {
   const usageExample = includeUsageExample ? "\"usage_example\":\"...\"" : "\"usage_example\":null";
-  return `JSON shape: {"term":"short title","kind":"term|code|command|error|config|text","definition":"concise overview","category":"concise category","sections":[{"label":"purpose","content":"concise detail"}],"related_terms":["..."],${usageExample},"source_url":null}`;
+  return `JSON shape: {"term":"short title","kind":"term|code|command|error|config|text","definition":"concise overview","category":"concise category","sections":[{"label":"purpose","content":"concise detail"}],"related_terms":["..."],${usageExample},"source_url":null}. For kind text, definition must be a one- or two-sentence summary, sections must cover claims, reasoning, or context, related_terms must be [], and usage_example must be null.`;
 }
 
 function usageExamplePromptLine(includeUsageExample: boolean): string {

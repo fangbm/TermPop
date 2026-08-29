@@ -37,7 +37,10 @@ const tests: TestCase[] = [
       const selectionPrompt = buildExplanationPrompt("git status --short", "Run this in a repository.", "en", false, true);
       ok(selectionPrompt.includes("term, code, command, error, config, or text"));
       ok(selectionPrompt.includes("Selected content: git status --short"));
+      ok(selectionPrompt.includes("passage to be read, not a term list"));
+      ok(selectionPrompt.includes("automatic highlighting handles individual terms separately"));
       ok(buildExplanationSystemPrompt("en", false, undefined, true).includes('"kind":"term|code|command|error|config|text"'));
+      ok(buildExplanationSystemPrompt("en", false, undefined, true).includes("For kind text"));
     }
   },
   {
