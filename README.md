@@ -129,6 +129,10 @@ TermPop/
 └── .github/workflows/      CI and release automation
 ```
 
+## Contributing and Security
+
+Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) for development and pull-request guidance. Please report vulnerabilities privately according to [SECURITY.md](SECURITY.md).
+
 ## Limitations
 
 - Direct annotation of Chrome or Edge's built-in PDF viewer is not supported. Use the TermPop PDF Viewer.
@@ -139,4 +143,4 @@ TermPop/
 
 ## License
 
-MIT, as declared by the Rust workspace. A repository-wide `LICENSE` file has not yet been added.
+TermPop is licensed under the [MIT License](LICENSE).
