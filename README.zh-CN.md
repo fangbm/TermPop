@@ -129,6 +129,10 @@ TermPop/
 └── .github/workflows/      CI 与发布工作流
 ```
 
+## 贡献与安全
+
+欢迎贡献代码，开发环境和 PR 说明请参阅 [CONTRIBUTING.md](CONTRIBUTING.md)。如果发现安全漏洞，请按照 [SECURITY.md](SECURITY.md) 的说明进行私下报告，不要在公开 Issue 中披露利用细节。
+
 ## 当前限制
 
 - 不支持直接标记 Chrome 或 Edge 的内置 PDF 阅读器，请使用 TermPop PDF 阅读器。
@@ -139,4 +143,4 @@ TermPop/
 
 ## 许可证
 
-Rust workspace 当前声明为 MIT；仓库根目录尚未提交统一的 `LICENSE` 文件。
+TermPop 使用 [MIT License](LICENSE) 开源。
