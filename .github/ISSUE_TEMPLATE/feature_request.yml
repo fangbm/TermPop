@@ -1,0 +1,29 @@
+name: Feature request
+description: Suggest an improvement or new capability for TermPop
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What problem would this feature solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior or workflow you would like.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional alternatives or workarounds you have considered.
+  - type: textarea
+    id: implications
+    attributes:
+      label: Privacy, permission, or compatibility considerations
+      description: Note any browser permissions, provider/API usage, data handling, or compatibility impact you can foresee.
